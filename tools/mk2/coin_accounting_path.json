@@ -1,0 +1,305 @@
+{
+  "scope": "Complete noloop CPU reference calibration from reset/legal Coin1; suffix3315882..3658091. Asynchronous IRQ entries excluded from instruction successors; not native qualification.",
+  "mame_sha256": "84b690dad588253139ea49ae5e3c9fcddf9df7bcd526fccd1724ec7e09120dec",
+  "program_sha256": "45b3285496db555efaf4a3608a4f59845dd47a82e4a0593607e0592f47b36f23",
+  "new_pcs": [
+    "ff80e620",
+    "ff80e640",
+    "ff80e650",
+    "ff80e660",
+    "ff80e690",
+    "ff80e6a0",
+    "ff80e6b0",
+    "ff80e6d0",
+    "ff80e6e0",
+    "ff80e6f0",
+    "ff80e720",
+    "ff80e730",
+    "ff80e750",
+    "ff817500",
+    "ff817510",
+    "ff817530",
+    "ffa4c250",
+    "ffa4c270",
+    "ffa4c290",
+    "ffa4c2c0",
+    "ffa4c2e0",
+    "ffa4c2f0",
+    "ffa4c320",
+    "ffa4c330",
+    "ffa4c340",
+    "ffa4c350",
+    "ffa4c380",
+    "ffa4c3b0",
+    "ffa4c3e0",
+    "ffa4c3f0",
+    "ffa4c410",
+    "ffa4c500",
+    "ffa4c520",
+    "ffa4c530",
+    "ffa4c550",
+    "ffa4c570",
+    "ffa4c5e0",
+    "ffa4c600",
+    "ffa4c630",
+    "ffa4c650",
+    "ffa4c660",
+    "ffa4c680",
+    "ffa4c7c0",
+    "ffa4c7e0",
+    "ffa4c800",
+    "ffa4c810",
+    "ffa4c840",
+    "ffa4ca30",
+    "ffa4ca50",
+    "ffa4ca70",
+    "ffa4caa0",
+    "ffa4cac0",
+    "ffa4cad0",
+    "ffa4cae0",
+    "ffa4cb00",
+    "ffa4cb20",
+    "ffa4cb50",
+    "ffa4cb70",
+    "ffa4cb80",
+    "ffa4d310",
+    "ffa4d320",
+    "ffa4d330",
+    "ffa4d360",
+    "ffa4d3c0",
+    "ffa4d3e0",
+    "ffa4d400",
+    "ffa4d410",
+    "ffa4d420",
+    "ffa4d440",
+    "ffa4d460",
+    "ffa4d470",
+    "ffa4d4a0",
+    "ffa4d4b0",
+    "ffa4d4d0",
+    "ffa4d500",
+    "ffa4d510",
+    "ffa4d530",
+    "ffa4d540",
+    "ffa4d560",
+    "ffa4d580",
+    "ffa4d590",
+    "ffa4d5a0",
+    "ffa4d5c0",
+    "ffa4d5e0",
+    "ffa4d5f0",
+    "ffa4d620",
+    "ffa4d630",
+    "ffa4d650",
+    "ffa4d680",
+    "ffa4d690",
+    "ffa4d6b0",
+    "ffa51760",
+    "ffa51780",
+    "ffa517b0",
+    "ffa517d0",
+    "ffa518d0",
+    "ffa51900",
+    "ffa51920",
+    "ffa51930",
+    "ffa51940",
+    "ffa51970",
+    "ffa51980",
+    "ffa51990",
+    "ffa519b0",
+    "ffa519c0",
+    "ffa519f0",
+    "ffa51a10",
+    "ffa51a20",
+    "ffa51a30",
+    "ffa51a50",
+    "ffa51a70",
+    "ffa51a90",
+    "ffa51ab0",
+    "ffa51ad0",
+    "ffa51ae0",
+    "ffa51b00",
+    "ffa51b20",
+    "ffa51b50",
+    "ffa51b60",
+    "ffa51b70",
+    "ffa51bd0",
+    "ffa51be0",
+    "ffa51bf0",
+    "ffa54830",
+    "ffa54860",
+    "ffa54880",
+    "ffa548a0",
+    "ffa548b0",
+    "ffa548c0",
+    "ffa548f0",
+    "ffa54900",
+    "ffa54910",
+    "ffa54a30",
+    "ffa54a40",
+    "ffa54ad0",
+    "ffa54af0",
+    "ffa54b00",
+    "ffa54b20",
+    "ffa54ba0",
+    "ffa54bc0",
+    "ffa54bd0",
+    "ffa54c00",
+    "ffa54c20",
+    "ffa54c30",
+    "ffa54c40",
+    "ffa54c50",
+    "ffa54d20",
+    "ffa54d40",
+    "ffa54d50",
+    "ffa54d60",
+    "ffa54d80",
+    "ffa54e70",
+    "ffa54e90",
+    "ffa54ea0",
+    "ffa54ed0",
+    "ffa54f00",
+    "ffa54f30",
+    "ffa54f60"
+  ],
+  "successors": {
+    "ff80de00": [
+      "ffa51760",
+      "ffa51b50"
+    ],
+    "ff80e6a0": [
+      "ff80e6b0",
+      "ff80e720"
+    ],
+    "ff80e6f0": [
+      "ff80e690"
+    ],
+    "ff80e750": [
+      "ffa54f60"
+    ],
+    "ff811b00": [
+      "ff8119b0"
+    ],
+    "ff817480": [
+      "ff8174e0"
+    ],
+    "ff8174f0": [
+      "ff817500"
+    ],
+    "ff817680": [
+      "ff817550"
+    ],
+    "ffa4c330": [
+      "ffa4c2f0",
+      "ffa4c340"
+    ],
+    "ffa4c410": [
+      "ffa4c550"
+    ],
+    "ffa4c570": [
+      "ffa4c5e0"
+    ],
+    "ffa4c680": [
+      "ffa51970"
+    ],
+    "ffa4c840": [
+      "ffa4c600"
+    ],
+    "ffa4cac0": [
+      "ffa4c290",
+      "ffa4c7e0"
+    ],
+    "ffa4cb80": [
+      "ffa4c650"
+    ],
+    "ffa4d310": [
+      "ffa4caa0",
+      "ffa4cb50"
+    ],
+    "ffa4d360": [
+      "ffa4d3e0",
+      "ffa4d4d0"
+    ],
+    "ffa4d410": [
+      "ffa4c320",
+      "ffa4d460"
+    ],
+    "ffa4d530": [
+      "ffa4c3e0",
+      "ffa4d560",
+      "ffa4d650"
+    ],
+    "ffa4d590": [
+      "ffa4d5e0"
+    ],
+    "ffa4d6b0": [
+      "ffa4c630"
+    ],
+    "ffa517d0": [
+      "ffa518d0"
+    ],
+    "ffa51920": [
+      "ffa51930"
+    ],
+    "ffa51980": [
+      "ffa51990"
+    ],
+    "ffa519b0": [
+      "ffa519c0"
+    ],
+    "ffa51a20": [
+      "ffa51a30"
+    ],
+    "ffa51b70": [
+      "ffa51bd0"
+    ],
+    "ffa51be0": [
+      "ffa51bf0"
+    ],
+    "ffa51bf0": [
+      "ffa51b00"
+    ],
+    "ffa54820": [
+      "ffa54830",
+      "ffa54ec0"
+    ],
+    "ffa548f0": [
+      "ffa54900",
+      "ffa54e70"
+    ],
+    "ffa54910": [
+      "ffa54a30"
+    ],
+    "ffa54a40": [
+      "ffa54ad0"
+    ],
+    "ffa54b20": [
+      "ffa54ba0"
+    ],
+    "ffa54bc0": [
+      "ffa54bd0"
+    ],
+    "ffa54c20": [
+      "ffa54c30"
+    ],
+    "ffa54c40": [
+      "ffa54c50"
+    ],
+    "ffa54c50": [
+      "ffa54d20"
+    ],
+    "ffa54d40": [
+      "ffa54d50"
+    ],
+    "ffa54d80": [
+      "ffa54e70"
+    ],
+    "ffa54ea0": [
+      "ffa548a0",
+      "ffa54ec0"
+    ],
+    "ffa54f60": [
+      "ffa519b0"
+    ]
+  }
+}

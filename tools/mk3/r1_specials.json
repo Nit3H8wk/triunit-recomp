@@ -1,0 +1,357 @@
+{
+ "schema": "mk3-r1-specials/1",
+ "note": "R1 (K3): versus routes with the special moves (kind 0, stick tokens) of the ROM recognizer lists, each attempt recognized natively by the first execution of its action routine after the press (tools/mk3/specials.py plan_pair)",
+ "executor_sha256": "180de4f2480185a0b23506df6205610c3f67492f03f63c7b4138ff4a744dbebc",
+ "routes": [
+  {
+   "name": "r1sp00",
+   "p1": 12,
+   "p2": 5,
+   "shift": 3125000,
+   "fight": 214796759,
+   "attempts": [
+    {
+     "entry": 4288217552,
+     "side": "p1",
+     "character": 12,
+     "button": "HP",
+     "table": "press",
+     "kind": 0,
+     "variant": 0,
+     "at": 227296679,
+     "action": 4288163600,
+     "action_cycle": 228849199
+    },
+    {
+     "entry": 4288219568,
+     "side": "p1",
+     "character": 12,
+     "button": "LK",
+     "table": "press",
+     "kind": 0,
+     "variant": 0,
+     "at": 305421179,
+     "action": 4288163664,
+     "action_cycle": 306992980
+    },
+    {
+     "entry": 4288201488,
+     "side": "p2",
+     "character": 5,
+     "button": "HP",
+     "table": "press",
+     "kind": 0,
+     "variant": 1,
+     "at": 367920779,
+     "action": 4288150944,
+     "action_cycle": 369028450
+    },
+    {
+     "entry": 4288200400,
+     "side": "p2",
+     "character": 5,
+     "button": "LP",
+     "table": "press",
+     "kind": 0,
+     "variant": 1,
+     "at": 383545679,
+     "action": 4288150992,
+     "action_cycle": 384680274
+    },
+    {
+     "entry": 4288200752,
+     "side": "p2",
+     "character": 5,
+     "button": "LP",
+     "table": "press",
+     "kind": 0,
+     "variant": 1,
+     "at": 399170579,
+     "action": 4288149808,
+     "action_cycle": 400332487
+    }
+   ],
+   "missed": [
+    {
+     "entry": 4288217904,
+     "side": "p1",
+     "reason": "no variant recognized"
+    },
+    {
+     "entry": 4288218256,
+     "side": "p1",
+     "reason": "no variant recognized"
+    },
+    {
+     "entry": 4288218608,
+     "side": "p1",
+     "reason": "no variant recognized"
+    },
+    {
+     "entry": 4288214960,
+     "side": "p1",
+     "reason": "no variant recognized"
+    },
+    {
+     "entry": 4288215312,
+     "side": "p1",
+     "reason": "button tokens"
+    },
+    {
+     "entry": 4288219920,
+     "side": "p1",
+     "reason": "no variant recognized"
+    },
+    {
+     "entry": 4288214224,
+     "side": "p1",
+     "reason": "button tokens"
+    },
+    {
+     "entry": 4288214576,
+     "side": "p1",
+     "reason": "no variant recognized"
+    },
+    {
+     "entry": 4288213840,
+     "side": "p1",
+     "reason": "no variant recognized"
+    },
+    {
+     "entry": 4288199664,
+     "side": "p2",
+     "reason": "no variant recognized"
+    },
+    {
+     "entry": 4288200016,
+     "side": "p2",
+     "reason": "no variant recognized"
+    }
+   ],
+   "horizon": 446149445
+  },
+  {
+   "name": "r1sp01",
+   "p1": 0,
+   "p2": 3,
+   "shift": 3906250,
+   "fight": 217537326,
+   "attempts": [
+    {
+     "entry": 4288176144,
+     "side": "p1",
+     "character": 0,
+     "button": "HP",
+     "table": "press",
+     "kind": 0,
+     "variant": 0,
+     "at": 230037246,
+     "action": 4288148688,
+     "action_cycle": 231133429
+    },
+    {
+     "entry": 4288176496,
+     "side": "p1",
+     "character": 0,
+     "button": "HP",
+     "table": "press",
+     "kind": 0,
+     "variant": 0,
+     "at": 245662146,
+     "action": 4288150000,
+     "action_cycle": 246785714
+    },
+    {
+     "entry": 4288224720,
+     "side": "p1",
+     "character": 0,
+     "button": "LP",
+     "table": "press",
+     "kind": 0,
+     "variant": 0,
+     "at": 261287046,
+     "action": 4288148848,
+     "action_cycle": 262437087
+    },
+    {
+     "entry": 4288192192,
+     "side": "p2",
+     "character": 3,
+     "button": "HP",
+     "table": "press",
+     "kind": 0,
+     "variant": 1,
+     "at": 292536846,
+     "action": 4288148944,
+     "action_cycle": 293625929
+    },
+    {
+     "entry": 4288189600,
+     "side": "p2",
+     "character": 3,
+     "button": "LP",
+     "table": "press",
+     "kind": 0,
+     "variant": 1,
+     "at": 308161746,
+     "action": 4288150128,
+     "action_cycle": 309277145
+    }
+   ],
+   "missed": [
+    {
+     "entry": 4288177616,
+     "side": "p1",
+     "reason": "no variant recognized"
+    },
+    {
+     "entry": 4288190336,
+     "side": "p2",
+     "reason": "button tokens"
+    },
+    {
+     "entry": 4288192576,
+     "side": "p2",
+     "reason": "no variant recognized"
+    }
+   ],
+   "horizon": 339515712
+  },
+  {
+   "name": "r1sp02",
+   "p1": 6,
+   "p2": 11,
+   "shift": 5468750,
+   "fight": 217308838,
+   "attempts": [
+    {
+     "entry": 4288204464,
+     "side": "p2",
+     "character": 11,
+     "button": "HP",
+     "table": "press",
+     "kind": 0,
+     "variant": 1,
+     "at": 276683458,
+     "action": 4288150896,
+     "action_cycle": 277859646
+    },
+    {
+     "entry": 4288203728,
+     "side": "p2",
+     "character": 11,
+     "button": "HK",
+     "table": "press",
+     "kind": 0,
+     "variant": 1,
+     "at": 307933258,
+     "action": 4288149904,
+     "action_cycle": 309506009
+    }
+   ],
+   "missed": [
+    {
+     "entry": 4288183600,
+     "side": "p1",
+     "reason": "no variant recognized"
+    },
+    {
+     "entry": 4288185280,
+     "side": "p1",
+     "reason": "no variant recognized"
+    },
+    {
+     "entry": 4288185632,
+     "side": "p1",
+     "reason": "no variant recognized"
+    },
+    {
+     "entry": 4288203344,
+     "side": "p2",
+     "reason": "no variant recognized"
+    }
+   ],
+   "horizon": 323662324
+  },
+  {
+   "name": "r1sp04",
+   "p1": 9,
+   "p2": 10,
+   "shift": 7031250,
+   "fight": 220628804,
+   "attempts": [
+    {
+     "entry": 4288207824,
+     "side": "p1",
+     "character": 9,
+     "button": "RUN",
+     "table": "press",
+     "kind": 0,
+     "variant": 0,
+     "at": 248753624,
+     "action": 4288149008,
+     "action_cycle": 250327906
+    },
+    {
+     "entry": 4288221776,
+     "side": "p2",
+     "character": 10,
+     "button": "LK",
+     "table": "press",
+     "kind": 0,
+     "variant": 1,
+     "at": 264378524,
+     "action": 4288149856,
+     "action_cycle": 265522875
+    }
+   ],
+   "missed": [
+    {
+     "entry": 4288205936,
+     "side": "p1",
+     "reason": "no variant recognized"
+    },
+    {
+     "entry": 4288221392,
+     "side": "p2",
+     "reason": "button tokens"
+    },
+    {
+     "entry": 4288222896,
+     "side": "p2",
+     "reason": "no variant recognized"
+    }
+   ],
+   "horizon": 295732490
+  },
+  {
+   "name": "r1sp05",
+   "p1": 1,
+   "p2": 4,
+   "shift": 8593750,
+   "fight": 219029042,
+   "attempts": [
+    {
+     "entry": 4288192960,
+     "side": "p1",
+     "character": 1,
+     "button": "HP",
+     "table": "press",
+     "kind": 0,
+     "variant": 0,
+     "at": 231528962,
+     "action": 4288149536,
+     "action_cycle": 232624765
+    }
+   ],
+   "missed": [
+    {
+     "entry": 4288188864,
+     "side": "p2",
+     "reason": "no variant recognized"
+    }
+   ],
+   "horizon": 262882928
+  }
+ ]
+}

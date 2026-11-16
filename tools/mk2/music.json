@@ -1,0 +1,14 @@
+{
+  "format": "custom_audio/mk2/<slot>.wav: RIFF/WAVE PCM 16-bit, 48000 Hz, mono or stereo; optional custom_audio/mk2/slots.json",
+  "fallback": "a slot without a usable file keeps the arcade's original DCS music for its commands",
+  "slots": [
+    {"slot": "music-01", "commands": [1, 2, 3, 4]},
+    {"slot": "music-02", "commands": [5, 6]},
+    {"slot": "music-03", "commands": [9, 10]},
+    {"slot": "music-04", "commands": [13, 14]},
+    {"slot": "music-05", "commands": [17, 18]},
+    {"slot": "music-06", "commands": [21, 22]},
+    {"slot": "music-07", "commands": [25, 26]},
+    {"slot": "music-08", "commands": [66, 61]}
+  ]
+}

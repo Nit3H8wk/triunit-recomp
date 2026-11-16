@@ -1,0 +1,17 @@
+{
+ "schema": "mk3-r5-routes/1",
+ "note": "K4 A (R5). routes: versus-format specs read by versus.route_specs (tools/mk3/secrets.py route_specs adds the VS-code routes r5vsNN from the ROM table 0xff814050).",
+ "routes": [
+  {
+   "name": "r5mirror0c",
+   "p1": 12,
+   "p2": 12,
+   "shift": 0,
+   "seed": 4000,
+   "fight": 213312420,
+   "fight_command": 9021,
+   "horizon": 307166586,
+   "arena": 7
+  }
+ ]
+}

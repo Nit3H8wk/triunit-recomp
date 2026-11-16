@@ -1,0 +1,31 @@
+{
+  "origin": "V54 authenticated static entry PCs; no edge whitelist or state import",
+  "source_sha256": "9db0f9254dcfe5319e1f79671dfd6780ce7f8d1c5c698ff7558a8b1cfc2319b5",
+  "pcs": [
+    "ff844890",
+    "ff8448b0",
+    "ff8448c0",
+    "ff8448f0",
+    "ff844900",
+    "ff844930",
+    "ff844960",
+    "ff844980",
+    "ff844990",
+    "ff8449b0",
+    "ff8449c0",
+    "ff8449f0",
+    "ff844a10",
+    "ff844a40",
+    "ff844a70",
+    "ff844c70",
+    "ff844ca0",
+    "ff844cc0",
+    "ff844e50",
+    "ff844e70",
+    "ff844ea0",
+    "ff844ed0",
+    "ff847c70",
+    "ff904990",
+    "ff9049a0"
+  ]
+}

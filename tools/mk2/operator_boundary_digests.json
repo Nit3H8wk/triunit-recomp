@@ -1,0 +1,1312 @@
+{
+ "serialization": "SHA-256 of consecutive 8-byte little-endian words; CPU34 = next PC, ST, cycles, A0..A15, B0..B14; DSP76 = AdspBoot::Registers() as observed by MAME (native compares with DSP76[1]-1)",
+ "provenance": {
+  "operator": {
+   "scope": "Original MAME0.280 4 DIP variants, full CPU34 and DSP76 at selected boundaries, no state import; not integral execution equivalence",
+   "mame_sha256": "84b690dad588253139ea49ae5e3c9fcddf9df7bcd526fccd1724ec7e09120dec"
+  },
+  "startup_credit": {
+   "reference": "tools/mk2/operator_reference.py",
+   "scope": "Two persisted-credit branches, four blood/violence DIP pairs; exact CPU34/DSP76 and counts from authenticated MAME0.280. No state imports.",
+   "credits": [
+    1,
+    2
+   ],
+   "price": 2,
+   "additional_credit_probes": [
+    10,
+    99
+   ],
+   "mame_sha256": "84b690dad588253139ea49ae5e3c9fcddf9df7bcd526fccd1724ec7e09120dec",
+   "program_sha256": "45b3285496db555efaf4a3608a4f59845dd47a82e4a0593607e0592f47b36f23",
+   "reference_script_sha256": "db401304ee02fdc17192cf5d58c6b1556a5c654682bbc365a77696da32cf9b8e",
+   "fixture_cmos_sha256": "29e846cc9e1b10d02851e35251ec25e3bee91748c2468177c9c439d1d6697012"
+  }
+ },
+ "stages": [
+  "Text",
+  "Post",
+  "Reset",
+  "Button",
+  "Irq",
+  "Startup",
+  "Yield",
+  "Setup",
+  "Trap",
+  "Dma",
+  "Draw",
+  "StartupDi"
+ ],
+ "variants": {
+  "64637": {
+   "boundaries": {
+    "Text": {
+     "pc": 4289046240,
+     "cycle": 306026,
+     "cpu34_sha256": "5094330abceabb96a0a7213fd632af9140c0f2c7b13978e5ef79b9ca7941e299",
+     "dsp76_sha256": "a86b17885e4886be853745616bfb0f626d29645509798041ccc10b7cf0385ac0"
+    },
+    "Post": {
+     "pc": 4289048720,
+     "cycle": 311971,
+     "cpu34_sha256": "81b1b7dedfc50af415b405b6d35cbd880e67129b22f9e531971d6e83caef2ab4",
+     "dsp76_sha256": "ccc4d86e983be677035ba07e057258cbee74ae66c99404eab23b566b2899145e"
+    },
+    "Reset": {
+     "pc": 4286649152,
+     "cycle": 6607529,
+     "cpu34_sha256": "b172188b3180d47465680d2fa515e7621bf5703285197e847503f9b6fa0a4054",
+     "dsp76_sha256": "dc27b7dbf95835183a5d051c059ed605c98ec8ccd2656073f0a557c10fb41aeb"
+    },
+    "Button": {
+     "pc": 4286664848,
+     "cycle": 6816528,
+     "cpu34_sha256": "283a12fb755d314b6afa553521186f17dc0cfb87abb98f4b7c38b720fbc57e73",
+     "dsp76_sha256": "b9e0618d750e462a3a4e88fb7f0b5a28c218585631ce5490ec8f750dcc103cd5"
+    },
+    "Irq": {
+     "pc": 4286649552,
+     "cycle": 6852656,
+     "cpu34_sha256": "6ecbf37916f0162f962516192e2cadc42beccc7fa4daa4243474698d1af6dda5",
+     "dsp76_sha256": "9cc84aca6287009d3b7a302d8fe1642382300bcdf65c99d6464e2ec332ecec7a"
+    },
+    "Startup": {
+     "pc": 4286650128,
+     "cycle": 6855713,
+     "cpu34_sha256": "41c0f1f22ea43c95aca44f466c55f1f606c70434ef02d405f4ba81c0307168dd",
+     "dsp76_sha256": "760f1837b622f75f8d5db573d25f373bcad86cb5a7d608cc5dddd01ef3eeb15b"
+    },
+    "Yield": {
+     "pc": 4286635312,
+     "cycle": 6855945,
+     "cpu34_sha256": "0ef21d182d0c431d2b62dc88efe782104ba176abad40efcacc52824e112d1e95",
+     "dsp76_sha256": "efc437038a8c48c6c5df7b390675caa55f0b4ed262a086857022992775b053de"
+    },
+    "Setup": {
+     "pc": 4286635312,
+     "cycle": 6883473,
+     "cpu34_sha256": "a676ac790b28324b90e4ada25012f5e714ad229158270806da79067fed702904",
+     "dsp76_sha256": "b0bdf7e64f547c0c0b636f7f633b302bd4f7eb9723e422b6578029d75f96d60d"
+    },
+    "Trap": {
+     "pc": 4286596336,
+     "cycle": 7314183,
+     "cpu34_sha256": "c3262196c9589f46ae927e28239da4c34ded5f75dc6012bc57145c2cde80ee42",
+     "dsp76_sha256": "b401493db3daebe90b57b28fc441bf7a142d846889e9737844f70e77711e96e8"
+    },
+    "Dma": {
+     "pc": 4286596656,
+     "cycle": 7314220,
+     "cpu34_sha256": "0b53600a31e18198790309e1b63dab9a6213040d3f2b1e0a8e9233741019d4f0",
+     "dsp76_sha256": "b401493db3daebe90b57b28fc441bf7a142d846889e9737844f70e77711e96e8"
+    },
+    "Draw": {
+     "pc": 4286635312,
+     "cycle": 7316296,
+     "cpu34_sha256": "d73e16802db7d0d363fac475f467ef5018a9f8a7ce6692c4c206f8f4113e255c",
+     "dsp76_sha256": "0c747de0577d13bab7ed8437abaeaf0768763521e09c553a80b6690f51efa8d1"
+    },
+    "StartupDi": {
+     "pc": 4289087008,
+     "cycle": 6854719,
+     "cpu34_sha256": "5ad8644c243535d2c204131f31f7c820cfe1dcfa1fa1d034bff739b43d81c677",
+     "dsp76_sha256": "564e00861277a22580eac0342b92b1e22024daec640d869cf777e198e8988a81"
+    }
+   },
+   "draw_trace_rows": 95509,
+   "video_irq_trace_rows": 17335,
+   "sport_deadline": 117812920
+  },
+  "48253": {
+   "boundaries": {
+    "Text": {
+     "pc": 4289046240,
+     "cycle": 306026,
+     "cpu34_sha256": "5094330abceabb96a0a7213fd632af9140c0f2c7b13978e5ef79b9ca7941e299",
+     "dsp76_sha256": "a86b17885e4886be853745616bfb0f626d29645509798041ccc10b7cf0385ac0"
+    },
+    "Post": {
+     "pc": 4289048720,
+     "cycle": 311975,
+     "cpu34_sha256": "0860aca90b0d8a400a43b95b8c1e7dcfb41711fbd9e107e1ddb8dffef5fa8d96",
+     "dsp76_sha256": "ccc4d86e983be677035ba07e057258cbee74ae66c99404eab23b566b2899145e"
+    },
+    "Reset": {
+     "pc": 4286649152,
+     "cycle": 6607533,
+     "cpu34_sha256": "e513fd13ea0ccfc879bdae518ef418347ab0c5ace1e54aee0a8697be161ad293",
+     "dsp76_sha256": "dc27b7dbf95835183a5d051c059ed605c98ec8ccd2656073f0a557c10fb41aeb"
+    },
+    "Button": {
+     "pc": 4286664848,
+     "cycle": 6816532,
+     "cpu34_sha256": "c878a30aa108399f038f7d9c3296b5e8da9c89dfbfebd300d4cb892958d6c6f1",
+     "dsp76_sha256": "525d2371a6d922538d391e7b8c6e4bd7e5ed7c1a0e5e99dbd79ddf33369fb461"
+    },
+    "Irq": {
+     "pc": 4286649552,
+     "cycle": 6852678,
+     "cpu34_sha256": "e1538e178c89315d5024264c37bbecfe6646cc4861b4f4bae10506d232c974a3",
+     "dsp76_sha256": "0423c7edbd51f45f16e252d9c5349aef49fcf9ec9775f9b22ee70475a5e85bef"
+    },
+    "Startup": {
+     "pc": 4286650128,
+     "cycle": 6855739,
+     "cpu34_sha256": "7c7e5f34ca241cb41f85ee19445479a0d7da36202d296676d6611fe9143de44f",
+     "dsp76_sha256": "5fce4891228bce90bef3d21476d35aaf59fb6dbedc13294a4977e4b2c23cec47"
+    },
+    "Yield": {
+     "pc": 4286635312,
+     "cycle": 6855971,
+     "cpu34_sha256": "aa27862dd0378065b9f627dd390f3d1eff95a2554f1bf8362b05a2bffe9e3c5e",
+     "dsp76_sha256": "19f9445f97b2dedc94efe4ce6e0c1c00c0559ee81fee3d1c3f4d7e9937a2775c"
+    },
+    "Setup": {
+     "pc": 4286635312,
+     "cycle": 6883503,
+     "cpu34_sha256": "a497d85c2c0e162f84629ff9e4e1e630b11698580f51c935d1e93d654cb74cdc",
+     "dsp76_sha256": "b0bdf7e64f547c0c0b636f7f633b302bd4f7eb9723e422b6578029d75f96d60d"
+    },
+    "Trap": {
+     "pc": 4286596336,
+     "cycle": 7314187,
+     "cpu34_sha256": "76714266639fc7fd4a301e3a4c3e4ad65d88f290c44a4e11200da2ef2e20f5d0",
+     "dsp76_sha256": "f68b42f66a3760011e4c96a4730f69ffbae90714aa34fb3eff82783a9e58a437"
+    },
+    "Dma": {
+     "pc": 4286596656,
+     "cycle": 7314224,
+     "cpu34_sha256": "5155f113164414a09316818fa73f27631cdf1898332046d1f01b95e1a8b512c1",
+     "dsp76_sha256": "f68b42f66a3760011e4c96a4730f69ffbae90714aa34fb3eff82783a9e58a437"
+    },
+    "Draw": {
+     "pc": 4286635312,
+     "cycle": 7316232,
+     "cpu34_sha256": "b416af595cb51dd7d2deb02d5a72a3b0f582cd1cd78f9989cddc4b8919b95ce2",
+     "dsp76_sha256": "8d9459ff168b3c26769ae862202d272b79d51aa4fa8bd94f711e20fbaa431858"
+    },
+    "StartupDi": {
+     "pc": 4289086960,
+     "cycle": 6854719,
+     "cpu34_sha256": "72e9cc820f89917f1a859473e413f663b364a09a950418353be17e816a1a40d8",
+     "dsp76_sha256": "eea5d8635b725829688b98b364d0166b009dbf20a858f9f74139a0d6695d252f"
+    }
+   },
+   "draw_trace_rows": 95510,
+   "video_irq_trace_rows": 17351,
+   "sport_deadline": 117812980
+  },
+  "31869": {
+   "boundaries": {
+    "Text": {
+     "pc": 4289046240,
+     "cycle": 306026,
+     "cpu34_sha256": "5094330abceabb96a0a7213fd632af9140c0f2c7b13978e5ef79b9ca7941e299",
+     "dsp76_sha256": "a86b17885e4886be853745616bfb0f626d29645509798041ccc10b7cf0385ac0"
+    },
+    "Post": {
+     "pc": 4289048720,
+     "cycle": 311975,
+     "cpu34_sha256": "0860aca90b0d8a400a43b95b8c1e7dcfb41711fbd9e107e1ddb8dffef5fa8d96",
+     "dsp76_sha256": "ccc4d86e983be677035ba07e057258cbee74ae66c99404eab23b566b2899145e"
+    },
+    "Reset": {
+     "pc": 4286649152,
+     "cycle": 6607533,
+     "cpu34_sha256": "e513fd13ea0ccfc879bdae518ef418347ab0c5ace1e54aee0a8697be161ad293",
+     "dsp76_sha256": "dc27b7dbf95835183a5d051c059ed605c98ec8ccd2656073f0a557c10fb41aeb"
+    },
+    "Button": {
+     "pc": 4286664848,
+     "cycle": 6816532,
+     "cpu34_sha256": "c878a30aa108399f038f7d9c3296b5e8da9c89dfbfebd300d4cb892958d6c6f1",
+     "dsp76_sha256": "525d2371a6d922538d391e7b8c6e4bd7e5ed7c1a0e5e99dbd79ddf33369fb461"
+    },
+    "Irq": {
+     "pc": 4286649552,
+     "cycle": 6852678,
+     "cpu34_sha256": "e1538e178c89315d5024264c37bbecfe6646cc4861b4f4bae10506d232c974a3",
+     "dsp76_sha256": "0423c7edbd51f45f16e252d9c5349aef49fcf9ec9775f9b22ee70475a5e85bef"
+    },
+    "Startup": {
+     "pc": 4286650128,
+     "cycle": 6855739,
+     "cpu34_sha256": "7c7e5f34ca241cb41f85ee19445479a0d7da36202d296676d6611fe9143de44f",
+     "dsp76_sha256": "5fce4891228bce90bef3d21476d35aaf59fb6dbedc13294a4977e4b2c23cec47"
+    },
+    "Yield": {
+     "pc": 4286635312,
+     "cycle": 6855971,
+     "cpu34_sha256": "aa27862dd0378065b9f627dd390f3d1eff95a2554f1bf8362b05a2bffe9e3c5e",
+     "dsp76_sha256": "19f9445f97b2dedc94efe4ce6e0c1c00c0559ee81fee3d1c3f4d7e9937a2775c"
+    },
+    "Setup": {
+     "pc": 4286635312,
+     "cycle": 6883503,
+     "cpu34_sha256": "a497d85c2c0e162f84629ff9e4e1e630b11698580f51c935d1e93d654cb74cdc",
+     "dsp76_sha256": "b0bdf7e64f547c0c0b636f7f633b302bd4f7eb9723e422b6578029d75f96d60d"
+    },
+    "Trap": {
+     "pc": 4286596336,
+     "cycle": 7314187,
+     "cpu34_sha256": "76714266639fc7fd4a301e3a4c3e4ad65d88f290c44a4e11200da2ef2e20f5d0",
+     "dsp76_sha256": "f68b42f66a3760011e4c96a4730f69ffbae90714aa34fb3eff82783a9e58a437"
+    },
+    "Dma": {
+     "pc": 4286596656,
+     "cycle": 7314224,
+     "cpu34_sha256": "5155f113164414a09316818fa73f27631cdf1898332046d1f01b95e1a8b512c1",
+     "dsp76_sha256": "f68b42f66a3760011e4c96a4730f69ffbae90714aa34fb3eff82783a9e58a437"
+    },
+    "Draw": {
+     "pc": 4286635312,
+     "cycle": 7316232,
+     "cpu34_sha256": "b416af595cb51dd7d2deb02d5a72a3b0f582cd1cd78f9989cddc4b8919b95ce2",
+     "dsp76_sha256": "8d9459ff168b3c26769ae862202d272b79d51aa4fa8bd94f711e20fbaa431858"
+    },
+    "StartupDi": {
+     "pc": 4289086960,
+     "cycle": 6854719,
+     "cpu34_sha256": "b5bd0483cda889bef8b0bac0677e1f38dff691e6bcad771609962ecc52f21790",
+     "dsp76_sha256": "eea5d8635b725829688b98b364d0166b009dbf20a858f9f74139a0d6695d252f"
+    }
+   },
+   "draw_trace_rows": 95510,
+   "video_irq_trace_rows": 17351,
+   "sport_deadline": 117812980
+  },
+  "15485": {
+   "boundaries": {
+    "Text": {
+     "pc": 4289046240,
+     "cycle": 306026,
+     "cpu34_sha256": "5094330abceabb96a0a7213fd632af9140c0f2c7b13978e5ef79b9ca7941e299",
+     "dsp76_sha256": "a86b17885e4886be853745616bfb0f626d29645509798041ccc10b7cf0385ac0"
+    },
+    "Post": {
+     "pc": 4289048720,
+     "cycle": 311979,
+     "cpu34_sha256": "2881afd95ce19bac0cbbb07674292ac1b9a4bee0d0b796ff29ae071fd68469e7",
+     "dsp76_sha256": "ccc4d86e983be677035ba07e057258cbee74ae66c99404eab23b566b2899145e"
+    },
+    "Reset": {
+     "pc": 4286649152,
+     "cycle": 6607537,
+     "cpu34_sha256": "d20b20114d93ed321c4f68c07437a36bd653c40ceb9f3e68fa36c65d1e2da134",
+     "dsp76_sha256": "dc27b7dbf95835183a5d051c059ed605c98ec8ccd2656073f0a557c10fb41aeb"
+    },
+    "Button": {
+     "pc": 4286664848,
+     "cycle": 6816536,
+     "cpu34_sha256": "9ce5b034f0effeae2ba6018a2551b5f624922711b65ba4ba4f0930cfdef76675",
+     "dsp76_sha256": "55095015204287fce3d9e4fec7fa99cd0bfa47b2995cc991bbd6d31dddb7b4af"
+    },
+    "Irq": {
+     "pc": 4286649552,
+     "cycle": 6852708,
+     "cpu34_sha256": "f580bb3b7b3915cb40b929d6554856dcfe2c23f28cfd64a1f63fe5d7c22df8c6",
+     "dsp76_sha256": "a919c481df727dcab7afd01e390cc47ac07009362194581d1989c25810f9029f"
+    },
+    "Startup": {
+     "pc": 4286650128,
+     "cycle": 6855773,
+     "cpu34_sha256": "c1cb14745dfd450d65b7096ac39e5b7f2fa1dd6bc75571e2d10a1591a1f3a17b",
+     "dsp76_sha256": "6335e4cd8e5afe5ba2a87955aabd77de2a723357863b2e4faa2f3a93d720197e"
+    },
+    "Yield": {
+     "pc": 4286635312,
+     "cycle": 6856005,
+     "cpu34_sha256": "43ad402797d5d5c4a47b3aefcbf8661d18a7dbbf9e554333228f8c7340dc52c4",
+     "dsp76_sha256": "7f5a198e0dcc445b4034f635dcea5b6cf983ae63499d52262fe38d730ac3b41b"
+    },
+    "Setup": {
+     "pc": 4286635312,
+     "cycle": 6883541,
+     "cpu34_sha256": "b008e138e03a65178bb9b70879df0aead62a5cc1dd10739f88dd9955020c97f1",
+     "dsp76_sha256": "b0bdf7e64f547c0c0b636f7f633b302bd4f7eb9723e422b6578029d75f96d60d"
+    },
+    "Trap": {
+     "pc": 4286596336,
+     "cycle": 7314182,
+     "cpu34_sha256": "ff4710e3bd3279268e12e8d0599aa9d06c650647134ff6dca782f2523d197d92",
+     "dsp76_sha256": "b068ad5cea5297503e4505518646db425b504598429a0a77857133935937552b"
+    },
+    "Dma": {
+     "pc": 4286596656,
+     "cycle": 7314219,
+     "cpu34_sha256": "86623825e72083b882b3abd216d8ae87dda6083c85b26a144da624d54b66ffab",
+     "dsp76_sha256": "b068ad5cea5297503e4505518646db425b504598429a0a77857133935937552b"
+    },
+    "Draw": {
+     "pc": 4286635312,
+     "cycle": 7316346,
+     "cpu34_sha256": "92240c0835a1d9f84e2aa078b9d367b17110380bfe4bb71e9720bf29e13ee812",
+     "dsp76_sha256": "15cc5d073c4564c758d7e262dab14875528a85296ae769d28ea9456df5d0a9f4"
+    },
+    "StartupDi": {
+     "pc": 4289087184,
+     "cycle": 6854724,
+     "cpu34_sha256": "5a6783bbc4b637d63f49a1a8edf51de1a5ddd19ce4624683c6a4c36bdc454c69",
+     "dsp76_sha256": "90768c1c3c8bceee047db0dd7da3eac6c66d69b2bc0de91cd6227aff7e9c67b8"
+    }
+   },
+   "draw_trace_rows": 95548,
+   "video_irq_trace_rows": 17370,
+   "sport_deadline": 117813050
+  }
+ },
+ "freeplay_variants": {
+  "64637": {
+   "boundaries": {
+    "Text": {
+     "pc": 4289046240,
+     "cycle": 306026,
+     "cpu34_sha256": "891bf7b7e4df6c5972869274324adbc5f7571e5d3192cc4daf516a315a6faaa4",
+     "dsp76_sha256": "a86b17885e4886be853745616bfb0f626d29645509798041ccc10b7cf0385ac0"
+    },
+    "Post": {
+     "pc": 4289048720,
+     "cycle": 311971,
+     "cpu34_sha256": "81b1b7dedfc50af415b405b6d35cbd880e67129b22f9e531971d6e83caef2ab4",
+     "dsp76_sha256": "ccc4d86e983be677035ba07e057258cbee74ae66c99404eab23b566b2899145e"
+    },
+    "Reset": {
+     "pc": 4286649152,
+     "cycle": 6607529,
+     "cpu34_sha256": "b172188b3180d47465680d2fa515e7621bf5703285197e847503f9b6fa0a4054",
+     "dsp76_sha256": "dc27b7dbf95835183a5d051c059ed605c98ec8ccd2656073f0a557c10fb41aeb"
+    },
+    "Button": {
+     "pc": 4286664848,
+     "cycle": 6816528,
+     "cpu34_sha256": "283a12fb755d314b6afa553521186f17dc0cfb87abb98f4b7c38b720fbc57e73",
+     "dsp76_sha256": "b9e0618d750e462a3a4e88fb7f0b5a28c218585631ce5490ec8f750dcc103cd5"
+    },
+    "Irq": {
+     "pc": 4286649552,
+     "cycle": 6852656,
+     "cpu34_sha256": "6ecbf37916f0162f962516192e2cadc42beccc7fa4daa4243474698d1af6dda5",
+     "dsp76_sha256": "9cc84aca6287009d3b7a302d8fe1642382300bcdf65c99d6464e2ec332ecec7a"
+    },
+    "Startup": {
+     "pc": 4286650128,
+     "cycle": 6855713,
+     "cpu34_sha256": "41c0f1f22ea43c95aca44f466c55f1f606c70434ef02d405f4ba81c0307168dd",
+     "dsp76_sha256": "760f1837b622f75f8d5db573d25f373bcad86cb5a7d608cc5dddd01ef3eeb15b"
+    },
+    "Yield": {
+     "pc": 4286635312,
+     "cycle": 6855945,
+     "cpu34_sha256": "0ef21d182d0c431d2b62dc88efe782104ba176abad40efcacc52824e112d1e95",
+     "dsp76_sha256": "efc437038a8c48c6c5df7b390675caa55f0b4ed262a086857022992775b053de"
+    },
+    "Setup": {
+     "pc": 4286635312,
+     "cycle": 6883219,
+     "cpu34_sha256": "8fdd892a522e2e8cec90f2e17f6b6744d979caca64212e891b768b6d97f019d6",
+     "dsp76_sha256": "bda031c659703b37c41636537cd5ec4be0ad853deb38665f796f05ef96055d10"
+    },
+    "Trap": {
+     "pc": 4286596336,
+     "cycle": 7314185,
+     "cpu34_sha256": "a83cb866d88916ccdb5edbb5b46fa188c4c5418b1b17f2bf4c6a8dba069df9c0",
+     "dsp76_sha256": "b401493db3daebe90b57b28fc441bf7a142d846889e9737844f70e77711e96e8"
+    },
+    "Dma": {
+     "pc": 4286596656,
+     "cycle": 7314222,
+     "cpu34_sha256": "576c19b9326e646ed8997407b9a9582bb35184df17b559bf11f91c490e8d8476",
+     "dsp76_sha256": "b401493db3daebe90b57b28fc441bf7a142d846889e9737844f70e77711e96e8"
+    },
+    "Draw": {
+     "pc": 4286635312,
+     "cycle": 7316382,
+     "cpu34_sha256": "474f404a4e6bc136a2b2e4d1be38ad75410ae3fe1aefe049c63ce7765fcd3e4f",
+     "dsp76_sha256": "0c747de0577d13bab7ed8437abaeaf0768763521e09c553a80b6690f51efa8d1"
+    },
+    "StartupDi": {
+     "pc": 4289087008,
+     "cycle": 6854719,
+     "cpu34_sha256": "5ad8644c243535d2c204131f31f7c820cfe1dcfa1fa1d034bff739b43d81c677",
+     "dsp76_sha256": "564e00861277a22580eac0342b92b1e22024daec640d869cf777e198e8988a81"
+    }
+   },
+   "draw_trace_rows": 95583,
+   "dispatcher_trace_rows": 11196,
+   "sport_deadline": 117812920
+  },
+  "48253": {
+   "boundaries": {
+    "Text": {
+     "pc": 4289046240,
+     "cycle": 306026,
+     "cpu34_sha256": "891bf7b7e4df6c5972869274324adbc5f7571e5d3192cc4daf516a315a6faaa4",
+     "dsp76_sha256": "a86b17885e4886be853745616bfb0f626d29645509798041ccc10b7cf0385ac0"
+    },
+    "Post": {
+     "pc": 4289048720,
+     "cycle": 311975,
+     "cpu34_sha256": "0860aca90b0d8a400a43b95b8c1e7dcfb41711fbd9e107e1ddb8dffef5fa8d96",
+     "dsp76_sha256": "ccc4d86e983be677035ba07e057258cbee74ae66c99404eab23b566b2899145e"
+    },
+    "Reset": {
+     "pc": 4286649152,
+     "cycle": 6607533,
+     "cpu34_sha256": "e513fd13ea0ccfc879bdae518ef418347ab0c5ace1e54aee0a8697be161ad293",
+     "dsp76_sha256": "dc27b7dbf95835183a5d051c059ed605c98ec8ccd2656073f0a557c10fb41aeb"
+    },
+    "Button": {
+     "pc": 4286664848,
+     "cycle": 6816532,
+     "cpu34_sha256": "c878a30aa108399f038f7d9c3296b5e8da9c89dfbfebd300d4cb892958d6c6f1",
+     "dsp76_sha256": "525d2371a6d922538d391e7b8c6e4bd7e5ed7c1a0e5e99dbd79ddf33369fb461"
+    },
+    "Irq": {
+     "pc": 4286649552,
+     "cycle": 6852678,
+     "cpu34_sha256": "e1538e178c89315d5024264c37bbecfe6646cc4861b4f4bae10506d232c974a3",
+     "dsp76_sha256": "0423c7edbd51f45f16e252d9c5349aef49fcf9ec9775f9b22ee70475a5e85bef"
+    },
+    "Startup": {
+     "pc": 4286650128,
+     "cycle": 6855739,
+     "cpu34_sha256": "7c7e5f34ca241cb41f85ee19445479a0d7da36202d296676d6611fe9143de44f",
+     "dsp76_sha256": "5fce4891228bce90bef3d21476d35aaf59fb6dbedc13294a4977e4b2c23cec47"
+    },
+    "Yield": {
+     "pc": 4286635312,
+     "cycle": 6855971,
+     "cpu34_sha256": "aa27862dd0378065b9f627dd390f3d1eff95a2554f1bf8362b05a2bffe9e3c5e",
+     "dsp76_sha256": "19f9445f97b2dedc94efe4ce6e0c1c00c0559ee81fee3d1c3f4d7e9937a2775c"
+    },
+    "Setup": {
+     "pc": 4286635312,
+     "cycle": 6883249,
+     "cpu34_sha256": "4482709634b0414e8a59f5d815129865fc566f9da596864da674545b44c7814d",
+     "dsp76_sha256": "ab7e73f070639e2f9c06ee4bd6c56b6c5d459d3bd680c392762e467709fa8139"
+    },
+    "Trap": {
+     "pc": 4286596336,
+     "cycle": 7314182,
+     "cpu34_sha256": "74e47721f59812f9a0501baf108fba40114f2421effbd0296b9624c68f1a0944",
+     "dsp76_sha256": "f68b42f66a3760011e4c96a4730f69ffbae90714aa34fb3eff82783a9e58a437"
+    },
+    "Dma": {
+     "pc": 4286596656,
+     "cycle": 7314219,
+     "cpu34_sha256": "c6d31433f50dc3a0d76514bc235522e845541e524a05bcd7c6549fe1f2bc7629",
+     "dsp76_sha256": "f68b42f66a3760011e4c96a4730f69ffbae90714aa34fb3eff82783a9e58a437"
+    },
+    "Draw": {
+     "pc": 4286635312,
+     "cycle": 7316318,
+     "cpu34_sha256": "c74443e3f7e8bdce37a87f20daeae81166ccd3fb58e009e4b62877434245ceaa",
+     "dsp76_sha256": "8d9459ff168b3c26769ae862202d272b79d51aa4fa8bd94f711e20fbaa431858"
+    },
+    "StartupDi": {
+     "pc": 4289086960,
+     "cycle": 6854719,
+     "cpu34_sha256": "72e9cc820f89917f1a859473e413f663b364a09a950418353be17e816a1a40d8",
+     "dsp76_sha256": "eea5d8635b725829688b98b364d0166b009dbf20a858f9f74139a0d6695d252f"
+    }
+   },
+   "draw_trace_rows": 95584,
+   "dispatcher_trace_rows": 11201,
+   "sport_deadline": 117812980
+  },
+  "31869": {
+   "boundaries": {
+    "Text": {
+     "pc": 4289046240,
+     "cycle": 306026,
+     "cpu34_sha256": "891bf7b7e4df6c5972869274324adbc5f7571e5d3192cc4daf516a315a6faaa4",
+     "dsp76_sha256": "a86b17885e4886be853745616bfb0f626d29645509798041ccc10b7cf0385ac0"
+    },
+    "Post": {
+     "pc": 4289048720,
+     "cycle": 311975,
+     "cpu34_sha256": "0860aca90b0d8a400a43b95b8c1e7dcfb41711fbd9e107e1ddb8dffef5fa8d96",
+     "dsp76_sha256": "ccc4d86e983be677035ba07e057258cbee74ae66c99404eab23b566b2899145e"
+    },
+    "Reset": {
+     "pc": 4286649152,
+     "cycle": 6607533,
+     "cpu34_sha256": "e513fd13ea0ccfc879bdae518ef418347ab0c5ace1e54aee0a8697be161ad293",
+     "dsp76_sha256": "dc27b7dbf95835183a5d051c059ed605c98ec8ccd2656073f0a557c10fb41aeb"
+    },
+    "Button": {
+     "pc": 4286664848,
+     "cycle": 6816532,
+     "cpu34_sha256": "c878a30aa108399f038f7d9c3296b5e8da9c89dfbfebd300d4cb892958d6c6f1",
+     "dsp76_sha256": "525d2371a6d922538d391e7b8c6e4bd7e5ed7c1a0e5e99dbd79ddf33369fb461"
+    },
+    "Irq": {
+     "pc": 4286649552,
+     "cycle": 6852678,
+     "cpu34_sha256": "e1538e178c89315d5024264c37bbecfe6646cc4861b4f4bae10506d232c974a3",
+     "dsp76_sha256": "0423c7edbd51f45f16e252d9c5349aef49fcf9ec9775f9b22ee70475a5e85bef"
+    },
+    "Startup": {
+     "pc": 4286650128,
+     "cycle": 6855739,
+     "cpu34_sha256": "7c7e5f34ca241cb41f85ee19445479a0d7da36202d296676d6611fe9143de44f",
+     "dsp76_sha256": "5fce4891228bce90bef3d21476d35aaf59fb6dbedc13294a4977e4b2c23cec47"
+    },
+    "Yield": {
+     "pc": 4286635312,
+     "cycle": 6855971,
+     "cpu34_sha256": "aa27862dd0378065b9f627dd390f3d1eff95a2554f1bf8362b05a2bffe9e3c5e",
+     "dsp76_sha256": "19f9445f97b2dedc94efe4ce6e0c1c00c0559ee81fee3d1c3f4d7e9937a2775c"
+    },
+    "Setup": {
+     "pc": 4286635312,
+     "cycle": 6883249,
+     "cpu34_sha256": "4482709634b0414e8a59f5d815129865fc566f9da596864da674545b44c7814d",
+     "dsp76_sha256": "ab7e73f070639e2f9c06ee4bd6c56b6c5d459d3bd680c392762e467709fa8139"
+    },
+    "Trap": {
+     "pc": 4286596336,
+     "cycle": 7314182,
+     "cpu34_sha256": "74e47721f59812f9a0501baf108fba40114f2421effbd0296b9624c68f1a0944",
+     "dsp76_sha256": "f68b42f66a3760011e4c96a4730f69ffbae90714aa34fb3eff82783a9e58a437"
+    },
+    "Dma": {
+     "pc": 4286596656,
+     "cycle": 7314219,
+     "cpu34_sha256": "c6d31433f50dc3a0d76514bc235522e845541e524a05bcd7c6549fe1f2bc7629",
+     "dsp76_sha256": "f68b42f66a3760011e4c96a4730f69ffbae90714aa34fb3eff82783a9e58a437"
+    },
+    "Draw": {
+     "pc": 4286635312,
+     "cycle": 7316318,
+     "cpu34_sha256": "c74443e3f7e8bdce37a87f20daeae81166ccd3fb58e009e4b62877434245ceaa",
+     "dsp76_sha256": "8d9459ff168b3c26769ae862202d272b79d51aa4fa8bd94f711e20fbaa431858"
+    },
+    "StartupDi": {
+     "pc": 4289086960,
+     "cycle": 6854719,
+     "cpu34_sha256": "b5bd0483cda889bef8b0bac0677e1f38dff691e6bcad771609962ecc52f21790",
+     "dsp76_sha256": "eea5d8635b725829688b98b364d0166b009dbf20a858f9f74139a0d6695d252f"
+    }
+   },
+   "draw_trace_rows": 95584,
+   "dispatcher_trace_rows": 11201,
+   "sport_deadline": 117812980
+  },
+  "15485": {
+   "boundaries": {
+    "Text": {
+     "pc": 4289046240,
+     "cycle": 306026,
+     "cpu34_sha256": "891bf7b7e4df6c5972869274324adbc5f7571e5d3192cc4daf516a315a6faaa4",
+     "dsp76_sha256": "a86b17885e4886be853745616bfb0f626d29645509798041ccc10b7cf0385ac0"
+    },
+    "Post": {
+     "pc": 4289048720,
+     "cycle": 311979,
+     "cpu34_sha256": "2881afd95ce19bac0cbbb07674292ac1b9a4bee0d0b796ff29ae071fd68469e7",
+     "dsp76_sha256": "ccc4d86e983be677035ba07e057258cbee74ae66c99404eab23b566b2899145e"
+    },
+    "Reset": {
+     "pc": 4286649152,
+     "cycle": 6607537,
+     "cpu34_sha256": "d20b20114d93ed321c4f68c07437a36bd653c40ceb9f3e68fa36c65d1e2da134",
+     "dsp76_sha256": "dc27b7dbf95835183a5d051c059ed605c98ec8ccd2656073f0a557c10fb41aeb"
+    },
+    "Button": {
+     "pc": 4286664848,
+     "cycle": 6816536,
+     "cpu34_sha256": "9ce5b034f0effeae2ba6018a2551b5f624922711b65ba4ba4f0930cfdef76675",
+     "dsp76_sha256": "55095015204287fce3d9e4fec7fa99cd0bfa47b2995cc991bbd6d31dddb7b4af"
+    },
+    "Irq": {
+     "pc": 4286649552,
+     "cycle": 6852708,
+     "cpu34_sha256": "f580bb3b7b3915cb40b929d6554856dcfe2c23f28cfd64a1f63fe5d7c22df8c6",
+     "dsp76_sha256": "a919c481df727dcab7afd01e390cc47ac07009362194581d1989c25810f9029f"
+    },
+    "Startup": {
+     "pc": 4286650128,
+     "cycle": 6855773,
+     "cpu34_sha256": "c1cb14745dfd450d65b7096ac39e5b7f2fa1dd6bc75571e2d10a1591a1f3a17b",
+     "dsp76_sha256": "6335e4cd8e5afe5ba2a87955aabd77de2a723357863b2e4faa2f3a93d720197e"
+    },
+    "Yield": {
+     "pc": 4286635312,
+     "cycle": 6856005,
+     "cpu34_sha256": "43ad402797d5d5c4a47b3aefcbf8661d18a7dbbf9e554333228f8c7340dc52c4",
+     "dsp76_sha256": "7f5a198e0dcc445b4034f635dcea5b6cf983ae63499d52262fe38d730ac3b41b"
+    },
+    "Setup": {
+     "pc": 4286635312,
+     "cycle": 6883287,
+     "cpu34_sha256": "4af1fd6702e3efc629afec363d427c0833b9ae2471a5676d0b1c4a3ff9141a37",
+     "dsp76_sha256": "b3a2af7b347dcd08dd132ea6426c280afaf245911ddd0181398d8162ca88b417"
+    },
+    "Trap": {
+     "pc": 4286596336,
+     "cycle": 7314186,
+     "cpu34_sha256": "576ff990d2ee01c233bcfb8b51ce64a8dcdd348203c18fca2e680d3960f47d10",
+     "dsp76_sha256": "b068ad5cea5297503e4505518646db425b504598429a0a77857133935937552b"
+    },
+    "Dma": {
+     "pc": 4286596656,
+     "cycle": 7314223,
+     "cpu34_sha256": "f9a0abe51796bd24cc277ed40ec09e9b983c2ea262fec667bf131147c979e811",
+     "dsp76_sha256": "b068ad5cea5297503e4505518646db425b504598429a0a77857133935937552b"
+    },
+    "Draw": {
+     "pc": 4286635312,
+     "cycle": 7316262,
+     "cpu34_sha256": "5f36234a96c59a43316312e1a57c83f107aa54cb0c381107f4a8417e5e1f3d6a",
+     "dsp76_sha256": "15cc5d073c4564c758d7e262dab14875528a85296ae769d28ea9456df5d0a9f4"
+    },
+    "StartupDi": {
+     "pc": 4289087184,
+     "cycle": 6854724,
+     "cpu34_sha256": "5a6783bbc4b637d63f49a1a8edf51de1a5ddd19ce4624683c6a4c36bdc454c69",
+     "dsp76_sha256": "90768c1c3c8bceee047db0dd7da3eac6c66d69b2bc0de91cd6227aff7e9c67b8"
+    }
+   },
+   "draw_trace_rows": 95585,
+   "dispatcher_trace_rows": 11206,
+   "sport_deadline": 117813050
+  }
+ },
+ "credit_insufficient_variants": {
+  "64637": {
+   "boundaries": {
+    "Text": {
+     "pc": 4289046240,
+     "cycle": 306026,
+     "cpu34_sha256": "5094330abceabb96a0a7213fd632af9140c0f2c7b13978e5ef79b9ca7941e299",
+     "dsp76_sha256": "a86b17885e4886be853745616bfb0f626d29645509798041ccc10b7cf0385ac0"
+    },
+    "Post": {
+     "pc": 4289048720,
+     "cycle": 311971,
+     "cpu34_sha256": "81b1b7dedfc50af415b405b6d35cbd880e67129b22f9e531971d6e83caef2ab4",
+     "dsp76_sha256": "ccc4d86e983be677035ba07e057258cbee74ae66c99404eab23b566b2899145e"
+    },
+    "Reset": {
+     "pc": 4286649152,
+     "cycle": 6607529,
+     "cpu34_sha256": "b172188b3180d47465680d2fa515e7621bf5703285197e847503f9b6fa0a4054",
+     "dsp76_sha256": "dc27b7dbf95835183a5d051c059ed605c98ec8ccd2656073f0a557c10fb41aeb"
+    },
+    "Button": {
+     "pc": 4286664848,
+     "cycle": 6816528,
+     "cpu34_sha256": "283a12fb755d314b6afa553521186f17dc0cfb87abb98f4b7c38b720fbc57e73",
+     "dsp76_sha256": "b9e0618d750e462a3a4e88fb7f0b5a28c218585631ce5490ec8f750dcc103cd5"
+    },
+    "Irq": {
+     "pc": 4286649552,
+     "cycle": 6852656,
+     "cpu34_sha256": "6ecbf37916f0162f962516192e2cadc42beccc7fa4daa4243474698d1af6dda5",
+     "dsp76_sha256": "9cc84aca6287009d3b7a302d8fe1642382300bcdf65c99d6464e2ec332ecec7a"
+    },
+    "Startup": {
+     "pc": 4286650128,
+     "cycle": 6855713,
+     "cpu34_sha256": "41c0f1f22ea43c95aca44f466c55f1f606c70434ef02d405f4ba81c0307168dd",
+     "dsp76_sha256": "760f1837b622f75f8d5db573d25f373bcad86cb5a7d608cc5dddd01ef3eeb15b"
+    },
+    "Yield": {
+     "pc": 4286635312,
+     "cycle": 6855945,
+     "cpu34_sha256": "0ef21d182d0c431d2b62dc88efe782104ba176abad40efcacc52824e112d1e95",
+     "dsp76_sha256": "efc437038a8c48c6c5df7b390675caa55f0b4ed262a086857022992775b053de"
+    },
+    "Setup": {
+     "pc": 4286635312,
+     "cycle": 6895691,
+     "cpu34_sha256": "3e998578686230baed05323d64872ab2d76c3612dd943c6ea54c533862071d18",
+     "dsp76_sha256": "38634c83a6da422b11e41527299ee51f1b1806b0dc2467f4220a7245217b0bdd"
+    },
+    "Trap": {
+     "pc": 4286596336,
+     "cycle": 7314184,
+     "cpu34_sha256": "d4c1dd9bc9ceebc7f52a0501c501a979b4269bbf817999e956de4d01b100c7a4",
+     "dsp76_sha256": "fc819eb43b2890926955685c31885ed0849b2603834ec9dfa5d81822f1b84def"
+    },
+    "Dma": {
+     "pc": 4286596656,
+     "cycle": 7314221,
+     "cpu34_sha256": "2f730cd5e0d6ffaaf76fd4829caafcd61af6c750f1fc5a83f800e68b062a0a92",
+     "dsp76_sha256": "fc819eb43b2890926955685c31885ed0849b2603834ec9dfa5d81822f1b84def"
+    },
+    "Draw": {
+     "pc": 4286635312,
+     "cycle": 7316274,
+     "cpu34_sha256": "6302211caec5f130b7cc7b48f17d1282e1fb745508d9b4ffa459b5bbdfa0dcb7",
+     "dsp76_sha256": "31f659fd1554af200a54b0257f5cc8a5967595a63414d821f7d32c4cef8cb7e9"
+    },
+    "StartupDi": {
+     "pc": 4289087008,
+     "cycle": 6854719,
+     "cpu34_sha256": "5ad8644c243535d2c204131f31f7c820cfe1dcfa1fa1d034bff739b43d81c677",
+     "dsp76_sha256": "564e00861277a22580eac0342b92b1e22024daec640d869cf777e198e8988a81"
+    }
+   },
+   "draw_trace_rows": 92845,
+   "dispatcher_trace_rows": 14860,
+   "sport_deadline": 117812920
+  },
+  "48253": {
+   "boundaries": {
+    "Text": {
+     "pc": 4289046240,
+     "cycle": 306026,
+     "cpu34_sha256": "5094330abceabb96a0a7213fd632af9140c0f2c7b13978e5ef79b9ca7941e299",
+     "dsp76_sha256": "a86b17885e4886be853745616bfb0f626d29645509798041ccc10b7cf0385ac0"
+    },
+    "Post": {
+     "pc": 4289048720,
+     "cycle": 311975,
+     "cpu34_sha256": "0860aca90b0d8a400a43b95b8c1e7dcfb41711fbd9e107e1ddb8dffef5fa8d96",
+     "dsp76_sha256": "ccc4d86e983be677035ba07e057258cbee74ae66c99404eab23b566b2899145e"
+    },
+    "Reset": {
+     "pc": 4286649152,
+     "cycle": 6607533,
+     "cpu34_sha256": "e513fd13ea0ccfc879bdae518ef418347ab0c5ace1e54aee0a8697be161ad293",
+     "dsp76_sha256": "dc27b7dbf95835183a5d051c059ed605c98ec8ccd2656073f0a557c10fb41aeb"
+    },
+    "Button": {
+     "pc": 4286664848,
+     "cycle": 6816532,
+     "cpu34_sha256": "c878a30aa108399f038f7d9c3296b5e8da9c89dfbfebd300d4cb892958d6c6f1",
+     "dsp76_sha256": "525d2371a6d922538d391e7b8c6e4bd7e5ed7c1a0e5e99dbd79ddf33369fb461"
+    },
+    "Irq": {
+     "pc": 4286649552,
+     "cycle": 6852678,
+     "cpu34_sha256": "e1538e178c89315d5024264c37bbecfe6646cc4861b4f4bae10506d232c974a3",
+     "dsp76_sha256": "0423c7edbd51f45f16e252d9c5349aef49fcf9ec9775f9b22ee70475a5e85bef"
+    },
+    "Startup": {
+     "pc": 4286650128,
+     "cycle": 6855739,
+     "cpu34_sha256": "7c7e5f34ca241cb41f85ee19445479a0d7da36202d296676d6611fe9143de44f",
+     "dsp76_sha256": "5fce4891228bce90bef3d21476d35aaf59fb6dbedc13294a4977e4b2c23cec47"
+    },
+    "Yield": {
+     "pc": 4286635312,
+     "cycle": 6855971,
+     "cpu34_sha256": "aa27862dd0378065b9f627dd390f3d1eff95a2554f1bf8362b05a2bffe9e3c5e",
+     "dsp76_sha256": "19f9445f97b2dedc94efe4ce6e0c1c00c0559ee81fee3d1c3f4d7e9937a2775c"
+    },
+    "Setup": {
+     "pc": 4286635312,
+     "cycle": 6895721,
+     "cpu34_sha256": "7aeecf6a93e3658442b0190b6ee80b2403d2e8dc4c66d45e86ce5f04d96d1433",
+     "dsp76_sha256": "8ee249de168960f9da4bd4acfbcfbad83fcb1383fa8dabf36b0d0ea4680c6c10"
+    },
+    "Trap": {
+     "pc": 4286596336,
+     "cycle": 7314183,
+     "cpu34_sha256": "0b4426c4637d8bda4cc43eb88e990b21754c1bf372bad4db1b9b7b4ff7403e4b",
+     "dsp76_sha256": "4a8d24fa3382cc917924c7d83f52741dce55ca6b021ed8638a9e3eeea467de19"
+    },
+    "Dma": {
+     "pc": 4286596656,
+     "cycle": 7314220,
+     "cpu34_sha256": "2b78e32903289a0aea2d54753b968380d79833d56b4fba329e53589b4a6b6134",
+     "dsp76_sha256": "4a8d24fa3382cc917924c7d83f52741dce55ca6b021ed8638a9e3eeea467de19"
+    },
+    "Draw": {
+     "pc": 4286635312,
+     "cycle": 7316380,
+     "cpu34_sha256": "83e8aa5f701066ca5fc424321aa7c46ae8125c4c993983c2c77696298d630eb0",
+     "dsp76_sha256": "c16320e3aefaed82c99263662080a537d3ad5d53950121cd323da7e083a84f66"
+    },
+    "StartupDi": {
+     "pc": 4289086960,
+     "cycle": 6854719,
+     "cpu34_sha256": "72e9cc820f89917f1a859473e413f663b364a09a950418353be17e816a1a40d8",
+     "dsp76_sha256": "eea5d8635b725829688b98b364d0166b009dbf20a858f9f74139a0d6695d252f"
+    }
+   },
+   "draw_trace_rows": 92883,
+   "dispatcher_trace_rows": 14865,
+   "sport_deadline": 117812980
+  },
+  "31869": {
+   "boundaries": {
+    "Text": {
+     "pc": 4289046240,
+     "cycle": 306026,
+     "cpu34_sha256": "5094330abceabb96a0a7213fd632af9140c0f2c7b13978e5ef79b9ca7941e299",
+     "dsp76_sha256": "a86b17885e4886be853745616bfb0f626d29645509798041ccc10b7cf0385ac0"
+    },
+    "Post": {
+     "pc": 4289048720,
+     "cycle": 311975,
+     "cpu34_sha256": "0860aca90b0d8a400a43b95b8c1e7dcfb41711fbd9e107e1ddb8dffef5fa8d96",
+     "dsp76_sha256": "ccc4d86e983be677035ba07e057258cbee74ae66c99404eab23b566b2899145e"
+    },
+    "Reset": {
+     "pc": 4286649152,
+     "cycle": 6607533,
+     "cpu34_sha256": "e513fd13ea0ccfc879bdae518ef418347ab0c5ace1e54aee0a8697be161ad293",
+     "dsp76_sha256": "dc27b7dbf95835183a5d051c059ed605c98ec8ccd2656073f0a557c10fb41aeb"
+    },
+    "Button": {
+     "pc": 4286664848,
+     "cycle": 6816532,
+     "cpu34_sha256": "c878a30aa108399f038f7d9c3296b5e8da9c89dfbfebd300d4cb892958d6c6f1",
+     "dsp76_sha256": "525d2371a6d922538d391e7b8c6e4bd7e5ed7c1a0e5e99dbd79ddf33369fb461"
+    },
+    "Irq": {
+     "pc": 4286649552,
+     "cycle": 6852678,
+     "cpu34_sha256": "e1538e178c89315d5024264c37bbecfe6646cc4861b4f4bae10506d232c974a3",
+     "dsp76_sha256": "0423c7edbd51f45f16e252d9c5349aef49fcf9ec9775f9b22ee70475a5e85bef"
+    },
+    "Startup": {
+     "pc": 4286650128,
+     "cycle": 6855739,
+     "cpu34_sha256": "7c7e5f34ca241cb41f85ee19445479a0d7da36202d296676d6611fe9143de44f",
+     "dsp76_sha256": "5fce4891228bce90bef3d21476d35aaf59fb6dbedc13294a4977e4b2c23cec47"
+    },
+    "Yield": {
+     "pc": 4286635312,
+     "cycle": 6855971,
+     "cpu34_sha256": "aa27862dd0378065b9f627dd390f3d1eff95a2554f1bf8362b05a2bffe9e3c5e",
+     "dsp76_sha256": "19f9445f97b2dedc94efe4ce6e0c1c00c0559ee81fee3d1c3f4d7e9937a2775c"
+    },
+    "Setup": {
+     "pc": 4286635312,
+     "cycle": 6895721,
+     "cpu34_sha256": "7aeecf6a93e3658442b0190b6ee80b2403d2e8dc4c66d45e86ce5f04d96d1433",
+     "dsp76_sha256": "8ee249de168960f9da4bd4acfbcfbad83fcb1383fa8dabf36b0d0ea4680c6c10"
+    },
+    "Trap": {
+     "pc": 4286596336,
+     "cycle": 7314183,
+     "cpu34_sha256": "0b4426c4637d8bda4cc43eb88e990b21754c1bf372bad4db1b9b7b4ff7403e4b",
+     "dsp76_sha256": "4a8d24fa3382cc917924c7d83f52741dce55ca6b021ed8638a9e3eeea467de19"
+    },
+    "Dma": {
+     "pc": 4286596656,
+     "cycle": 7314220,
+     "cpu34_sha256": "2b78e32903289a0aea2d54753b968380d79833d56b4fba329e53589b4a6b6134",
+     "dsp76_sha256": "4a8d24fa3382cc917924c7d83f52741dce55ca6b021ed8638a9e3eeea467de19"
+    },
+    "Draw": {
+     "pc": 4286635312,
+     "cycle": 7316380,
+     "cpu34_sha256": "83e8aa5f701066ca5fc424321aa7c46ae8125c4c993983c2c77696298d630eb0",
+     "dsp76_sha256": "c16320e3aefaed82c99263662080a537d3ad5d53950121cd323da7e083a84f66"
+    },
+    "StartupDi": {
+     "pc": 4289086960,
+     "cycle": 6854719,
+     "cpu34_sha256": "b5bd0483cda889bef8b0bac0677e1f38dff691e6bcad771609962ecc52f21790",
+     "dsp76_sha256": "eea5d8635b725829688b98b364d0166b009dbf20a858f9f74139a0d6695d252f"
+    }
+   },
+   "draw_trace_rows": 92883,
+   "dispatcher_trace_rows": 14865,
+   "sport_deadline": 117812980
+  },
+  "15485": {
+   "boundaries": {
+    "Text": {
+     "pc": 4289046240,
+     "cycle": 306026,
+     "cpu34_sha256": "5094330abceabb96a0a7213fd632af9140c0f2c7b13978e5ef79b9ca7941e299",
+     "dsp76_sha256": "a86b17885e4886be853745616bfb0f626d29645509798041ccc10b7cf0385ac0"
+    },
+    "Post": {
+     "pc": 4289048720,
+     "cycle": 311979,
+     "cpu34_sha256": "2881afd95ce19bac0cbbb07674292ac1b9a4bee0d0b796ff29ae071fd68469e7",
+     "dsp76_sha256": "ccc4d86e983be677035ba07e057258cbee74ae66c99404eab23b566b2899145e"
+    },
+    "Reset": {
+     "pc": 4286649152,
+     "cycle": 6607537,
+     "cpu34_sha256": "d20b20114d93ed321c4f68c07437a36bd653c40ceb9f3e68fa36c65d1e2da134",
+     "dsp76_sha256": "dc27b7dbf95835183a5d051c059ed605c98ec8ccd2656073f0a557c10fb41aeb"
+    },
+    "Button": {
+     "pc": 4286664848,
+     "cycle": 6816536,
+     "cpu34_sha256": "9ce5b034f0effeae2ba6018a2551b5f624922711b65ba4ba4f0930cfdef76675",
+     "dsp76_sha256": "55095015204287fce3d9e4fec7fa99cd0bfa47b2995cc991bbd6d31dddb7b4af"
+    },
+    "Irq": {
+     "pc": 4286649552,
+     "cycle": 6852708,
+     "cpu34_sha256": "f580bb3b7b3915cb40b929d6554856dcfe2c23f28cfd64a1f63fe5d7c22df8c6",
+     "dsp76_sha256": "a919c481df727dcab7afd01e390cc47ac07009362194581d1989c25810f9029f"
+    },
+    "Startup": {
+     "pc": 4286650128,
+     "cycle": 6855773,
+     "cpu34_sha256": "c1cb14745dfd450d65b7096ac39e5b7f2fa1dd6bc75571e2d10a1591a1f3a17b",
+     "dsp76_sha256": "6335e4cd8e5afe5ba2a87955aabd77de2a723357863b2e4faa2f3a93d720197e"
+    },
+    "Yield": {
+     "pc": 4286635312,
+     "cycle": 6856005,
+     "cpu34_sha256": "43ad402797d5d5c4a47b3aefcbf8661d18a7dbbf9e554333228f8c7340dc52c4",
+     "dsp76_sha256": "7f5a198e0dcc445b4034f635dcea5b6cf983ae63499d52262fe38d730ac3b41b"
+    },
+    "Setup": {
+     "pc": 4286635312,
+     "cycle": 6895759,
+     "cpu34_sha256": "320b9a438d6729b0b6f4f11684256707d5a8dda8ee279a60f9fedf86d94a8b31",
+     "dsp76_sha256": "e4ccc59e8734d4dd7e5e00d90fbf1cf27b9afdd60f9bd70db9f2930b8088e561"
+    },
+    "Trap": {
+     "pc": 4286596336,
+     "cycle": 7314184,
+     "cpu34_sha256": "d4c1dd9bc9ceebc7f52a0501c501a979b4269bbf817999e956de4d01b100c7a4",
+     "dsp76_sha256": "0d0a71fdbeb561a5dc0377d2407916dcf3b56a89e8ef51eb5361194ac1c567d5"
+    },
+    "Dma": {
+     "pc": 4286596656,
+     "cycle": 7314221,
+     "cpu34_sha256": "2f730cd5e0d6ffaaf76fd4829caafcd61af6c750f1fc5a83f800e68b062a0a92",
+     "dsp76_sha256": "0d0a71fdbeb561a5dc0377d2407916dcf3b56a89e8ef51eb5361194ac1c567d5"
+    },
+    "Draw": {
+     "pc": 4286635312,
+     "cycle": 7316324,
+     "cpu34_sha256": "da5583349e46e3390eef4c65f3d5a917203907b23e7c76aa1d4f2405923f7858",
+     "dsp76_sha256": "2ccc11de5b85c2b8a985b91cbcafebd5f597b81a06c04da7bbef77e4b0fc2148"
+    },
+    "StartupDi": {
+     "pc": 4289087184,
+     "cycle": 6854724,
+     "cpu34_sha256": "5a6783bbc4b637d63f49a1a8edf51de1a5ddd19ce4624683c6a4c36bdc454c69",
+     "dsp76_sha256": "90768c1c3c8bceee047db0dd7da3eac6c66d69b2bc0de91cd6227aff7e9c67b8"
+    }
+   },
+   "draw_trace_rows": 92884,
+   "dispatcher_trace_rows": 14870,
+   "sport_deadline": 117813050
+  }
+ },
+ "credit_eligible_variants": {
+  "64637": {
+   "boundaries": {
+    "Text": {
+     "pc": 4289046240,
+     "cycle": 306026,
+     "cpu34_sha256": "5094330abceabb96a0a7213fd632af9140c0f2c7b13978e5ef79b9ca7941e299",
+     "dsp76_sha256": "a86b17885e4886be853745616bfb0f626d29645509798041ccc10b7cf0385ac0"
+    },
+    "Post": {
+     "pc": 4289048720,
+     "cycle": 311971,
+     "cpu34_sha256": "81b1b7dedfc50af415b405b6d35cbd880e67129b22f9e531971d6e83caef2ab4",
+     "dsp76_sha256": "ccc4d86e983be677035ba07e057258cbee74ae66c99404eab23b566b2899145e"
+    },
+    "Reset": {
+     "pc": 4286649152,
+     "cycle": 6607529,
+     "cpu34_sha256": "b172188b3180d47465680d2fa515e7621bf5703285197e847503f9b6fa0a4054",
+     "dsp76_sha256": "dc27b7dbf95835183a5d051c059ed605c98ec8ccd2656073f0a557c10fb41aeb"
+    },
+    "Button": {
+     "pc": 4286664848,
+     "cycle": 6816528,
+     "cpu34_sha256": "283a12fb755d314b6afa553521186f17dc0cfb87abb98f4b7c38b720fbc57e73",
+     "dsp76_sha256": "b9e0618d750e462a3a4e88fb7f0b5a28c218585631ce5490ec8f750dcc103cd5"
+    },
+    "Irq": {
+     "pc": 4286649552,
+     "cycle": 6852656,
+     "cpu34_sha256": "6ecbf37916f0162f962516192e2cadc42beccc7fa4daa4243474698d1af6dda5",
+     "dsp76_sha256": "9cc84aca6287009d3b7a302d8fe1642382300bcdf65c99d6464e2ec332ecec7a"
+    },
+    "Startup": {
+     "pc": 4286650128,
+     "cycle": 6855713,
+     "cpu34_sha256": "41c0f1f22ea43c95aca44f466c55f1f606c70434ef02d405f4ba81c0307168dd",
+     "dsp76_sha256": "760f1837b622f75f8d5db573d25f373bcad86cb5a7d608cc5dddd01ef3eeb15b"
+    },
+    "Yield": {
+     "pc": 4286635312,
+     "cycle": 6855945,
+     "cpu34_sha256": "0ef21d182d0c431d2b62dc88efe782104ba176abad40efcacc52824e112d1e95",
+     "dsp76_sha256": "efc437038a8c48c6c5df7b390675caa55f0b4ed262a086857022992775b053de"
+    },
+    "Setup": {
+     "pc": 4286635312,
+     "cycle": 6895695,
+     "cpu34_sha256": "b56b5ee0d0d42a3affb0c6c19ab467a889a6cdcd72554d872ca70a27b38d9ee5",
+     "dsp76_sha256": "38634c83a6da422b11e41527299ee51f1b1806b0dc2467f4220a7245217b0bdd"
+    },
+    "Trap": {
+     "pc": 4286596336,
+     "cycle": 7314182,
+     "cpu34_sha256": "ff4710e3bd3279268e12e8d0599aa9d06c650647134ff6dca782f2523d197d92",
+     "dsp76_sha256": "fc819eb43b2890926955685c31885ed0849b2603834ec9dfa5d81822f1b84def"
+    },
+    "Dma": {
+     "pc": 4286596656,
+     "cycle": 7314219,
+     "cpu34_sha256": "86623825e72083b882b3abd216d8ae87dda6083c85b26a144da624d54b66ffab",
+     "dsp76_sha256": "fc819eb43b2890926955685c31885ed0849b2603834ec9dfa5d81822f1b84def"
+    },
+    "Draw": {
+     "pc": 4286635312,
+     "cycle": 7316278,
+     "cpu34_sha256": "595f194e38384dba594be15f67a266097173bbacd9dc6784b11efa3cbe3b9fb9",
+     "dsp76_sha256": "31f659fd1554af200a54b0257f5cc8a5967595a63414d821f7d32c4cef8cb7e9"
+    },
+    "StartupDi": {
+     "pc": 4289087008,
+     "cycle": 6854719,
+     "cpu34_sha256": "5ad8644c243535d2c204131f31f7c820cfe1dcfa1fa1d034bff739b43d81c677",
+     "dsp76_sha256": "564e00861277a22580eac0342b92b1e22024daec640d869cf777e198e8988a81"
+    }
+   },
+   "draw_trace_rows": 92845,
+   "dispatcher_trace_rows": 14862,
+   "sport_deadline": 117812920
+  },
+  "48253": {
+   "boundaries": {
+    "Text": {
+     "pc": 4289046240,
+     "cycle": 306026,
+     "cpu34_sha256": "5094330abceabb96a0a7213fd632af9140c0f2c7b13978e5ef79b9ca7941e299",
+     "dsp76_sha256": "a86b17885e4886be853745616bfb0f626d29645509798041ccc10b7cf0385ac0"
+    },
+    "Post": {
+     "pc": 4289048720,
+     "cycle": 311975,
+     "cpu34_sha256": "0860aca90b0d8a400a43b95b8c1e7dcfb41711fbd9e107e1ddb8dffef5fa8d96",
+     "dsp76_sha256": "ccc4d86e983be677035ba07e057258cbee74ae66c99404eab23b566b2899145e"
+    },
+    "Reset": {
+     "pc": 4286649152,
+     "cycle": 6607533,
+     "cpu34_sha256": "e513fd13ea0ccfc879bdae518ef418347ab0c5ace1e54aee0a8697be161ad293",
+     "dsp76_sha256": "dc27b7dbf95835183a5d051c059ed605c98ec8ccd2656073f0a557c10fb41aeb"
+    },
+    "Button": {
+     "pc": 4286664848,
+     "cycle": 6816532,
+     "cpu34_sha256": "c878a30aa108399f038f7d9c3296b5e8da9c89dfbfebd300d4cb892958d6c6f1",
+     "dsp76_sha256": "525d2371a6d922538d391e7b8c6e4bd7e5ed7c1a0e5e99dbd79ddf33369fb461"
+    },
+    "Irq": {
+     "pc": 4286649552,
+     "cycle": 6852678,
+     "cpu34_sha256": "e1538e178c89315d5024264c37bbecfe6646cc4861b4f4bae10506d232c974a3",
+     "dsp76_sha256": "0423c7edbd51f45f16e252d9c5349aef49fcf9ec9775f9b22ee70475a5e85bef"
+    },
+    "Startup": {
+     "pc": 4286650128,
+     "cycle": 6855739,
+     "cpu34_sha256": "7c7e5f34ca241cb41f85ee19445479a0d7da36202d296676d6611fe9143de44f",
+     "dsp76_sha256": "5fce4891228bce90bef3d21476d35aaf59fb6dbedc13294a4977e4b2c23cec47"
+    },
+    "Yield": {
+     "pc": 4286635312,
+     "cycle": 6855971,
+     "cpu34_sha256": "aa27862dd0378065b9f627dd390f3d1eff95a2554f1bf8362b05a2bffe9e3c5e",
+     "dsp76_sha256": "19f9445f97b2dedc94efe4ce6e0c1c00c0559ee81fee3d1c3f4d7e9937a2775c"
+    },
+    "Setup": {
+     "pc": 4286635312,
+     "cycle": 6895725,
+     "cpu34_sha256": "e027c02ab15778292ec37d895b238e0190959da7596ccbe8fa142f56c1f7f530",
+     "dsp76_sha256": "8ee249de168960f9da4bd4acfbcfbad83fcb1383fa8dabf36b0d0ea4680c6c10"
+    },
+    "Trap": {
+     "pc": 4286596336,
+     "cycle": 7314183,
+     "cpu34_sha256": "fe83a6b4ae891ba8d8f7f6066564640bc130ce4819b0ec516e9878ab9294ef98",
+     "dsp76_sha256": "4a8d24fa3382cc917924c7d83f52741dce55ca6b021ed8638a9e3eeea467de19"
+    },
+    "Dma": {
+     "pc": 4286596656,
+     "cycle": 7314220,
+     "cpu34_sha256": "ef278ca9fb22673c3b68d41f962e5159e9d8f9a97a0efebf8ed15636d87fc44b",
+     "dsp76_sha256": "4a8d24fa3382cc917924c7d83f52741dce55ca6b021ed8638a9e3eeea467de19"
+    },
+    "Draw": {
+     "pc": 4286635312,
+     "cycle": 7316384,
+     "cpu34_sha256": "5a647b1c937973f0b1611ca55ac3750a51ebc22b53d21f8cb7f765744144daa1",
+     "dsp76_sha256": "c16320e3aefaed82c99263662080a537d3ad5d53950121cd323da7e083a84f66"
+    },
+    "StartupDi": {
+     "pc": 4289086960,
+     "cycle": 6854719,
+     "cpu34_sha256": "72e9cc820f89917f1a859473e413f663b364a09a950418353be17e816a1a40d8",
+     "dsp76_sha256": "eea5d8635b725829688b98b364d0166b009dbf20a858f9f74139a0d6695d252f"
+    }
+   },
+   "draw_trace_rows": 92883,
+   "dispatcher_trace_rows": 14867,
+   "sport_deadline": 117812980
+  },
+  "31869": {
+   "boundaries": {
+    "Text": {
+     "pc": 4289046240,
+     "cycle": 306026,
+     "cpu34_sha256": "5094330abceabb96a0a7213fd632af9140c0f2c7b13978e5ef79b9ca7941e299",
+     "dsp76_sha256": "a86b17885e4886be853745616bfb0f626d29645509798041ccc10b7cf0385ac0"
+    },
+    "Post": {
+     "pc": 4289048720,
+     "cycle": 311975,
+     "cpu34_sha256": "0860aca90b0d8a400a43b95b8c1e7dcfb41711fbd9e107e1ddb8dffef5fa8d96",
+     "dsp76_sha256": "ccc4d86e983be677035ba07e057258cbee74ae66c99404eab23b566b2899145e"
+    },
+    "Reset": {
+     "pc": 4286649152,
+     "cycle": 6607533,
+     "cpu34_sha256": "e513fd13ea0ccfc879bdae518ef418347ab0c5ace1e54aee0a8697be161ad293",
+     "dsp76_sha256": "dc27b7dbf95835183a5d051c059ed605c98ec8ccd2656073f0a557c10fb41aeb"
+    },
+    "Button": {
+     "pc": 4286664848,
+     "cycle": 6816532,
+     "cpu34_sha256": "c878a30aa108399f038f7d9c3296b5e8da9c89dfbfebd300d4cb892958d6c6f1",
+     "dsp76_sha256": "525d2371a6d922538d391e7b8c6e4bd7e5ed7c1a0e5e99dbd79ddf33369fb461"
+    },
+    "Irq": {
+     "pc": 4286649552,
+     "cycle": 6852678,
+     "cpu34_sha256": "e1538e178c89315d5024264c37bbecfe6646cc4861b4f4bae10506d232c974a3",
+     "dsp76_sha256": "0423c7edbd51f45f16e252d9c5349aef49fcf9ec9775f9b22ee70475a5e85bef"
+    },
+    "Startup": {
+     "pc": 4286650128,
+     "cycle": 6855739,
+     "cpu34_sha256": "7c7e5f34ca241cb41f85ee19445479a0d7da36202d296676d6611fe9143de44f",
+     "dsp76_sha256": "5fce4891228bce90bef3d21476d35aaf59fb6dbedc13294a4977e4b2c23cec47"
+    },
+    "Yield": {
+     "pc": 4286635312,
+     "cycle": 6855971,
+     "cpu34_sha256": "aa27862dd0378065b9f627dd390f3d1eff95a2554f1bf8362b05a2bffe9e3c5e",
+     "dsp76_sha256": "19f9445f97b2dedc94efe4ce6e0c1c00c0559ee81fee3d1c3f4d7e9937a2775c"
+    },
+    "Setup": {
+     "pc": 4286635312,
+     "cycle": 6895725,
+     "cpu34_sha256": "e027c02ab15778292ec37d895b238e0190959da7596ccbe8fa142f56c1f7f530",
+     "dsp76_sha256": "8ee249de168960f9da4bd4acfbcfbad83fcb1383fa8dabf36b0d0ea4680c6c10"
+    },
+    "Trap": {
+     "pc": 4286596336,
+     "cycle": 7314183,
+     "cpu34_sha256": "fe83a6b4ae891ba8d8f7f6066564640bc130ce4819b0ec516e9878ab9294ef98",
+     "dsp76_sha256": "4a8d24fa3382cc917924c7d83f52741dce55ca6b021ed8638a9e3eeea467de19"
+    },
+    "Dma": {
+     "pc": 4286596656,
+     "cycle": 7314220,
+     "cpu34_sha256": "ef278ca9fb22673c3b68d41f962e5159e9d8f9a97a0efebf8ed15636d87fc44b",
+     "dsp76_sha256": "4a8d24fa3382cc917924c7d83f52741dce55ca6b021ed8638a9e3eeea467de19"
+    },
+    "Draw": {
+     "pc": 4286635312,
+     "cycle": 7316384,
+     "cpu34_sha256": "5a647b1c937973f0b1611ca55ac3750a51ebc22b53d21f8cb7f765744144daa1",
+     "dsp76_sha256": "c16320e3aefaed82c99263662080a537d3ad5d53950121cd323da7e083a84f66"
+    },
+    "StartupDi": {
+     "pc": 4289086960,
+     "cycle": 6854719,
+     "cpu34_sha256": "b5bd0483cda889bef8b0bac0677e1f38dff691e6bcad771609962ecc52f21790",
+     "dsp76_sha256": "eea5d8635b725829688b98b364d0166b009dbf20a858f9f74139a0d6695d252f"
+    }
+   },
+   "draw_trace_rows": 92883,
+   "dispatcher_trace_rows": 14867,
+   "sport_deadline": 117812980
+  },
+  "15485": {
+   "boundaries": {
+    "Text": {
+     "pc": 4289046240,
+     "cycle": 306026,
+     "cpu34_sha256": "5094330abceabb96a0a7213fd632af9140c0f2c7b13978e5ef79b9ca7941e299",
+     "dsp76_sha256": "a86b17885e4886be853745616bfb0f626d29645509798041ccc10b7cf0385ac0"
+    },
+    "Post": {
+     "pc": 4289048720,
+     "cycle": 311979,
+     "cpu34_sha256": "2881afd95ce19bac0cbbb07674292ac1b9a4bee0d0b796ff29ae071fd68469e7",
+     "dsp76_sha256": "ccc4d86e983be677035ba07e057258cbee74ae66c99404eab23b566b2899145e"
+    },
+    "Reset": {
+     "pc": 4286649152,
+     "cycle": 6607537,
+     "cpu34_sha256": "d20b20114d93ed321c4f68c07437a36bd653c40ceb9f3e68fa36c65d1e2da134",
+     "dsp76_sha256": "dc27b7dbf95835183a5d051c059ed605c98ec8ccd2656073f0a557c10fb41aeb"
+    },
+    "Button": {
+     "pc": 4286664848,
+     "cycle": 6816536,
+     "cpu34_sha256": "9ce5b034f0effeae2ba6018a2551b5f624922711b65ba4ba4f0930cfdef76675",
+     "dsp76_sha256": "55095015204287fce3d9e4fec7fa99cd0bfa47b2995cc991bbd6d31dddb7b4af"
+    },
+    "Irq": {
+     "pc": 4286649552,
+     "cycle": 6852708,
+     "cpu34_sha256": "f580bb3b7b3915cb40b929d6554856dcfe2c23f28cfd64a1f63fe5d7c22df8c6",
+     "dsp76_sha256": "a919c481df727dcab7afd01e390cc47ac07009362194581d1989c25810f9029f"
+    },
+    "Startup": {
+     "pc": 4286650128,
+     "cycle": 6855773,
+     "cpu34_sha256": "c1cb14745dfd450d65b7096ac39e5b7f2fa1dd6bc75571e2d10a1591a1f3a17b",
+     "dsp76_sha256": "6335e4cd8e5afe5ba2a87955aabd77de2a723357863b2e4faa2f3a93d720197e"
+    },
+    "Yield": {
+     "pc": 4286635312,
+     "cycle": 6856005,
+     "cpu34_sha256": "43ad402797d5d5c4a47b3aefcbf8661d18a7dbbf9e554333228f8c7340dc52c4",
+     "dsp76_sha256": "7f5a198e0dcc445b4034f635dcea5b6cf983ae63499d52262fe38d730ac3b41b"
+    },
+    "Setup": {
+     "pc": 4286635312,
+     "cycle": 6895763,
+     "cpu34_sha256": "3060d0b18e4770e7c179f5fba11ede534d17983830929bbf0e7dec4c743ef5e9",
+     "dsp76_sha256": "e4ccc59e8734d4dd7e5e00d90fbf1cf27b9afdd60f9bd70db9f2930b8088e561"
+    },
+    "Trap": {
+     "pc": 4286596336,
+     "cycle": 7314183,
+     "cpu34_sha256": "c3262196c9589f46ae927e28239da4c34ded5f75dc6012bc57145c2cde80ee42",
+     "dsp76_sha256": "0d0a71fdbeb561a5dc0377d2407916dcf3b56a89e8ef51eb5361194ac1c567d5"
+    },
+    "Dma": {
+     "pc": 4286596656,
+     "cycle": 7314220,
+     "cpu34_sha256": "0b53600a31e18198790309e1b63dab9a6213040d3f2b1e0a8e9233741019d4f0",
+     "dsp76_sha256": "0d0a71fdbeb561a5dc0377d2407916dcf3b56a89e8ef51eb5361194ac1c567d5"
+    },
+    "Draw": {
+     "pc": 4286635312,
+     "cycle": 7316328,
+     "cpu34_sha256": "f7c5fc16d3e943c8bda8652bbb604abe857972ba037e7033cf8d8617cbfcd907",
+     "dsp76_sha256": "2ccc11de5b85c2b8a985b91cbcafebd5f597b81a06c04da7bbef77e4b0fc2148"
+    },
+    "StartupDi": {
+     "pc": 4289087184,
+     "cycle": 6854724,
+     "cpu34_sha256": "5a6783bbc4b637d63f49a1a8edf51de1a5ddd19ce4624683c6a4c36bdc454c69",
+     "dsp76_sha256": "90768c1c3c8bceee047db0dd7da3eac6c66d69b2bc0de91cd6227aff7e9c67b8"
+    }
+   },
+   "draw_trace_rows": 92884,
+   "dispatcher_trace_rows": 14872,
+   "sport_deadline": 117813050
+  }
+ }
+}

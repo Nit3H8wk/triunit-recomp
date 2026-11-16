@@ -1,0 +1,350 @@
+{
+  "format": "MK2_DSP_DIRECT_CLOSURE_V1",
+  "scope": "Static conditional-branch/call-return overapproximation of the late loaded U2 program image from already translated matching PC/opcode seeds. Not runtime-qualified; branch feasibility, all indirect destinations, return contexts, interrupts, device semantics and complete gameplay remain unproven. No ROM data-only scan.",
+  "u2": {
+    "path": "roms/mk2/su2.l1",
+    "bytes": 524288,
+    "sha256": "82bdcbbd9413071f20a52cf7fd0fcf094fa474a08938b4f8c1d617d1490a137c"
+  },
+  "image_mapping": {
+    "address_units": "24-bit PM words",
+    "low": {
+      "pc_begin": "0000",
+      "pc_end_exclusive": "0400",
+      "rom_offset": "0x1000 + pc * 4"
+    },
+    "external": {
+      "pc_begin": "0800",
+      "pc_end_exclusive": "1000",
+      "rom_offset": "0x2000 + (pc - 0x0800) * 4"
+    },
+    "opcode_bytes": "first 3 bytes of each four-byte word, big endian; fourth byte is PX",
+    "early_external_image": "0x0800 + (pc - 0x0800) * 4 is a distinct early image; do not replace its opcode variants"
+  },
+  "baseline": {
+    "adsp_inc_sha256": "e8f035553b2bb72963fb45acbb05fbf8f89c74bae402e0e0c746463079d87ec6",
+    "matching_late_pc_count": 1626,
+    "already_admitted_crash_pcs": [
+      "02fa",
+      "02fb"
+    ],
+    "already_admitted_crash_words_sha256": "7847258695a2c8080c4eee56b95fb8b40299a398ad3700683d0c427ec6edce99"
+  },
+  "roots": [
+    {
+      "from_pc": "004a",
+      "target_pc": "0052",
+      "edge": "jump"
+    },
+    {
+      "from_pc": "0194",
+      "target_pc": "0195",
+      "edge": "condition-false"
+    },
+    {
+      "from_pc": "01c9",
+      "target_pc": "01ca",
+      "edge": "condition-false"
+    },
+    {
+      "from_pc": "022a",
+      "target_pc": "022b",
+      "edge": "condition-false"
+    },
+    {
+      "from_pc": "0274",
+      "target_pc": "0275",
+      "edge": "condition-false"
+    },
+    {
+      "from_pc": "03b5",
+      "target_pc": "03b6",
+      "edge": "condition-false"
+    },
+    {
+      "from_pc": "03d9",
+      "target_pc": "03da",
+      "edge": "condition-false"
+    },
+    {
+      "from_pc": "082b",
+      "target_pc": "0836",
+      "edge": "jump"
+    },
+    {
+      "from_pc": "089c",
+      "target_pc": "089d",
+      "edge": "condition-false"
+    },
+    {
+      "from_pc": "08a1",
+      "target_pc": "08a2",
+      "edge": "condition-false"
+    },
+    {
+      "from_pc": "09ec",
+      "target_pc": "09ed",
+      "edge": "condition-false"
+    },
+    {
+      "from_pc": "0a5d",
+      "target_pc": "0a61",
+      "edge": "jump"
+    },
+    {
+      "from_pc": "0ae9",
+      "target_pc": "0aea",
+      "edge": "condition-false"
+    }
+  ],
+  "pcs": [
+    "0052",
+    "0053",
+    "0054",
+    "0055",
+    "0056",
+    "0057",
+    "0058",
+    "0059",
+    "005a",
+    "005b",
+    "005c",
+    "005d",
+    "005e",
+    "005f",
+    "0060",
+    "0061",
+    "0062",
+    "0195",
+    "0196",
+    "01ca",
+    "01cb",
+    "01cc",
+    "01cd",
+    "022b",
+    "022c",
+    "022d",
+    "022e",
+    "022f",
+    "0230",
+    "0231",
+    "0232",
+    "0233",
+    "0234",
+    "0235",
+    "0236",
+    "0275",
+    "0276",
+    "0277",
+    "0278",
+    "0279",
+    "027a",
+    "027b",
+    "027c",
+    "027d",
+    "027e",
+    "027f",
+    "0280",
+    "0281",
+    "0282",
+    "0283",
+    "0284",
+    "0285",
+    "0286",
+    "0287",
+    "0288",
+    "0289",
+    "028a",
+    "028b",
+    "028c",
+    "028d",
+    "028e",
+    "028f",
+    "0290",
+    "0291",
+    "0292",
+    "0293",
+    "0294",
+    "0295",
+    "0296",
+    "0297",
+    "0298",
+    "0299",
+    "029a",
+    "029b",
+    "029c",
+    "029d",
+    "029e",
+    "029f",
+    "02a0",
+    "02a1",
+    "02a2",
+    "02a3",
+    "02a4",
+    "02a5",
+    "02a6",
+    "02a7",
+    "02a8",
+    "02a9",
+    "02aa",
+    "02ab",
+    "02ac",
+    "02ad",
+    "0320",
+    "0321",
+    "0322",
+    "0323",
+    "0324",
+    "0325",
+    "0326",
+    "0327",
+    "03b6",
+    "03da",
+    "03db",
+    "03dc",
+    "03dd",
+    "03de",
+    "03df",
+    "03e0",
+    "03e1",
+    "0836",
+    "0837",
+    "089d",
+    "089e",
+    "08a2",
+    "08a3",
+    "09ed",
+    "09ee",
+    "09ef",
+    "0a61",
+    "0a62",
+    "0aea",
+    "0aeb",
+    "0aec",
+    "0aed",
+    "0aee",
+    "0aef",
+    "0af0",
+    "0af1",
+    "0af2",
+    "0af3",
+    "0af4"
+  ],
+  "words_sha256": "1846e9043dc9361cc5f989959adca1042e9d7f4f7db2ea5aca3c0dc3e5fcf47e",
+  "joins": [
+    {
+      "from_pc": "0056",
+      "target_pc": "034b",
+      "edge": "call"
+    },
+    {
+      "from_pc": "0058",
+      "target_pc": "035e",
+      "edge": "call"
+    },
+    {
+      "from_pc": "0062",
+      "target_pc": "0063",
+      "edge": "fallthrough"
+    },
+    {
+      "from_pc": "01cd",
+      "target_pc": "01ce",
+      "edge": "fallthrough"
+    },
+    {
+      "from_pc": "0236",
+      "target_pc": "0237",
+      "edge": "fallthrough"
+    },
+    {
+      "from_pc": "027f",
+      "target_pc": "01ac",
+      "edge": "jump"
+    },
+    {
+      "from_pc": "0293",
+      "target_pc": "0365",
+      "edge": "call"
+    },
+    {
+      "from_pc": "029d",
+      "target_pc": "033f",
+      "edge": "call"
+    },
+    {
+      "from_pc": "029e",
+      "target_pc": "0365",
+      "edge": "call"
+    },
+    {
+      "from_pc": "02a6",
+      "target_pc": "033f",
+      "edge": "call"
+    },
+    {
+      "from_pc": "02a7",
+      "target_pc": "035e",
+      "edge": "call"
+    },
+    {
+      "from_pc": "02ad",
+      "target_pc": "01ac",
+      "edge": "jump"
+    },
+    {
+      "from_pc": "03b6",
+      "target_pc": "03e3",
+      "edge": "jump"
+    },
+    {
+      "from_pc": "03e1",
+      "target_pc": "03e3",
+      "edge": "jump"
+    },
+    {
+      "from_pc": "0837",
+      "target_pc": "083c",
+      "edge": "jump"
+    },
+    {
+      "from_pc": "089e",
+      "target_pc": "08a5",
+      "edge": "jump"
+    },
+    {
+      "from_pc": "08a3",
+      "target_pc": "08a5",
+      "edge": "jump"
+    },
+    {
+      "from_pc": "09ef",
+      "target_pc": "09f0",
+      "edge": "fallthrough"
+    },
+    {
+      "from_pc": "0a62",
+      "target_pc": "0a63",
+      "edge": "fallthrough"
+    },
+    {
+      "from_pc": "0aed",
+      "target_pc": "0af6",
+      "edge": "jump"
+    },
+    {
+      "from_pc": "0af4",
+      "target_pc": "0af6",
+      "edge": "jump"
+    }
+  ],
+  "unresolved_mapped_indirect_branches": [
+    "01d5"
+  ],
+  "unresolved_added_return_sites": [
+    "0196",
+    "0327"
+  ],
+  "remaining_scope": "Return continuation edges are conservative; late image is selected by PC/opcode identity. No dynamic branch predicates or hardware state injected.",
+  "roots_from_words_sha256": "c8d86c69cdb8aab9f51a2aafc0707dd103e6b9fe6c1669a8e5343ddfc49a3038"
+}

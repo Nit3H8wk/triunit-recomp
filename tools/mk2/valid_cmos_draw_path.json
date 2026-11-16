@@ -1,0 +1,27 @@
+{
+  "scope": "finite authentic valid-CMOS first draw; no gameplay or host continuation claimed",
+  "through": "cmos-draw",
+  "end_PC": 4286635312,
+  "end_cycle": 7316296,
+  "end_CPU34_sha256": "d73e16802db7d0d363fac475f467ef5018a9f8a7ce6692c4c206f8f4113e255c",
+  "start_CPU34_sha256": "a676ac790b28324b90e4ada25012f5e714ad229158270806da79067fed702904",
+  "instructions": 95509,
+  "phase_instructions": {
+    "resume": 69408,
+    "queue": 3342,
+    "palette": 21993,
+    "draw": 766
+  },
+  "DMA": {
+    "first_command": 50050,
+    "start_cycle": 7314220,
+    "pixels": 4864,
+    "ns_per_pixel": 41,
+    "completed_count": 1
+  },
+  "proof_sha256": "89c5bf2a70becb42facde6e37de09fffa4bc1795fb972928ab87863599e30468",
+  "full_DSP76_terminal_exact": false,
+  "DSP76_terminal_differences_sha256": "17f4e4fd735c2d8958f875b4f3ff62e5370b6a634ad628ba39ce7b314f5f3cc9",
+  "DSP_tail_instructions_compared": 3162,
+  "DSP_tail_all76_fields_and_clocks_exact": true
+}

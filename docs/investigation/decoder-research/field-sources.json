@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/mamedev/mame",
+  "commit": "4f9dcc832cc0089de2451696320f671e87da79f4",
+  "purpose": "Pinned field semantics and physical bus order; research only, not linked runtime",
+  "file": "34010ops.h",
+  "source": "https://raw.githubusercontent.com/mamedev/mame/4f9dcc832cc0089de2451696320f671e87da79f4/src/devices/cpu/tms34010/34010ops.h",
+  "sha256": "54d2ca454dc47306debdb4e95654ad2454443b22dbcf41efffd4d379db472f43",
+  "matching_local_tms34010_cpp": true
+}

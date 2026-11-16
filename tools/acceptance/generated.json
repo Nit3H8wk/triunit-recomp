@@ -1,0 +1,21 @@
+{
+ "note": "SHA-256 of setup output that is not a single versioned file (plan 2026-11-15-conformidade-legal.md). mk3/tms_units: the units digest of tools/mk3/generate.py --check (name, length and text of every unit) at the tree of 15/11/2026, equal to build/native/mk3-m2/j1-tms.json. Re-pinned on 16/11/2026 when the reset lots 1-2 (20 measured PCs from the reset vector to the CALLA of the CMOS routine) became a generated slice and native/mk3/mk3_reset.cpp was deleted: full CPU, bus and Ops state equal to the hand path at every lot boundary, 108/108 route digests equal. mk2/native/mk2/mk2_first_fight.inc: re-pinned in phase 3 part 2 (15/11/2026) when the emitter started to emit the bitmap-text PIXBLT B,XY at ffa592b0 in the whole closure (o.DrawBitmapText, the shared hardware semantic); the other 22 MK2 includes keep the manifest.json digests. mk2 *_bounds.inc (first_fight, first_fight_high_punch, prestart_wait, selection): re-pinned in phase 3 part 3 (16/11/2026) when each boundary row stopped carrying the raw Original CPU34 and carries its SHA-256 instead (tools/mk2/oracle_digest.py; compared by mk2_task_batch.cpp with Cpu34Is); end cycles and instruction counts are unchanged. mk1: the includes written by tools/setup/mk1.py with LF line ends. The main-loop, task-body and audio includes have the same text as the manifest.json entry of the same name (manifest digests were taken over CRLF checkouts), proven by byte comparison in the Fase 4 entry of the plan; mk5_boot_graph.inc (power-on graph, Fase 4 parte 2) was accepted by full-state equality with the retired hand chain at every boundary. mk1/factory-cmos: the CMOS seed of tools/setup/mk1.make_seed (the game's factory restore from a blank CMOS, DSW FEFFh), equal byte for byte to the nvram MAME 0.280 saves from its default NVRAM with the same DSW (tools/oracle/mk1_oracle.py seed, 16/11/2026).",
+ "mk3": {
+  "mk3/tms_units": "e99e6833edf2e382e30c4aafb7671a9c16e7e67666b6c76ca2ea60a4f006034b"
+ },
+ "mk2": {
+  "native/mk2/mk2_first_fight.inc": "1ae11a8ae541172ca4490ec14bc006812a9ec6cb5057bf0f017076ce63bf0bc3",
+  "native/mk2/mk2_first_fight_bounds.inc": "46e35cb4c059add3a5eb2d0c27ad59f47e1eec21c3437243e81eb674610c6779",
+  "native/mk2/mk2_first_fight_high_punch_bounds.inc": "967f643ba7bacad9a72c6bd0c456194d5b1c457b01c9a1e41ce234a800fa7328",
+  "native/mk2/mk2_prestart_wait_bounds.inc": "a2bae4b6e714e177a7ef6fd12f0b29fef0737688c623eeec2c29aba3bf35667e",
+  "native/mk2/mk2_selection_bounds.inc": "8d6df01f1afc8c4b90e5fe167666dbf91633055f3bf4dfec5350295ba087bd3c"
+ },
+ "mk1": {
+  "mk1/factory-cmos": "870c32440552a1ae4aeb7d2949052530065665585c68c80d2b9a500fa00ce0a1",
+  "native/src/mk5_audio_checkpoints.inc": "007c8388f907f2026be90c85ad4f27f802b89d0d5a32ced6ebff0b84ed8a5c93",
+  "native/src/mk5_audio_graph.inc": "7f60880e7065c3e8ac1564804a53c2a9b14a96dc6c4d3996edba77a17da1ae62",
+  "native/src/mk5_boot_graph.inc": "be4a20666aa08146277d6d41489e02281cf9cef58d8ef06a7ec6c7164d2c87e6",
+  "native/src/mk5_main_loop_graph.inc": "4afcd9fa86fc659efc4d82312d23e706fcfadf95a4640fb4b746ce66c4b4dbda",
+  "native/src/mk5_task_body_graph.inc": "294a9d33f73fbe0a340c1c33a39ea39370fdd18c94b1c69f5f6b913fa76c7ad4"
+ }
+}

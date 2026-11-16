@@ -1,0 +1,410 @@
+#include "mk2_task_batch.hpp"
+#include "mk2_executor.hpp"
+#include "mk2_scanout.hpp"
+#include "mk2_music.hpp"
+#include "mk2_cmos_image.hpp"
+#include "mk2_profile.hpp"
+#include "mk2_live_host.hpp"
+#include "mk2_replay.hpp"
+#include "mk2_valid_cmos_boot.hpp"
+#include "mk2_valid_cmos_continuation.hpp"
+#include "mk2_valid_cmos_startup.hpp"
+#include "mk2_valid_cmos_draw.hpp"
+#include "mk5_window.hpp"
+#include "mk5_program.hpp"
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <cstring>
+#include <charconv>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <memory>
+#include <thread>
+
+namespace {
+// These scalar fields come from the existing shared presenter, never a guest state import.
+template<class Integer> Integer ProfilePresentationValue(const std::string& json,const char* key) {
+    const std::string token=std::string("\"")+key+"\":";
+    const auto found=json.find(token);
+    if(found==std::string::npos || json.find(token,found+token.size())!=std::string::npos)
+        throw std::runtime_error("native profile requires unambiguous presentation metrics");
+    const char* first=json.data()+found+token.size();const char* end=json.data()+json.size();
+    Integer value{};const auto parsed=std::from_chars(first,end,value);
+    if(parsed.ec!=std::errc{} || parsed.ptr==first || parsed.ptr==end || (*parsed.ptr!=',' && *parsed.ptr!='}'))
+        throw std::runtime_error("native profile presentation metric is malformed");
+    return value;
+}
+void ValidateProfilePresentation(const std::string& json,bool clean_host_stop,bool validate_pixels) {
+    const auto frames=ProfilePresentationValue<uint64_t>(json,"gpu_validation_frames");
+    const auto fighter_frames=ProfilePresentationValue<uint64_t>(json,"bicubic_fighter_validation_frames");
+    if(json.find("\"renderer\":\"D3D12-DXGI-flip\"")==std::string::npos ||
+       (frames>2+fighter_frames || fighter_frames>1 || (validate_pixels && !frames && !clean_host_stop)) ||
+       ProfilePresentationValue<uint64_t>(json,"gpu_validation_mismatches") ||
+       ProfilePresentationValue<uint64_t>(json,"gpu_validation_max_error")>
+            ProfilePresentationValue<uint64_t>(json,"gpu_validation_tolerance") ||
+       (!clean_host_stop && !ProfilePresentationValue<uint64_t>(json,"displayed_frames")) ||
+       FAILED(HRESULT(ProfilePresentationValue<int64_t>(json,"last_present_hresult"))))
+        throw std::runtime_error("native profile shared DX12 presentation failed or is incomplete");
+}
+}
+
+int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
+    bool show_window=false,play_audio=false,write_frames=false,host_controls=false;
+    std::wstring through=L"first-draw",frame_path,cmos_path,profile_path;
+    bool selected_frontier=false,load_cmos=false,direct_profile=false,selected_dsw=false;
+    uint16_t dsw_word=0xfc7d;
+    for(int n=2;n<argc;++n) {
+        const std::wstring option=argv[n];
+        if(option==L"--window" && !show_window) show_window=true;
+        else if(option==L"--audio" && !play_audio) play_audio=true;
+        else if(option==L"--host-controls" && !host_controls) host_controls=true;
+        else if(option==L"--frames" && !write_frames && n+1<argc) {write_frames=true;frame_path=argv[++n];}
+        else if(option==L"--through" && !selected_frontier && n+1<argc) {selected_frontier=true;through=argv[++n];}
+        else if(option==L"--cmos-image" && !load_cmos && !direct_profile && n+1<argc) {load_cmos=true;cmos_path=argv[++n];}
+        else if(option==L"--profile" && !direct_profile && !load_cmos && n+1<argc) {direct_profile=true;profile_path=argv[++n];}
+        else if(option==L"--dsw-word" && !selected_dsw && n+1<argc) {
+            selected_dsw=true;const std::wstring raw=argv[++n];size_t consumed=0;
+            const auto value=std::stoul(raw,&consumed,0);
+            if(raw.empty() || raw[0]==L'-' || consumed!=raw.size() || value>0xffff || !mk2::OperatorDswSupported(uint16_t(value)))
+                throw std::runtime_error("native operator DIP accepts only original blood/violence switches");
+            dsw_word=uint16_t(value);
+        }
+        else throw std::runtime_error("unknown, duplicate or incomplete native diagnostic option");
+    }
+    const bool cmos_boot=through==L"cmos-boot";
+    const bool cmos_startup=through==L"cmos-startup";
+    const bool cmos_draw=through==L"cmos-draw";
+    const bool cmos_host=through==L"cmos-host";
+    const bool cmos_live=through==L"cmos-live";
+    const bool test_switch=through==L"test-switch";
+    const bool persisted=cmos_boot||cmos_startup||cmos_draw||cmos_host||cmos_live;
+    if(argc<2 || (through!=L"first-draw" && through!=L"next-wait" && through!=L"first-fight" && !persisted && !test_switch) ||
+        (play_audio && !show_window) || (write_frames && show_window) ||
+        (host_controls && (!show_window || (through!=L"first-fight" && !cmos_host && !cmos_live))) ||
+        ((cmos_host||cmos_live) && !host_controls) || (cmos_live && !direct_profile) ||
+        (load_cmos||direct_profile)!=(persisted||test_switch) || (selected_dsw&&!persisted) ||
+        (test_switch && (!show_window || !load_cmos)))
+        throw std::runtime_error("usage: mk2-native-check ROM_DIRECTORY [--window [--audio] [--host-controls] | --frames FILE] [--through first-draw|next-wait|first-fight|cmos-boot|cmos-startup|cmos-draw|cmos-host|cmos-live|test-switch] [--cmos-image FILE | --profile EXISTING_DIRECTORY]; Test Switch requires --window and the factory --cmos-image");
+    mk2::CmosProfileSnapshot loaded_profile;
+    std::vector<uint8_t> cmos_image;
+    if(direct_profile) {
+        loaded_profile=mk2::LoadCmosProfile(std::filesystem::path(profile_path));
+        cmos_image=loaded_profile.image;
+    }
+    std::ofstream frames;
+    if (write_frames) {
+        frames.open(std::filesystem::path(frame_path),std::ios::binary);
+        if (!frames) throw std::runtime_error("cannot open transient raster output");
+    }
+    const auto program=mk2::LoadProgram(argv[1]);
+    if(load_cmos) {
+        std::ifstream input(std::filesystem::path(cmos_path),std::ios::binary);
+        if(!input)throw std::runtime_error("cannot open exact session CMOS image");
+        cmos_image.resize(16385);input.read(reinterpret_cast<char*>(cmos_image.data()),cmos_image.size());
+        cmos_image.resize(size_t(input.gcount()));
+        mk2::DecodeCmosImage(cmos_image);
+        if(test_switch && Sha256(cmos_image)!=mk2::kTestSwitchFactorySha256)
+            throw std::runtime_error("MK2 Test Switch requires the authenticated factory CMOS image");
+    }
+    if(cmos_live)replay.Start(Sha256(program.bytes),Sha256(cmos_image),cmos_image);
+    const auto rom=mk2::LoadDcsDataRoms(argv[1]);
+    const auto boot=mk2::DecodeDcsBoot({rom.begin(),rom.begin()+0x1000});
+    auto machine=std::make_unique<mk2::DcsBootMachine>(boot,rom);
+    // Presentation consumes current state, without retaining instruction histories.
+    machine->dsp.SetTraceObservation(false);
+    const char* music_mode=std::getenv("MK1_MUSIC_MODE");
+    const bool remastered=music_mode && std::string(music_mode)=="remastered";
+    if(music_mode && !remastered && std::string(music_mode)!="original")throw std::runtime_error("invalid MK2 music mode");
+    std::unique_ptr<Mk5Window> window;
+    if (show_window) window=std::make_unique<Mk5Window>(cmos_live&&!remastered);
+    bool stop_requested=false,valid_host_admitted=false,live_boundary_validated=false;
+    uint32_t last_host_input=0xffffffffu;
+    uint64_t provider_requests=0,last_host_input_tick=0,stop_observed_tick=0;
+    uint64_t service_first_tick=0;
+    auto pump_host=[&](uint64_t tick) {
+        if(!stop_requested && !window->Pump()) {
+            // Recheck a driver failure published between Pump's failure check and running read.
+            window->Pump();
+            stop_requested=true;stop_observed_tick=tick;
+        }
+        return !stop_requested;
+    };
+    std::unique_ptr<mk5audio::WaveOutSink> sink;
+    std::unique_ptr<mk2::OriginalAudio> audio;
+    std::unique_ptr<mk2::RemasteredAudio> music;
+    if (play_audio) {
+        if(remastered){
+            const wchar_t* directory=_wgetenv(L"MK1_MUSIC_DIRECTORY");
+            if(!directory || !*directory)throw std::runtime_error("MK2 remastered music directory missing");
+            music=std::make_unique<mk2::RemasteredAudio>(machine->dsp,std::filesystem::path(directory),[&](const int16_t*p,size_t n){sink->Push(p,n);});
+        }
+        // Shorter driver buffers reduce completion waits on the guest thread.
+        const auto packet=remastered?mk5audio::WaveOutPacket::Ms20:mk5audio::WaveOutPacket::Ms10;
+        sink=std::make_unique<mk5audio::WaveOutSink>(remastered?2:1,packet);
+        if(!remastered)audio=std::make_unique<mk2::OriginalAudio>([&](const int16_t* samples,size_t count) {sink->Push(samples,count);});
+        machine->dsp.SetDacObserver([&](uint64_t first,const float* samples,size_t count) {if(music)music->Feed(first,samples,count);else audio->Feed(first,samples,count);});
+    }
+    const auto source_samples=[&]{return music?music->SourceSamples():audio->SourceSamples();};
+    const auto output_samples=[&]{return music?music->OutputSamples():audio->OutputSamples();};
+    mk2::Scanout scanout(remastered && show_window);
+    std::vector<std::string> hashes;
+    const auto raster_bytes=[&] {
+        const auto& pixels=scanout.pixels();
+        std::vector<uint8_t> bytes(pixels.size()*sizeof(uint32_t));
+        std::memcpy(bytes.data(),pixels.data(),bytes.size());
+        return bytes;
+    };
+    machine->SetScanlineObserver([&](const auto& edge,const auto& live_video) {
+        const auto before=scanout.frames();scanout.Line(edge,live_video);
+        if (scanout.frames()==before) return;
+        if(!cmos_live&&!test_switch) {
+            const auto bytes=raster_bytes();
+            hashes.push_back(Sha256(bytes));
+            if (frames.is_open()) {
+                const uint64_t tick=94875+uint64_t(edge.scanline_events-1)*6325;
+                const uint32_t width=scanout.width(),height=scanout.height();
+                frames.write(reinterpret_cast<const char*>(&tick),sizeof(tick));
+                frames.write(reinterpret_cast<const char*>(&width),sizeof(width));
+                frames.write(reinterpret_cast<const char*>(&height),sizeof(height));
+                frames.write(reinterpret_cast<const char*>(bytes.data()),bytes.size());
+                if (!frames) throw std::runtime_error("transient raster write failed");
+            }
+        }
+        if (window) {
+            if(cmos_host||cmos_live||test_switch) {
+                if(!pump_host(94875+uint64_t(edge.scanline_events-1)*6325))return;
+            } else if (!window->Pump()) throw std::runtime_error("native diagnostic window closed");
+            window->Present(scanout.presentation(),scanout.width(),scanout.height(),
+                            scanout.backdrop_pixels(),scanout.fighter_frame());
+        }
+    });
+    const auto host_range=host_controls&&!cmos_host&&!cmos_live ? mk2::HostControlRange(0,int(mk2::kFirstFightWindowCount)-2) : mk2::HostControlBounds{};
+    const auto valid_host_range=cmos_host ? mk2::ValidHostControlRange() : mk2::ValidHostControlBounds{};
+    const auto s=[&]() {
+    // Generated closure from the reset vector to the route's delivery boundary (mk2_executor.hpp).
+    mk2::GeneratedBoot generated(program,*machine,(load_cmos||direct_profile)?&cmos_image:nullptr,
+        test_switch?mk2::kTestSwitchDsw:dsw_word);
+    if(remastered && show_window) generated.OnVideoReady([&](mk2::BootVideo& video) {
+        video.EnableBlood(program);
+        if(!test_switch){
+            video.EnableBackdrop();
+            video.EnableFighters();
+        }
+    });
+    if(test_switch) {
+        auto startup=mk2::DeliverAs<mk2::ValidCmosContinuation>(generated);
+        return mk2::RunTestSwitch(program,std::move(startup),*machine,[&,pace_start=std::chrono::steady_clock::time_point{}](uint64_t tick) mutable {
+            if(!pump_host(tick))return last_host_input;
+            if(!service_first_tick) {
+                service_first_tick=tick;
+                pace_start=std::chrono::steady_clock::now();
+            }
+            std::this_thread::sleep_until(pace_start+std::chrono::nanoseconds(10*(tick-service_first_tick)));
+            ++provider_requests;
+            last_host_input=window->Inputs({0xffffffffu,0xffffffffu}).in01;
+            return last_host_input;
+        },[&]{return !stop_requested;});
+    }
+    if(cmos_boot)return generated.RunToBoundary(mk2::BootEvent::admit_startup).ready;
+    if(cmos_startup||cmos_draw||cmos_host||cmos_live) {
+        if(cmos_startup)return generated.RunToBoundary(mk2::BootEvent::admit_draw).ready;
+        const auto draw=mk2::DeliverAs<mk2::ValidCmosContinuation>(generated);
+        if(!(cmos_host||cmos_live) || !pump_host(draw.ready.cycles*16))return draw.ready;
+        if(cmos_live) {
+            auto continuation=mk2::RunValidLiveHost(program,draw,*machine,[&](uint64_t tick) {
+                ++provider_requests;
+                if(pump_host(tick)) {last_host_input=window->Inputs({0xffffffffu,0xffffffffu}).in01;last_host_input_tick=tick;}
+                replay.Observe(tick,last_host_input);
+                return last_host_input;
+            },draw.ready.cycles+mk2::live_detail::kRequestCycles);
+            valid_host_admitted=true;
+            while(!stop_requested) {
+                const auto target=continuation.State().ready.cycles+mk2::live_detail::kRequestCycles;
+                continuation=mk2::ResumeValidLiveHost(program,std::move(continuation),*machine,target);
+            }
+            continuation.ValidateBoundary(program,*machine);live_boundary_validated=true;
+            return continuation.State().ready;
+        }
+        auto continuation=std::make_unique<mk2::TaskBatchInit>(mk2::RunValidHostContinuation(
+            program,draw,*machine,[&](uint64_t tick) {
+                ++provider_requests;
+                if(pump_host(tick)) {
+                    last_host_input=window->Inputs({0xffffffffu,0xffffffffu}).in01;
+                    last_host_input_tick=tick;
+                }
+                return last_host_input;
+            },std::min(draw.ready.cycles+2000000,valid_host_range.maximum_stop_cycle)));
+        valid_host_admitted=true;
+        while(!stop_requested && continuation->ready.cycles<valid_host_range.maximum_stop_cycle) {
+            const auto stop=std::min(continuation->ready.cycles+2000000,valid_host_range.maximum_stop_cycle);
+            continuation=std::make_unique<mk2::TaskBatchInit>(
+                mk2::ResumeValidHostContinuation(program,*continuation,*machine,stop));
+        }
+        return continuation->ready;
+    }
+    const auto& draw=generated.Deliver();
+    std::unique_ptr<mk2::TaskBatchInit> continuation;
+    if(through!=L"first-draw") continuation=std::make_unique<mk2::TaskBatchInit>(
+        mk2::RunTranslatedContinuation(program,draw,*machine,
+            through==L"first-fight" ? (host_controls ? int(host_range.start_window) : int(mk2::kFirstFightWindowCount)-1) : -1));
+    if(host_controls) continuation=std::make_unique<mk2::TaskBatchInit>(
+        mk2::RunHostContinuation(program,*continuation,*machine,[&](uint64_t) {
+            if(!window->Pump())throw std::runtime_error("native host-control window closed");
+            return window->Inputs({0xffffffffu,0xffffffffu}).in01;
+            },host_range.start_window,1));
+    if(host_controls) {
+        while(continuation->ready.cycles<host_range.minimum_stop_cycle) {
+            const auto stop=std::min(continuation->ready.cycles+2000000,host_range.minimum_stop_cycle);
+            continuation=std::make_unique<mk2::TaskBatchInit>(
+                mk2::ResumeHostContinuation(program,*continuation,*machine,stop));
+        }
+    }
+    return continuation ? continuation->ready : draw.ready;
+    }();
+    machine->SetScanlineObserver({});
+    const auto live_last_frame_sha256=(cmos_live||test_switch)&&scanout.frames()?Sha256(raster_bytes()):std::string{};
+    machine->dsp.SetDacObserver({});
+    if (sink) sink->Drain();
+    if (frames.is_open()) {
+        frames.close();
+        if (!frames) throw std::runtime_error("transient raster close failed");
+    }
+    if(test_switch) {
+        if(!stop_requested || !machine->TestSwitchAdmitted() || machine->LastMainCycles()!=s.cycles ||
+           machine->ScanlineEvents()!=s.board.scanline_events || s.board.HostInputProviderActive())
+            throw std::runtime_error("MK2 Test Switch requires synchronized state at window close");
+        std::cout<<"{\"scope\":\"mk2-native-test-switch\",\"termination\":\"window_closed\",\"operator_dsw_word\":"
+                 <<s.board.dip_switches<<",\"cpu34\":["<<s.next_pc<<','<<s.status<<','<<s.cycles;
+        for(auto value:s.a)std::cout<<','<<value;
+        for(auto value:s.b)std::cout<<','<<value;
+        std::cout<<"],\"frames\":"<<scanout.frames()<<",\"last_frame_sha256\":\""<<live_last_frame_sha256
+                 <<"\",\"first_input_tick\":"<<service_first_tick<<",\"input_samples\":"<<provider_requests
+                 <<",\"presentation\":"<<window->presentation_json()<<"}\n";
+        return 0;
+    }
+    if ((cmos_live ? (!stop_requested || (valid_host_admitted ?
+                        !machine->ValidCmosLiveHostAdmitted() || !live_boundary_validated : !mk2::ValidCmosDrawBoundary(s))) :
+         cmos_host ? (valid_host_admitted ? s.next_pc!=0xff80dd30 || s.cycles<=valid_host_range.start_cycle ||
+                        s.cycles>valid_host_range.maximum_cycle ||
+                        (!stop_requested && s.cycles<valid_host_range.maximum_stop_cycle) :
+                        !stop_requested || !mk2::ValidCmosDrawBoundary(s)) :
+         cmos_draw ? !mk2::ValidCmosDrawBoundary(s) : cmos_startup ? !mk2::ValidCmosStartupBoundary(s,5) : cmos_boot ? s.next_pc!=0xff811340 || s.cycles!=mk2::OperatorCycle(dsw_word,mk2::OperatorBoundary::Reset) : s.next_pc!=0xff80dd30) || (through==L"first-draw" && s.cycles!=1261260) ||
+        scanout.width()!=400 || scanout.height()!=254 || scanout.frames()!=s.cycles*16/1827925)
+        throw std::runtime_error("native first-draw CPU or complete-raster boundary differs");
+    if (window && !((cmos_host||cmos_live)&&stop_requested)) {
+        window->Frontier(s.next_pc);
+        // Scalar GPU validation runs on the UI thread; wait for its completion, not a fixed delay.
+        const auto deadline=GetTickCount64()+10000;
+        while (((cmos_host||cmos_live)?pump_host(s.cycles*16):window->Pump()) && GetTickCount64()<deadline) {
+            const auto metrics=window->presentation_json();
+            if ((!window->GraphicsValidationEnabled() || ProfilePresentationValue<uint64_t>(metrics,"gpu_validation_frames")) &&
+                ProfilePresentationValue<uint64_t>(metrics,"displayed_frames")) break;
+            Sleep(10);
+        }
+    }
+    std::string saved_profile_sha256,profile_presentation;
+    if(direct_profile) {
+        if(machine->LastMainCycles()!=s.cycles || machine->ScanlineEvents()!=s.board.scanline_events ||
+           (cmos_boot && !mk2::ValidCmosStartupBoundary(s,0)) ||
+           ((cmos_host||cmos_live) && valid_host_admitted &&
+                ((cmos_live ? !machine->ValidCmosLiveHostAdmitted() : !machine->ValidCmosHostAdmitted()) || !s.board.HostInputProviderActive())))
+            throw std::runtime_error("native profile requires the synchronized genuine CPU boundary");
+        if(sink) {
+            const auto blocks=s.cycles*16/2000000;
+            if(source_samples()<blocks*625+1 || output_samples()<blocks*960+1 ||
+               sink->Submitted()!=output_samples() || sink->Completed()!=sink->Submitted() || sink->Underruns())
+                throw std::runtime_error("native profile Windows PCM delivery failed or is incomplete");
+        }
+        if(window) {
+            const bool clean_host_stop=(cmos_host||cmos_live) && stop_requested;
+            const auto confirm_window=[&] {
+                const bool running=window->Pump();
+                window->Pump(); // Surface a failure published around the running/close observation.
+                if(!running && !clean_host_stop)throw std::runtime_error("native profile window closed before successful completion");
+            };
+            confirm_window();profile_presentation=window->presentation_json();
+            ValidateProfilePresentation(profile_presentation,clean_host_stop,!cmos_live||window->GraphicsValidationEnabled());
+            confirm_window(); // Check again after the metrics snapshot, before any durable write.
+        }
+        saved_profile_sha256=mk2::CompareAndSwapCmosProfile(std::filesystem::path(profile_path),
+            mk2::EncodeCmosImage(s.cmos),loaded_profile.sha256);
+    }
+    const bool extended=through!=L"first-draw";
+    std::cout<<"{\"scope\":\""<<(cmos_live?"mk2-native-cmos-live-experiment":cmos_host?"mk2-native-cmos-host-check":cmos_draw?"mk2-native-cmos-draw-check":cmos_startup?"mk2-native-cmos-startup-check":cmos_boot?"mk2-native-cmos-boot-check":host_controls?"mk2-native-host-controls-check":extended?"mk2-native-translated-continuation-check":"mk2-native-first-draw-check")
+             <<"\",\"gameplay_complete\":false,\"through\":\""<<std::string(through.begin(),through.end())
+             <<"\",\"termination\":\""<<(cmos_live?"valid_cmos_live_stop_requested":cmos_host?(stop_requested?"finite_valid_cmos_host_stop_requested":"finite_valid_cmos_host_boundary"):cmos_draw?"finite_valid_cmos_draw_complete":cmos_startup?"finite_valid_cmos_startup_complete":cmos_boot?"finite_valid_cmos_boot_complete":host_controls?"finite_host_cooperative_boundary":extended?"translated_frontier_reached":"finite_diagnostic_complete")
+             <<"\",\"execution_continues\":false,"
+             <<"\"frontier_pc\":"<<s.next_pc<<",\"operator_dsw_word\":"<<s.board.dip_switches<<','
+             <<"\"input\":\""<<(cmos_live?"valid-cmos-live-keyboard-xinput":cmos_host?"valid-cmos-host-keyboard-xinput-finite":cmos_draw?"qualified-valid-cmos-draw-prefix":cmos_startup?"qualified-valid-cmos-startup-prefix":cmos_boot?"qualified-valid-cmos-prefix":host_controls?"host-keyboard-xinput-finite":extended?"fixed-measured-route":"qualified-fixed-prefix")
+             <<"\",\"audio_playback\":"<<(sink?"true":"false")<<",\"cpu34\":["
+             <<s.next_pc<<','<<s.status<<','<<s.cycles;
+    for (auto value:s.a) std::cout<<','<<value;
+    for (auto value:s.b) std::cout<<','<<value;
+    std::cout<<"],\"frames\":"<<scanout.frames()<<",\"width\":"<<scanout.width()
+             <<",\"height\":"<<scanout.height()<<",\"frame_sha256\":[";
+    for (size_t n=0;n<hashes.size();++n) std::cout<<(n?",":"")<<'"'<<hashes[n]<<'"';
+    std::cout<<"],\"host_controls\":";
+    if(cmos_live) {
+        std::cout<<"{\"origin\":\"valid_cmos_live\",\"overall_cycle_limit\":null,\"chunk_request_cycles\":"<<mk2::live_detail::kRequestCycles
+                 <<",\"chunk_deadline\":"<<(valid_host_admitted?machine->LiveHostDeadline():0)
+                 <<",\"provider_admitted\":"<<(valid_host_admitted?"true":"false")<<",\"provider_requests\":"<<provider_requests
+                 <<",\"stop_requested\":"<<(stop_requested?"true":"false")<<",\"last_input\":"<<last_host_input
+                 <<",\"last_input_tick\":"<<last_host_input_tick<<",\"stop_observed_tick\":"<<stop_observed_tick
+                 <<",\"bounded_observations\":true,\"input_event_count\":"<<s.board.LiveInputEventCount()
+                 <<",\"last_frame_sha256\":\""<<live_last_frame_sha256<<"\",\"events\":[";
+        for(size_t n=0;n<s.board.input_events.size();++n) {
+            const auto& event=s.board.input_events[n];std::cout<<(n?",":"")<<'['<<event[0]<<','<<event[1]<<','<<event[2]<<','<<event[3]<<']';
+        }
+        std::cout<<"]}";
+    } else if(cmos_host) {
+        std::cout<<"{\"origin\":\"valid_cmos_draw\",\"start_cycle\":"<<valid_host_range.start_cycle
+                 <<",\"stop_after_cycle\":"<<valid_host_range.maximum_stop_cycle
+                 <<",\"maximum_cycle\":"<<valid_host_range.maximum_cycle
+                 <<",\"provider_admitted\":"<<(valid_host_admitted?"true":"false")
+                 <<",\"provider_requests\":"<<provider_requests
+                 <<",\"stop_requested\":"<<(stop_requested?"true":"false")
+                 <<",\"last_input\":"<<last_host_input<<",\"last_input_tick\":"<<last_host_input_tick
+                 <<",\"stop_observed_tick\":"<<stop_observed_tick<<",\"events\":[";
+        for(size_t n=0;n<s.board.input_events.size();++n) {
+            const auto& event=s.board.input_events[n];
+            std::cout<<(n?",":"")<<'['<<event[0]<<','<<event[1]<<','<<event[2]<<','<<event[3]<<']';
+        }
+        std::cout<<"]}";
+    } else if(host_controls) {
+        std::cout<<"{\"start_window\":"<<host_range.start_window
+                 <<",\"stop_window\":"<<mk2::kFirstFightWindowCount-2
+                 <<",\"start_cycle\":"<<host_range.start_cycle
+                 <<",\"minimum_stop_cycle\":"<<host_range.minimum_stop_cycle
+                 <<",\"maximum_cycle\":"<<host_range.maximum_cycle<<",\"events\":[";
+        for(size_t n=20;n<s.board.input_events.size();++n) {
+            const auto& event=s.board.input_events[n];
+            std::cout<<(n==20?"":",")<<'['<<event[0]<<','<<event[1]<<','<<event[2]<<','<<event[3]<<']';
+        }
+        std::cout<<"]}";
+    } else std::cout<<"null";
+    std::cout<<",\"audio\":";
+    if (sink) {
+        std::cout<<"{\"source_rate\":31250,\"output_rate\":48000,\"channels\":"<<(music?2:1)<<",\"source_samples\":"<<source_samples()
+                 <<",\"output_samples\":"<<output_samples()<<",\"music_mode\":\""<<(music?"remastered":"original")<<'"'
+                 <<",\"music_starts\":"<<(music?music->Starts():0)<<",\"music_clipped\":"<<(music?music->Clipped():audio->Clipped())
+                 <<",\"music_limited\":"<<(music?music->Limited():audio->Limited())<<",\"submitted\":"<<sink->Submitted()
+                 <<",\"completed\":"<<sink->Completed()<<",\"underruns\":"<<sink->Underruns()
+                 <<",\"queue_capacity_ms\":"<<sink->QueueCapacityMs()<<",\"startup_reserve_ms\":"<<sink->StartupReserveMs()
+                 <<",\"max_producer_gap_ms\":"<<sink->MaxProducerGapMs()<<'}';
+    } else std::cout<<"null";
+    std::cout<<",\"presentation\":"<<(direct_profile && window ? profile_presentation : window?window->presentation_json():"null");
+    if(direct_profile) {
+        std::cout<<",\"profile\":{\"loaded_sha256\":\""<<loaded_profile.sha256
+                 <<"\",\"saved_sha256\":\""<<saved_profile_sha256<<"\",\"committed\":true}";
+    }
+    if(persisted && !direct_profile) {
+        std::cout<<",\"cmos_hex\":\"";
+        constexpr char digits[]="0123456789abcdef";
+        for(auto byte:mk2::EncodeCmosImage(s.cmos))std::cout<<digits[byte>>4]<<digits[byte&15];
+        std::cout<<'"';
+    }
+    std::cout<<"}\n";
+    return 0;
+} catch(const std::exception& error) {std::cerr<<error.what()<<'\n';replay.Write(std::cerr);return 1;} }

@@ -1,0 +1,25 @@
+* text=auto
+*.cpp text eol=lf
+*.hpp text eol=lf
+*.h text eol=lf
+*.hxx text eol=lf
+*.inc text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.ps1 text eol=crlf
+*.png binary
+*.jpg binary
+*.bin binary
+# Native package pins authenticate exact source bytes, including line endings.
+native/mk2/** -text whitespace=trailing-space,space-before-tab,cr-at-eol
+native/include/mk5_audio_output.hpp -text whitespace=trailing-space,space-before-tab,cr-at-eol
+native/include/mk5_crt.hpp -text whitespace=trailing-space,space-before-tab,cr-at-eol
+native/include/mk5_crt_shader.hpp -text whitespace=trailing-space,space-before-tab,cr-at-eol
+native/src/mk5_audio_output.cpp -text whitespace=trailing-space,space-before-tab,cr-at-eol
+native/src/mk5_window.cpp -text whitespace=trailing-space,space-before-tab,cr-at-eol
+# Keep the MK2 qualification fixtures and their test/source hashes reproducible.
+native/launcher/** -text whitespace=trailing-space,space-before-tab,cr-at-eol
+native/tests/mk2* -text whitespace=trailing-space,space-before-tab,cr-at-eol
+tools/mk2/** -text whitespace=trailing-space,space-before-tab,cr-at-eol
+tools/quality/run.py -text whitespace=trailing-space,space-before-tab,cr-at-eol

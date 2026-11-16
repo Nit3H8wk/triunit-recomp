@@ -1,0 +1,135 @@
+{
+  "repository": "https://github.com/mamedev/mame",
+  "commit": "4f9dcc832cc0089de2451696320f671e87da79f4",
+  "purpose": "Reference semantics and debugger/scheduler research only; not linked into the native product. Files retain upstream license headers.",
+  "files": [
+    {
+      "file": "adsp2100.cpp",
+      "source": "src/devices/cpu/adsp2100/adsp2100.cpp",
+      "sha256": "2a5bc4f71e750f0a57322ed8ba91763ff60fdc9cf9625ba90caff77925459496"
+    },
+    {
+      "file": "adsp2100.h",
+      "source": "src/devices/cpu/adsp2100/adsp2100.h",
+      "sha256": "1cfbfc60573a283e9622cc8cf8bed27ed4fc44b8ecf23887eb38024ff049eca2"
+    },
+    {
+      "file": "2100ops.hxx",
+      "source": "src/devices/cpu/adsp2100/2100ops.hxx",
+      "sha256": "6986d6b1c56598a7f136ddf46604e3d56ad395d42a9471acedfae8c6ee3b8b14"
+    },
+    {
+      "file": "2100dasm.cpp",
+      "source": "src/devices/cpu/adsp2100/2100dasm.cpp",
+      "sha256": "0a89ae5e19236b3af131a929ab20af3baa5705fd58b10621848181d8f8937d60"
+    },
+    {
+      "file": "2100dasm.h",
+      "source": "src/devices/cpu/adsp2100/2100dasm.h",
+      "sha256": "4e343fe1898c077e3aac060a0f35db2de669632d31ba44cabf3496915e261317"
+    },
+    {
+      "file": "tms34010.cpp",
+      "source": "src/devices/cpu/tms34010/tms34010.cpp",
+      "sha256": "754418b353b0856f6daed8a90abefb14df6a05284d5f923ea7772cb8c21467a2"
+    },
+    {
+      "file": "schedule.cpp",
+      "source": "src/emu/schedule.cpp",
+      "sha256": "d7a54f21126144df71ba9a4b40fc3451c5bef1096fe96f89653922015b3c21f9"
+    },
+    {
+      "file": "diexec.cpp",
+      "source": "src/emu/diexec.cpp",
+      "sha256": "4205a1f2cc15ca8fa358646faea259c14dcbeaa83137ed996fe1ede8beb03fe7"
+    },
+    {
+      "file": "debugcpu.cpp",
+      "source": "src/emu/debug/debugcpu.cpp",
+      "sha256": "efe3378d331c9f2f15f3a16d1f88ae7797badb923b9f74226dcd60540ecbe3ee"
+    },
+    {
+      "file": "debugcmd.cpp",
+      "source": "src/emu/debug/debugcmd.cpp",
+      "sha256": "44a375b417db2bcca9b83fffb74bb1ec6c98522f9db9a5f06d1bef8bef0e7f71"
+    },
+    {
+      "file": "distate.cpp",
+      "source": "src/emu/distate.cpp",
+      "sha256": "551294f5eb64b22741fdff49a2ecdf4703370461d3b7fd11e3450d51eae0937b"
+    },
+    {
+      "file": "distate.h",
+      "source": "src/emu/distate.h",
+      "sha256": "25775d4d6c89689449a5c1c1a82aa4a798c8c0184edf16fc674031cb637ef12c"
+    },
+    {
+      "file": "dmadac.h",
+      "source": "src/devices/sound/dmadac.h",
+      "sha256": "e875ad74b44e2eb53bd508a53d195349c615cc5473e9504e0dd55102c2e13d1b"
+    },
+    {
+      "file": "dmadac.cpp",
+      "source": "src/devices/sound/dmadac.cpp",
+      "sha256": "0f3b4689484f2577a640d2af95a32378d824003a8af3722653fdcf749712da1b"
+    },
+    {
+      "file": "sound.cpp",
+      "source": "src/emu/sound.cpp",
+      "sha256": "048ea73c79dbfce255b30257dcfa9e09711ffe38dd73dd9ba6ad021f77d7cce4"
+    },
+    {
+      "file": "sound.h",
+      "source": "src/emu/sound.h",
+      "sha256": "b5e8e11e303d7774e2da8f94dc00e726a8e0a7288476f07fe4498c0bc7eb0eee"
+    },
+    {
+      "file": "disound.cpp",
+      "source": "src/emu/disound.cpp",
+      "sha256": "d65485c3597fbd93f6c8e16ce1c51204974fe58c8af4a846423eb2fd805df87c"
+    },
+    {
+      "file": "disound.h",
+      "source": "src/emu/disound.h",
+      "sha256": "fb1e938113a21aa8fa228dea42f2c9e3e1c4c9f42d6c247426759a4962a7fa4c"
+    },
+    {
+      "file": "screen.cpp",
+      "source": "src/emu/screen.cpp",
+      "sha256": "13548d4e09fc9cc8f07536f99ae0c32acdbc14ddca962ffeaa9da8dd3216c5a6"
+    },
+    {
+      "file": "screen.h",
+      "source": "src/emu/screen.h",
+      "sha256": "a3ee394293462d5f4319349b09d8c70209ab9dce73dc58925508d633c7f4631b"
+    },
+    {
+      "file": "attotime.cpp",
+      "source": "src/emu/attotime.cpp",
+      "sha256": "bb397e1b1cf1908ad01471d40904cf8cfd362de74a1aa0a2e9e04e9a2dc52ec5"
+    },
+    {
+      "file": "attotime.h",
+      "source": "src/emu/attotime.h",
+      "sha256": "a712bcf59c83af0ef38d64f15aa982427380377e3703443e5d7dad543efe15dd"
+    },
+    {
+      "file": "diexec.h",
+      "source": "src/emu/diexec.h",
+      "url": "https://raw.githubusercontent.com/mamedev/mame/4f9dcc832cc0089de2451696320f671e87da79f4/src/emu/diexec.h",
+      "bytes": 13988,
+      "sha256": "9c7dad8cbc1a1d52d166623a9ea349488c8b21748a923aeba95acb98cf3b5273",
+      "archived": "2026-11-10",
+      "reason": "eat_cycles (dcs.cpp data_r on an empty latch, K1), cycles_to_attotime, set_input_line"
+    },
+    {
+      "file": "dcs.h",
+      "source": "src/mame/shared/dcs.h",
+      "url": "https://raw.githubusercontent.com/mamedev/mame/4f9dcc832cc0089de2451696320f671e87da79f4/src/mame/shared/dcs.h",
+      "bytes": 12565,
+      "sha256": "0492fe59c6d57dbe28080722f10d9e1c9f09467800a1c34001835e8813510c08",
+      "archived": "2026-11-10",
+      "reason": "dcs_audio_device timer member types (m_timer_*), used by the K2 internal-timer model"
+    }
+  ]
+}

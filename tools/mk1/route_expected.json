@@ -1,0 +1,49 @@
+{
+ "schema": "mk1-route-expected/1",
+ "program_sha256": "ae1e5b310c6e512168b2ab7ff796a7656656898cf82ea98735bed0cd12288a06",
+ "note": "comparison_sha256: SHA-256 of the route comparison object (canonical JSON, sorted keys, no spaces) with the CMOS seed of the setup (tools/setup/mk1.make_seed, 870c3244..., equal to MAME's factory nvram), re-pinned 16/11/2026; the same probe with the retired versioned seed (17e7e10f...) still gives the digests measured on 15/11 (front D, graphs equal to the installed engine 42bcd5a4...). tape_sha256: the probe text rendered from tapes/<route>.json (events after end_frame removed: the replay never reads them); full_tape_crlf_sha256: the recorded replay of the original receipts.",
+ "routes": {
+  "finish-continue-reselect": {
+   "end_frame": 8859,
+   "tape_sha256": "593866dfa6142acf5d7cd1a430a75052ef81a82f1f18f6fc5648865276005d1e",
+   "full_tape_crlf_sha256": "ae9dbc8a33eca2fa46cf943df506ab6f6c0d4ae60360b18798442af8e666d0b4",
+   "comparison_sha256": "5a9daa65e4a0d2913eb43afda57a57ebb0a7c9b16639e8f1d00e1b3d986ba16e"
+  },
+  "versus-a": {
+   "end_frame": 3832,
+   "tape_sha256": "43eb4fa01911582504537c3d7dd04eae13c66c59f0e39d4787ac11d9285320cc",
+   "full_tape_crlf_sha256": "16a3a4a0c56d636bae41dce5cc680e8f3d05779f6039fe91a04b39a5d548a9ee",
+   "comparison_sha256": "10d9e9d1e854cf9abae5c1e1d8d324d473196477ca3f13d8841bc42d1351e142"
+  },
+  "versus-b": {
+   "end_frame": 3900,
+   "tape_sha256": "acd760471f0eff370929c4815ac57435655406508fd8dd25187461fa45378a91",
+   "full_tape_crlf_sha256": "b233563a82145cc047969fcfb1dfe46e09a5cc6984dc20d72be2f74de2b21099",
+   "comparison_sha256": "782f8fc937c794e2c65fa41ae011d55de7ef86ac5b131029e0e0a5083a336e54"
+  },
+  "versus-a-aligned": {
+   "end_frame": 3892,
+   "tape_sha256": "ac74a08355ef852cb174ccb838d6d148de190999e010b85b6f26e527c14e2d78",
+   "full_tape_crlf_sha256": "ac680b9d821ce25ccd4d577a3c000385e40c99b12dc33b15360aad6e14ab1815",
+   "comparison_sha256": "82383d81387c5eae43a8fec96a81428ce78566a7a03db8aeb530fb3d65aa0a78"
+  },
+  "versus-b-aligned": {
+   "end_frame": 3960,
+   "tape_sha256": "524295da9027e328d3a272d8502caa7139bd21afb633452ce167bf9641bb008b",
+   "full_tape_crlf_sha256": "be512ba6509993ed50f1d375cd49bb81a4abb08006ea7e28cd8d5967606ff32a",
+   "comparison_sha256": "179b589ee6fa98398192d2f3cd4db975033facb010013964fc6baa75769e1a58"
+  },
+  "campaign-projection": {
+   "end_frame": 4000,
+   "tape_sha256": "fead28b3d646b9c5b3c957742d316b960846b71a776a1714f9d93fb552717ba7",
+   "full_tape_crlf_sha256": "b4da63bcd59ae5b69a5ee08fc8df83213298362e66ebd647ad89c37ac373670d",
+   "comparison_sha256": "8f33955ac82b4873435aa249fb2fd3c4d2642b4637904a58e1fc6dd60039da50"
+  },
+  "campaign-prefix": {
+   "end_frame": 16000,
+   "tape_sha256": "91729daa03045c8398875e70823e0da236434dab6610404fdeccf90ea6c4c92e",
+   "full_tape_crlf_sha256": "b4da63bcd59ae5b69a5ee08fc8df83213298362e66ebd647ad89c37ac373670d",
+   "comparison_sha256": "6b488c60287efef60bd8f8398e887d2227faadc444a5d2b6ed3e0d221cd554ee"
+  }
+ }
+}

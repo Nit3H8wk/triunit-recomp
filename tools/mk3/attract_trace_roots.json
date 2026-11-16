@@ -1,0 +1,41 @@
+{
+ "format": "MK3_ATTRACT_TRACE_ROOTS_V1",
+ "rule": "Original PCs and computed-transfer destinations of the traces that the static closure without trace roots (vectors + measured + pointer candidates + GETPC/ADDI continuations, tools/mk3/generate.py) does not contain; candidate roots, not verified",
+ "traces": [
+  {
+   "path": "build/native/mk3-m2/j1-trace-folded-roots.json.gz",
+   "sha256": "59134ea3adf93b28773e09bdbd7d3efa83710bea21c46dd5857c2eb15d72f792",
+   "route": "reset -> attract, inputs at rest, CMOS seed, default DIPs",
+   "seconds_emulated": 120,
+   "mode": "folded (MAME loop detection: PC set complete, pairs a subset)",
+   "distinct_pcs": 4364,
+   "distinct_pairs": 706,
+   "identities": {
+    "core_sha256": "84b690dad588253139ea49ae5e3c9fcddf9df7bcd526fccd1724ec7e09120dec",
+    "program_sha256": "1bc7a53a023f15b20f01398f87e38478a27c670df27ea320e36125d0957ee651",
+    "seed_sha256": "150526f67ddc165cd94229fe8b0f0402d0ef55b1b70297473c1e4c23e9d90520"
+   }
+  },
+  {
+   "path": "build/native/mk3-m2/j2-trace-folded-roots.json.gz",
+   "sha256": "0773d6d2226c899bc6acf6a4815322322b172533a188639dcaa1d02fa03b39c0",
+   "route": "reset -> attract, inputs at rest, CMOS seed, default DIPs",
+   "seconds_emulated": 240,
+   "mode": "folded (MAME loop detection: PC set complete, pairs a subset)",
+   "distinct_pcs": 9605,
+   "distinct_pairs": 2851,
+   "identities": {
+    "core_sha256": "84b690dad588253139ea49ae5e3c9fcddf9df7bcd526fccd1724ec7e09120dec",
+    "program_sha256": "1bc7a53a023f15b20f01398f87e38478a27c670df27ea320e36125d0957ee651",
+    "seed_sha256": "150526f67ddc165cd94229fe8b0f0402d0ef55b1b70297473c1e4c23e9d90520"
+   }
+  }
+ ],
+ "closure_without_trace_roots": 84052,
+ "outside": {
+  "pcs": 8,
+  "destinations": 5,
+  "union": 8
+ },
+ "roots": "ffa77990 ffa779c0 ffa77a40 ffa77a60 ffa77a80 ffa7b050 ffa7b080 ffa7b0a0"
+}

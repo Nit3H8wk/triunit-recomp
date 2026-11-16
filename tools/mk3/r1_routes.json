@@ -1,0 +1,17 @@
+{"schema":"mk3-r1-routes/1","note":"K2 R1 versus routes planned natively (Profile::Game, tools/mk3/versus.py plan_one): tape = versus.route_tape(spec); fight = cycle of the first DCS 0x233D/0x233E low byte (sound 0x10); horizon = fight + 15 s + 1 frame; arena = RAM word 0x1062210 at the native END (explored natively; the route comparison makes it the Original's)","note_chain":"versus_chain: versus.chain_tape(spec); 3 consecutive versus matches (first arena 9 by the coin-in shift; the loser buys back in with 2 coins and its Start at joins[].cycle and selects with High Punch select_after later); fights/wins = DCS cycles of round start (0x233D/0x233E) and of the win sound 0x2337 the attack rows depend on (versus.plan_chain); arenas = RAM 0x1062210 at each match's first round start natively; chars = word 0 of the P1/P2 blocks there","routes":[
+{"name":"versus00","p1":0,"p2":1,"shift":0,"seed":1000,"fight":213312410,"fight_command":9021,"horizon":307166576,"arena":7},
+{"name":"versus01","p1":1,"p2":2,"shift":781250,"seed":1001,"fight":211022121,"fight_command":9021,"horizon":304876287,"arena":3},
+{"name":"versus02","p1":2,"p2":3,"shift":2343750,"seed":1002,"fight":215710446,"fight_command":9021,"horizon":309564612,"arena":4},
+{"name":"versus03","p1":3,"p2":4,"shift":3125000,"seed":1003,"fight":214796494,"fight_command":9021,"horizon":308650660,"arena":4},
+{"name":"versus04","p1":4,"p2":5,"shift":3906250,"seed":1004,"fight":215823762,"fight_command":9021,"horizon":309677928,"arena":2},
+{"name":"versus05","p1":5,"p2":6,"shift":5468750,"seed":1005,"fight":217308781,"fight_command":9021,"horizon":311162947,"arena":2},
+{"name":"versus06","p1":6,"p2":7,"shift":6250000,"seed":1006,"fight":221652973,"fight_command":9021,"horizon":315507139,"arena":6},
+{"name":"versus07","p1":7,"p2":8,"shift":7031250,"seed":1007,"fight":217196381,"fight_command":9022,"horizon":311050547,"arena":1},
+{"name":"versus08","p1":8,"p2":9,"shift":8593750,"seed":1008,"fight":222456475,"fight_command":9021,"horizon":316310641,"arena":8},
+{"name":"versus09","p1":9,"p2":10,"shift":9375000,"seed":1009,"fight":223020970,"fight_command":9022,"horizon":316875136,"arena":5},
+{"name":"versus10","p1":10,"p2":11,"shift":10156250,"seed":1010,"fight":225422133,"fight_command":9022,"horizon":319276299,"arena":1},
+{"name":"versus11","p1":11,"p2":12,"shift":11718750,"seed":1011,"fight":225652525,"fight_command":9021,"horizon":319506691,"arena":9},
+{"name":"versus12","p1":12,"p2":13,"shift":12500000,"seed":1012,"fight":219250798,"fight_command":9022,"horizon":313104964,"arena":5},
+{"name":"versus13","p1":13,"p2":0,"shift":13281250,"seed":1213,"fight":226913368,"fight_command":9021,"horizon":320767534,"arena":2},
+{"name":"versus_chain","p1":11,"p2":12,"shift":11718750,"first_fight":225652525,"attackers":["p1","p1","p2","p2","p1"],"joins":[{"cycle":410000000,"side":"p2","select_after":30000000},{"cycle":742000000,"side":"p1","select_after":40000000}],"fights":[225652525,308137588,567008260,652121085,900042532],"wins":[285306068,386984012,629973887,718513885],"horizon":906292532,"arenas":[9,10,0],"chars":[[11,12],[12,13],[12,13]]}
+]}

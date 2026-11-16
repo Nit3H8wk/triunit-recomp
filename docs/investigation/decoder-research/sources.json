@@ -1,0 +1,41 @@
+{
+  "commit": "4f9dcc832cc0089de2451696320f671e87da79f4",
+  "sources": [
+    {
+      "file": "34010dsm.cpp",
+      "url": "https://raw.githubusercontent.com/mamedev/mame/4f9dcc832cc0089de2451696320f671e87da79f4/src/devices/cpu/tms34010/34010dsm.cpp",
+      "sha256": "b22aac2a8e3a1d328cc2ffb175e3706756066ded55060a12f8772ea2f03af74d",
+      "bytes": 31157
+    },
+    {
+      "file": "34010dsm.h",
+      "url": "https://raw.githubusercontent.com/mamedev/mame/4f9dcc832cc0089de2451696320f671e87da79f4/src/devices/cpu/tms34010/34010dsm.h",
+      "sha256": "9c0446b12c49eed6b4fe42f8e7ac645b7ab61568c7c52d8c255941b86425c4a2",
+      "bytes": 1985
+    },
+    {
+      "file": "34010ops.hxx",
+      "url": "https://raw.githubusercontent.com/mamedev/mame/4f9dcc832cc0089de2451696320f671e87da79f4/src/devices/cpu/tms34010/34010ops.hxx",
+      "sha256": "5596e7ca123d3d91e7dd7dc83538a1b05a83489b6abe80ac5e013748bd7d721f",
+      "bytes": 104707
+    },
+    {
+      "file": "tms34010.h",
+      "url": "https://raw.githubusercontent.com/mamedev/mame/4f9dcc832cc0089de2451696320f671e87da79f4/src/devices/cpu/tms34010/tms34010.h",
+      "sha256": "9c3c654e849c0f381a36a918c96121a6cfafd95f9c96d3a83073728e22a715eb",
+      "bytes": 41566
+    },
+    {
+      "file": "34010tbl.hxx",
+      "url": "https://raw.githubusercontent.com/mamedev/mame/4f9dcc832cc0089de2451696320f671e87da79f4/src/devices/cpu/tms34010/34010tbl.hxx",
+      "sha256": "98d3c0392fef20d0d21e9c15d66fc90d2625f657bf05d1e0a7fc9f53333b1cb7",
+      "bytes": 256185
+    },
+    {
+      "file": "34010fld.hxx",
+      "url": "https://raw.githubusercontent.com/mamedev/mame/4f9dcc832cc0089de2451696320f671e87da79f4/src/devices/cpu/tms34010/34010fld.hxx",
+      "sha256": "356feabb6d1b90a09b1aafbd1dda0499829b6904ffcede60f019d08a3fdaa93e",
+      "bytes": 14607
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+ "format": "MK3_ROUTE_TRACE_ROOTS_V1",
+ "rule": "Original PCs and computed-transfer destinations of the reset -> round start and reset -> game over traces that the closure with the J2 roots does not contain; candidate roots, not verified",
+ "traces": [
+  {
+   "path": "build/native/mk3-m2/j3-trace-folded-roots.json.gz",
+   "sha256": "f38c81234a88d369b2829596ef07d32fe3383fa3ca542f53a94d96fc91ba1c15",
+   "route": "reset -> round start (tools/mk3/fight_route.tape), CMOS seed, default DIPs",
+   "tape": "tools/mk3/fight_route.tape",
+   "seconds_emulated": 47,
+   "mode": "folded (MAME loop detection: PC set complete, pairs a subset)",
+   "distinct_pcs": 8008,
+   "distinct_pairs": 1312,
+   "identities": {
+    "core_sha256": "84b690dad588253139ea49ae5e3c9fcddf9df7bcd526fccd1724ec7e09120dec",
+    "program_sha256": "1bc7a53a023f15b20f01398f87e38478a27c670df27ea320e36125d0957ee651",
+    "seed_sha256": "150526f67ddc165cd94229fe8b0f0402d0ef55b1b70297473c1e4c23e9d90520"
+   }
+  },
+  {
+   "path": "build/native/mk3-m2/j3-match-trace-folded-roots.json.gz",
+   "sha256": "cea738b86e5f123c58d5a239bf64a5314b96f4ab8dba372f29e3f594ac183ff8",
+   "route": "reset -> game over (tools/mk3/fight_route.tape, P1 idle after the select press), CMOS seed, default DIPs",
+   "tape": "tools/mk3/fight_route.tape",
+   "seconds_emulated": 103,
+   "mode": "folded (MAME loop detection: PC set complete, pairs a subset)",
+   "distinct_pcs": 10613,
+   "distinct_pairs": 2543,
+   "identities": {
+    "core_sha256": "84b690dad588253139ea49ae5e3c9fcddf9df7bcd526fccd1724ec7e09120dec",
+    "program_sha256": "1bc7a53a023f15b20f01398f87e38478a27c670df27ea320e36125d0957ee651",
+    "seed_sha256": "150526f67ddc165cd94229fe8b0f0402d0ef55b1b70297473c1e4c23e9d90520"
+   }
+  }
+ ],
+ "closure_with_j2_roots": 84078,
+ "outside": {
+  "pcs": 38,
+  "destinations": 15,
+  "union": 38
+ },
+ "roots": "ffa7b180 ffa7f2f0 ffa7f320 ffa7f330 ffa7f350 ffa7f360 ffa7f390 ffa7f3b0 ffa7f3d0 ffa7f400 ffa7f4b0 ffa7f4c0 ffa7f4e0 ffa7f4f0 ffa7f520 ffa7f550 ffa7f570 ffa7f580 ffa7f5a0 ffa7f5b0 ffa7f5e0 ffa7f600 ffaacbe0 ffaacc10 ffaacc20 ffaacc40 ffaacc50 ffaacc80 ffaacca0 ffaaccd0 ffaacd00 ffaacd30 ffaacd60 ffaacd90 ffaacda0 ffaacdd0 ffaace00 ffaace30"
+}

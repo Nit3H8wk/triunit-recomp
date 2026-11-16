@@ -1,0 +1,278 @@
+{
+  "game": "mk3",
+  "revision": "2.1",
+  "machine": "mk3",
+  "driver": "midway/midwunit.cpp",
+  "board": "Wolf-Unit",
+  "cpu": "TMS34010 50 MHz",
+  "sound": "DCS Audio 8K (ADSP-2105 10 MHz)",
+  "security": "midway_serial_pic_sim upper=528",
+  "source": "docs/investigation/sources/midwunit.cpp",
+  "source_sha256": "225aac386489085ed86163873f79cb19abba48091cb262cb344ac9182b4bcc30",
+  "source_commit": "4f9dcc832cc0089de2451696320f671e87da79f4",
+  "rom_count": 26,
+  "program_sha256": "1bc7a53a023f15b20f01398f87e38478a27c670df27ea320e36125d0957ee651",
+  "reset_vector": "0xff8148b0",
+  "roms": [
+    {
+      "path": "l1_mortal_kombat_3_u2_music_spch.u2",
+      "region": "dcs",
+      "offset_bytes": 0,
+      "stride_bytes": 2,
+      "size": 1048576,
+      "crc32": "5273436f",
+      "sha1": "e1735842a0159eafe79d878d44e3828df9bfa5bb",
+      "sha256": "eeffa20b1b436860682874464cc17efee597fdaa96c0bda34bd7e949072ffda6"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u3_music_spch.u3",
+      "region": "dcs",
+      "offset_bytes": 2097152,
+      "stride_bytes": 2,
+      "size": 1048576,
+      "crc32": "856fe411",
+      "sha1": "6165ebecfce7500e948d84492ffa19eed7f47091",
+      "sha256": "400ced5872282ce764a36126425af463db512aeb067825d6ce58b1fad6bb3d8f"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u4_music_spch.u4",
+      "region": "dcs",
+      "offset_bytes": 4194304,
+      "stride_bytes": 2,
+      "size": 1048576,
+      "crc32": "428a406f",
+      "sha1": "e70ec83cd054de0da1e178720ed0035b8887f797",
+      "sha256": "ab37271fcf97899ed23a4d38f0b02faf959420228e9b48331aeeedc56b1db500"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u5_music_spch.u5",
+      "region": "dcs",
+      "offset_bytes": 6291456,
+      "stride_bytes": 2,
+      "size": 1048576,
+      "crc32": "3b98a09f",
+      "sha1": "edf1d02a56dcf3349e6b4bb4097acfe7592305f4",
+      "sha256": "e310a81231c5de8a152bf3d36addd347b113869920801d258a87535e6eae8ada"
+    },
+    {
+      "path": "mk321u54.bin",
+      "region": "maincpu",
+      "offset_bytes": 0,
+      "stride_bytes": 2,
+      "size": 524288,
+      "crc32": "9e344401",
+      "sha1": "5760b355f0a5c27c9746f33abfdedf4302f1af38",
+      "sha256": "a25c96de36aa905921f561b17b93f5057c6810fbaf7f5c25e6453991d892ff29"
+    },
+    {
+      "path": "mk321u63.bin",
+      "region": "maincpu",
+      "offset_bytes": 1,
+      "stride_bytes": 2,
+      "size": 524288,
+      "crc32": "64d34776",
+      "sha1": "d8f09e1e946dc13fec5e9f83fdaf61d4076ba9ea",
+      "sha256": "96e5078af61e8e07882762b4e3de0f234ff3088bd0e36aa3ebea85e3eebb8440"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u133_game_rom.u133",
+      "region": "video",
+      "offset_bytes": 0,
+      "stride_bytes": 4,
+      "size": 1048576,
+      "crc32": "79b94667",
+      "sha1": "31bba640c351fdccc6685cadb74dd79a3f910ce8",
+      "sha256": "d21bdfacc863467752823eda209e77178c959e68854809905f485248d7c53516"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u132_game_rom.u132",
+      "region": "video",
+      "offset_bytes": 1,
+      "stride_bytes": 4,
+      "size": 1048576,
+      "crc32": "13e95228",
+      "sha1": "405b05f5a5a55667c2be17d4b399129bdacefd90",
+      "sha256": "3fff35211e5468fd0d22c67bce10743cb76a62aa4d2e0ead81a0cd4b6d50f198"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u131_game_rom.u131",
+      "region": "video",
+      "offset_bytes": 2,
+      "stride_bytes": 4,
+      "size": 1048576,
+      "crc32": "41001e30",
+      "sha1": "2cec91116771951c0380cec5debf4cbb40c14c61",
+      "sha256": "fa6f490a23d3f1016bca6aeb18bb10a9c1a195c40fb0e8eff3cff5e13eb140a6"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u130_game_rom.u130",
+      "region": "video",
+      "offset_bytes": 3,
+      "stride_bytes": 4,
+      "size": 1048576,
+      "crc32": "49379dd7",
+      "sha1": "e6dfab4e23d9cc38ae56c1bbf10ccd160e8fad5e",
+      "sha256": "47472a4dcefe04e53913ccbb8df753a6a08f97be9c2fa813b53a6180c46dbfc4"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u129_game_rom.u129",
+      "region": "video",
+      "offset_bytes": 4194304,
+      "stride_bytes": 4,
+      "size": 1048576,
+      "crc32": "a8b41803",
+      "sha1": "9697e35e8bb51d6d36b1d7ae47377b446e57682f",
+      "sha256": "de011a73ae5b5be7068aecd9ead03e200183bb630f94698b747687c906f2197e"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u128_game_rom.u128",
+      "region": "video",
+      "offset_bytes": 4194305,
+      "stride_bytes": 4,
+      "size": 1048576,
+      "crc32": "b410d72f",
+      "sha1": "ac5c1c6f744186540f4ab100d9bd4ce6007e600b",
+      "sha256": "670dc2362b0ba03c0e0f828034b8d35023db4d88288324290086714f33fcc6da"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u127_game_rom.u127",
+      "region": "video",
+      "offset_bytes": 4194306,
+      "stride_bytes": 4,
+      "size": 1048576,
+      "crc32": "bd985be7",
+      "sha1": "f5183abea2e5eb2c2c8cefa72c9ed321679f5128",
+      "sha256": "37619b7c76340d83eb7521597a953006a86d049e6770fedd4004d28ede6f700c"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u126_game_rom.u126",
+      "region": "video",
+      "offset_bytes": 4194307,
+      "stride_bytes": 4,
+      "size": 1048576,
+      "crc32": "e7c32cf4",
+      "sha1": "94ea7b2eed7dae66f5dd676c20d6b360140e3e0e",
+      "sha256": "c2eda23eb2e6ba21b3020fed6537509d1e73652313f33fdf1cd8258f5fee7e0a"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u125_game_rom.u125",
+      "region": "video",
+      "offset_bytes": 8388608,
+      "stride_bytes": 4,
+      "size": 1048576,
+      "crc32": "9a52227e",
+      "sha1": "0474a14fa8dbfea0b0889c1d1756b86391683558",
+      "sha256": "0b3925093b11828d13917b62fcc59b86d422c2525da39b55f6d4779894c5c81a"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u124_game_rom.u124",
+      "region": "video",
+      "offset_bytes": 8388609,
+      "stride_bytes": 4,
+      "size": 1048576,
+      "crc32": "5c750ebc",
+      "sha1": "45d68af1a56994376e086d840502453c8d6be700",
+      "sha256": "ce72502d6a7fad610f3bccc85372602ebb9774658eefaad77ab6f2098af44943"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u123_game_rom.u123",
+      "region": "video",
+      "offset_bytes": 8388610,
+      "stride_bytes": 4,
+      "size": 1048576,
+      "crc32": "f0ab88a8",
+      "sha1": "cdc9dc12e162255845c6627b1e35182b7e8502d0",
+      "sha256": "d821dc99d3c7ed583e47fbfb76522aac25c300e0c8ab85ce1dba879f469e0df3"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u122_game_rom.u122",
+      "region": "video",
+      "offset_bytes": 8388611,
+      "stride_bytes": 4,
+      "size": 1048576,
+      "crc32": "9b87cdac",
+      "sha1": "a5f8db559293978f23e6f105543d8b2e170a2e0d",
+      "sha256": "6305d33b670f50e7bc1e098411a3bfd418262a50c1551e068cf708c9192e80d8"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u121_game_rom.u121",
+      "region": "video",
+      "offset_bytes": 12582912,
+      "stride_bytes": 4,
+      "size": 1048576,
+      "crc32": "b6c6296a",
+      "sha1": "7b92a92d65493bb201daf5ece6f00140f017ac51",
+      "sha256": "89cd1762264b6322005802dcd0e7c9b3aa17eb94068b1e90b13d8a35c4c79475"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u120_game_rom.u120",
+      "region": "video",
+      "offset_bytes": 12582913,
+      "stride_bytes": 4,
+      "size": 1048576,
+      "crc32": "8d1ccc3b",
+      "sha1": "35d91c00113718a08a9d56eb04366f8cf4069ba6",
+      "sha256": "b71adc60fbf1b107436f18870254f5d04611c39cc796b1199fb5b3685e3eac07"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u119_game_rom.u119",
+      "region": "video",
+      "offset_bytes": 12582914,
+      "stride_bytes": 4,
+      "size": 1048576,
+      "crc32": "63215b59",
+      "sha1": "709bce15fba1520bcba40f0a5cb614542f1b460f",
+      "sha256": "3b24c63391a42160ebe50cf512f0e4c7f91644b76625246dedb27dfddff5d37b"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u118_game_rom.u118",
+      "region": "video",
+      "offset_bytes": 12582915,
+      "stride_bytes": 4,
+      "size": 1048576,
+      "crc32": "8b681e34",
+      "sha1": "524104ba2eb2deb3cfae9760e6b2125ce6b6633e",
+      "sha256": "994f1acca8e3b9faf359aabf64ab979a3e5f29540dd5640be8cf7597d737dac7"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u117_game_rom.u117",
+      "region": "video",
+      "offset_bytes": 16777216,
+      "stride_bytes": 4,
+      "size": 524288,
+      "crc32": "1ab20377",
+      "sha1": "0c0d14464d8b23a60e0693669af2ddb82655eff8",
+      "sha256": "97f6e34651b3a8ab79ca6cfcb06c7b916a4b94798ec75f606438173def05f0c9"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u116_game_rom.u116",
+      "region": "video",
+      "offset_bytes": 16777217,
+      "stride_bytes": 4,
+      "size": 524288,
+      "crc32": "ba246ad0",
+      "sha1": "ec6bdd4b9cd3007bb66bb8de36d148abb30e7f11",
+      "sha256": "6aea178c190265bdd6928604323df8537ee9a8ffc111700a85d582b658720479"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u115_game_rom.u115",
+      "region": "video",
+      "offset_bytes": 16777218,
+      "stride_bytes": 4,
+      "size": 524288,
+      "crc32": "3ee8b124",
+      "sha1": "1523d51e36d3c336b134a562da36a29ba137c0f6",
+      "sha256": "e27ba0cedcc00ebbafd5e459d8a91cc705cd687208a7c3c7dbab07ab5cd4b5fb"
+    },
+    {
+      "path": "l1_mortal_kombat_3_u114_game_rom.u114",
+      "region": "video",
+      "offset_bytes": 16777219,
+      "stride_bytes": 4,
+      "size": 524288,
+      "crc32": "a8d99922",
+      "sha1": "04ff8d85448701070672f44dbf5bcfd744f1bc8a",
+      "sha256": "22371b9f535e1ecca3056b8af02365d78225f205dd0eacce9a400054b8cc08ca"
+    }
+  ]
+}

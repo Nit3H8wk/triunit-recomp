@@ -1,0 +1,134 @@
+{
+ "schema": "mk3-r3-routes/1",
+ "note": "R3 (K3): random legal sessions picked by the greedy cover of the session pilot over route_verified.json",
+ "routes": [
+  {
+   "name": "r3s00",
+   "seed": 300090,
+   "generated_horizon": 1125000000,
+   "horizon": 1125000000,
+   "tape_sha256": "250850dc8fc954b2c13f3e05bd00b45931f4b1ddbe2837ea91aa6b364fc9c3da",
+   "pilot": {
+    "command": "explore.py pilot --wave session --base verified --tapes 96 --seconds 180 --seed 3",
+    "greedy_rank": 0,
+    "new_over_base": 1504
+   },
+   "events": 1120
+  },
+  {
+   "name": "r3s01",
+   "seed": 300084,
+   "generated_horizon": 1125000000,
+   "horizon": 1125000000,
+   "tape_sha256": "ee1bb92254be58c7e6d49ec15df7a96f1ba842e73c161e5c5b79123eea3acd72",
+   "pilot": {
+    "command": "explore.py pilot --wave session --base verified --tapes 96 --seconds 180 --seed 3",
+    "greedy_rank": 1,
+    "new_over_base": 619
+   },
+   "events": 1084
+  },
+  {
+   "name": "r3s02",
+   "seed": 300032,
+   "generated_horizon": 1125000000,
+   "horizon": 1125000000,
+   "tape_sha256": "9a983d1f1e363d7b3f26cafdc12dd4e14bfa2840e680ae0a0b33c01bfccb3511",
+   "pilot": {
+    "command": "explore.py pilot --wave session --base verified --tapes 96 --seconds 180 --seed 3",
+    "greedy_rank": 2,
+    "new_over_base": 561
+   },
+   "events": 1096
+  },
+  {
+   "name": "r3s03",
+   "seed": 300092,
+   "generated_horizon": 1125000000,
+   "horizon": 1125000000,
+   "tape_sha256": "d5da74594c62185fd7ed8c258ad3d84c9d138c937110021480374bc6f2e53708",
+   "pilot": {
+    "command": "explore.py pilot --wave session --base verified --tapes 96 --seconds 180 --seed 3",
+    "greedy_rank": 3,
+    "new_over_base": 417
+   },
+   "events": 1073
+  },
+  {
+   "name": "r3s04",
+   "seed": 300003,
+   "generated_horizon": 1125000000,
+   "horizon": 1125000000,
+   "tape_sha256": "fad787e41362ebd0b7d761cc3a278be85c8d1e33a266220c1ee505fba384cb53",
+   "pilot": {
+    "command": "explore.py pilot --wave session --base verified --tapes 96 --seconds 180 --seed 3",
+    "greedy_rank": 4,
+    "new_over_base": 302
+   },
+   "events": 1097
+  },
+  {
+   "name": "r3s05",
+   "seed": 300030,
+   "generated_horizon": 1125000000,
+   "horizon": 1125000000,
+   "tape_sha256": "8cb88f4b8006e9e051ae04e4fc72f077d362db75bb20702d9f3c3ff577210741",
+   "pilot": {
+    "command": "explore.py pilot --wave session --base verified --tapes 96 --seconds 180 --seed 3",
+    "greedy_rank": 5,
+    "new_over_base": 275
+   },
+   "events": 1079
+  },
+  {
+   "name": "r3s06",
+   "seed": 300017,
+   "generated_horizon": 1125000000,
+   "horizon": 1125000000,
+   "tape_sha256": "a3e5667ab19e1cfd55ee5ed66129edc38b182f0bf4cabf0e27239de83374e111",
+   "pilot": {
+    "command": "explore.py pilot --wave session --base verified --tapes 96 --seconds 180 --seed 3",
+    "greedy_rank": 6,
+    "new_over_base": 214
+   },
+   "events": 1131
+  },
+  {
+   "name": "r3s07",
+   "seed": 300015,
+   "generated_horizon": 1125000000,
+   "horizon": 1125000000,
+   "tape_sha256": "2619ae0c090198b56b4e55085ba8a6a6be7fa7fc490ac52b38914c9ecb753641",
+   "pilot": {
+    "command": "explore.py pilot --wave session --base verified --tapes 96 --seconds 180 --seed 3",
+    "greedy_rank": 7,
+    "new_over_base": 201
+   },
+   "events": 1078
+  },
+  {
+   "name": "r3s08",
+   "seed": 300088,
+   "generated_horizon": 1125000000,
+   "horizon": 1125000000,
+   "tape_sha256": "5dbba2714773f49dc7d42417b43870504cc154e645191ad371d96a5f8febd182",
+   "events": 1104,
+   "pilot": {
+    "command": "explore.py pilot --wave session --base verified --tapes 96 --seconds 180 --seed 3",
+    "note": "reproducer of the native stop ff963280-io5 (k3-stops.json), closed by front A"
+   }
+  },
+  {
+   "name": "r3s09",
+   "seed": 300055,
+   "generated_horizon": 1125000000,
+   "horizon": 1125000000,
+   "tape_sha256": "ab02a189f87d8bc551f55456eaf4ebaaab7ea2661ca7f956ab37f2bbdab4fd6c",
+   "events": 1080,
+   "pilot": {
+    "command": "explore.py pilot --wave session --base verified --tapes 96 --seconds 180 --seed 3",
+    "note": "reproducer of the native stop ff963280-io5 (k3-stops.json), closed by front A"
+   }
+  }
+ ]
+}

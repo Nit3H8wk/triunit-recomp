@@ -1,0 +1,19 @@
+{
+  "commit": "4f9dcc832cc0089de2451696320f671e87da79f4",
+  "sources": [
+    {
+      "path": "src/devices/cpu/tms34010/34010gfx.hxx",
+      "url": "https://raw.githubusercontent.com/mamedev/mame/4f9dcc832cc0089de2451696320f671e87da79f4/src/devices/cpu/tms34010/34010gfx.hxx",
+      "local": "docs/investigation/decoder-research/upstream/34010gfx.hxx",
+      "bytes": 93782,
+      "sha256": "5924aae9c1be3470277d226da9f012826126bc5471af6e71c0bbd3f427a50e80"
+    },
+    {
+      "path": "src/mame/williams/midtunit_v.h",
+      "url": "https://raw.githubusercontent.com/mamedev/mame/4f9dcc832cc0089de2451696320f671e87da79f4/src/mame/williams/midtunit_v.h",
+      "local": "docs/investigation/decoder-research/upstream/midtunit_v.h",
+      "bytes": 7452,
+      "sha256": "e552d5ae2578bb2eeab643ce73b2330068538239c054f57bd9e9b6a6f3841a23"
+    }
+  ]
+}

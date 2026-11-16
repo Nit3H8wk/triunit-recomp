@@ -1,0 +1,105 @@
+{
+ "project": "https://github.com/mamedev/mame",
+ "commit_default": "4f9dcc832cc0089de2451696320f671e87da79f4",
+ "note": "MAME sources formerly copied into tools/audio_reference_20261024/resampler_upstream/ and removed in Phase 7 (plan 2026-11-15-conformidade-legal.md); no tool reads them. upstream=null: path inside MAME not recorded; identify the file by sha256 at the pinned revision.",
+ "files": [
+  {
+   "path": "tools/audio_reference_20261024/resampler_upstream/dac.cpp",
+   "upstream": null,
+   "sha256": "5d88c34b6537ba7a7cb803e85d97547e30485112906276493d20a09008b0d43f",
+   "bytes": 4350,
+   "license": "BSD-3-Clause"
+  },
+  {
+   "path": "tools/audio_reference_20261024/resampler_upstream/dac.h",
+   "upstream": null,
+   "sha256": "20efcaaa94574cb34ac22ce584a69ff364fbfd74b75cf5ec5c51ade09858d8ab",
+   "bytes": 13563,
+   "license": "BSD-3-Clause"
+  },
+  {
+   "path": "tools/audio_reference_20261024/resampler_upstream/diexec.cpp",
+   "upstream": "https://raw.githubusercontent.com/mamedev/mame/4f9dcc832cc0089de2451696320f671e87da79f4/src/emu/diexec.cpp",
+   "sha256": "bea0dbef2092946f4ab0347ab407e240a1a92d8d20cca3bbaedd296696ace2e6",
+   "bytes": 23131,
+   "license": "BSD-3-Clause"
+  },
+  {
+   "path": "tools/audio_reference_20261024/resampler_upstream/disound.cpp",
+   "upstream": "https://raw.githubusercontent.com/mamedev/mame/4f9dcc832cc0089de2451696320f671e87da79f4/src/emu/disound.cpp",
+   "sha256": "ee1bd3cea5e5ea3d70517b63174982ade5136227ff81da92120d9db82c36f240",
+   "bytes": 11955,
+   "license": "BSD-3-Clause"
+  },
+  {
+   "path": "tools/audio_reference_20261024/resampler_upstream/disound.h",
+   "upstream": "https://raw.githubusercontent.com/mamedev/mame/4f9dcc832cc0089de2451696320f671e87da79f4/src/emu/disound.h",
+   "sha256": "47e906fe107763c52a6edec695039c0d2e9bd9e5ddb3649dd31bea22702cd01a",
+   "bytes": 5211,
+   "license": "BSD-3-Clause"
+  },
+  {
+   "path": "tools/audio_reference_20261024/resampler_upstream/okim6295.cpp",
+   "upstream": null,
+   "sha256": "ff6f45f2e7db51cab3344ab3e1a55d0d95e1341c2994a35983e733fae022b18b",
+   "bytes": 11194,
+   "license": "BSD-3-Clause"
+  },
+  {
+   "path": "tools/audio_reference_20261024/resampler_upstream/README.md",
+   "upstream": null,
+   "sha256": "2b1566044ce51e5c0f884876ba9545e1fab3ed3a6c89a95c6ed1eb76e0924f34",
+   "bytes": 1761,
+   "license": null
+  },
+  {
+   "path": "tools/audio_reference_20261024/resampler_upstream/resampler.cpp",
+   "upstream": null,
+   "sha256": "42ffc098fabf96ea3c0e747803199feb8e21317130d2ab3bdecade02913131e3",
+   "bytes": 20868,
+   "license": "BSD-3-Clause"
+  },
+  {
+   "path": "tools/audio_reference_20261024/resampler_upstream/resampler.h",
+   "upstream": null,
+   "sha256": "ee18698f4784ce34f2b9023e80e69e100d1da6a2f0fd6ca4844ce9f7903bbf7a",
+   "bytes": 3214,
+   "license": "BSD-3-Clause"
+  },
+  {
+   "path": "tools/audio_reference_20261024/resampler_upstream/schedule.cpp",
+   "upstream": "https://raw.githubusercontent.com/mamedev/mame/4f9dcc832cc0089de2451696320f671e87da79f4/src/emu/schedule.cpp",
+   "sha256": "d7a54f21126144df71ba9a4b40fc3451c5bef1096fe96f89653922015b3c21f9",
+   "bytes": 28970,
+   "license": "BSD-3-Clause"
+  },
+  {
+   "path": "tools/audio_reference_20261024/resampler_upstream/sound.cpp",
+   "upstream": "https://raw.githubusercontent.com/mamedev/mame/4f9dcc832cc0089de2451696320f671e87da79f4/src/emu/sound.cpp",
+   "sha256": "123dbf3f660104bb14860c59d890f7a04c02e294d311fe73bf6c11f174134729",
+   "bytes": 98850,
+   "license": "BSD-3-Clause"
+  },
+  {
+   "path": "tools/audio_reference_20261024/resampler_upstream/sound.h",
+   "upstream": "https://raw.githubusercontent.com/mamedev/mame/4f9dcc832cc0089de2451696320f671e87da79f4/src/emu/sound.h",
+   "sha256": "cdda296c901c46fb7c49a437aef1f1805873502af3356b7d36e701ee38c8b811",
+   "bytes": 26787,
+   "license": "BSD-3-Clause"
+  },
+  {
+   "path": "tools/audio_reference_20261024/resampler_upstream/williamssound.cpp",
+   "upstream": null,
+   "sha256": "84c02fa507b97606c2ba244b717e0e180c429a4a5b76a88d10ee8b5c40a5a831",
+   "bytes": 41729,
+   "license": "BSD-3-Clause"
+  },
+  {
+   "path": "tools/audio_reference_20261024/resampler_upstream/ymfm_mame.h",
+   "upstream": null,
+   "sha256": "7f91742fdc5cbd643e986b73a3ad126eb4984133d597066451b1b55449e37a48",
+   "bytes": 10785,
+   "license": "BSD-3-Clause"
+  }
+ ]
+}

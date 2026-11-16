@@ -1,0 +1,25 @@
+name: publication-audit
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests of the guard
+        run: python -m unittest tools.publish.test_audit
+      - name: Audit the tracked tree
+        run: python tools/publish/audit.py

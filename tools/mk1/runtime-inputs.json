@@ -1,0 +1,108 @@
+{
+  "objects": [
+    "native/src/mk5_task_body.cpp",
+    "native/src/mk5_main_loop.cpp",
+    "native/src/mk5_live_video.cpp",
+    "native/src/mk5_audio.cpp",
+    "native/src/mk5_audio_link.cpp",
+    "native/audio/oki6295.cpp",
+    "native/audio/ymfm/ymfm_opm.cpp",
+    "native/src/mk5_boot_flow_cli.cpp",
+    "native/src/mk5_irq.cpp",
+    "native/src/mk5_program.cpp",
+    "native/src/mk5_scanout.cpp",
+    "native/src/mk5_window.cpp",
+    "native/src/mk5_diagnostics.cpp",
+    "native/src/probe_audio_main.cpp",
+    "native/src/mk5_audio_output.cpp",
+    "native/src/mk5_remastered_music.cpp"
+  ],
+  "roms_required": [
+    {
+      "path": "mk1/mkt-ug12.bin",
+      "size": 524288,
+      "sha256": "e89e40525801722bd3e548cde925571d12d71f25ee9823c5b26aeaacddea8c70"
+    },
+    {
+      "path": "mk1/mkt-ug14.bin",
+      "size": 524288,
+      "sha256": "b40748f4f29cb02d6689bb6ffc5e249fd25b0c124a4d78c0ca03c9cdfb80b001"
+    },
+    {
+      "path": "mk1/mkt-ug16.bin",
+      "size": 524288,
+      "sha256": "be6cad0830282cf85ec05a659ca363d5ed3c6769059395ba760f4e23cef206c6"
+    },
+    {
+      "path": "mk1/mkt-ug17.bin",
+      "size": 524288,
+      "sha256": "0023e22491559310a88542e11e6e1af6b95feeacb50944f94255ba1b9e431636"
+    },
+    {
+      "path": "mk1/mkt-ug19.bin",
+      "size": 524288,
+      "sha256": "ff321475e3fc267b875f14d113e8f899c6a8d1c8fca09dae6fc52ba2d9a6e99f"
+    },
+    {
+      "path": "mk1/mkt-ug20.bin",
+      "size": 524288,
+      "sha256": "3d3e6a7082a72b5b23767b203abc5265e4813dd91fbe6e558860919a7209296c"
+    },
+    {
+      "path": "mk1/mkt-ug22.bin",
+      "size": 524288,
+      "sha256": "6b31c354ec0a26e844dcf891355ced6ee4b09ac3044d38ab710f4698792ad121"
+    },
+    {
+      "path": "mk1/mkt-uj12.bin",
+      "size": 524288,
+      "sha256": "5c8268a5565420e3db07fa36d76b2a912d572eeb3dc115d8e4565adaf40a0b3f"
+    },
+    {
+      "path": "mk1/mkt-uj14.bin",
+      "size": 524288,
+      "sha256": "ad972f4e0c2aa6153f7240a9a5aff990e42e43ff2d2f89e7e401d4ce84f65069"
+    },
+    {
+      "path": "mk1/mkt-uj16.bin",
+      "size": 524288,
+      "sha256": "0c8c2c91dbf481fbe17c5b75990ea99b54657abaf80f105a2b1eec70df99a825"
+    },
+    {
+      "path": "mk1/mkt-uj17.bin",
+      "size": 524288,
+      "sha256": "7f2694d09da188f7f715d46d11feba12adf4fa01c08fc7d1b40d5f73bbaea594"
+    },
+    {
+      "path": "mk1/mkt-uj19.bin",
+      "size": 524288,
+      "sha256": "2d08a075f2926f03d7be8b2a1636705ac54b21c4991224dd5324928169ff7c19"
+    },
+    {
+      "path": "mk1/mkt-uj20.bin",
+      "size": 524288,
+      "sha256": "2d7387f70cf80fe6d1aaa0fdd37ee38a50dfa05c20fde4e7f7de9a884e34eb25"
+    },
+    {
+      "path": "mk1/mkt-uj22.bin",
+      "size": 524288,
+      "sha256": "de8d5e4eecf5348bdc618172e16868c3a32e292579ddab21c581b0930af2a8ec"
+    },
+    {
+      "path": "mk1/mks-u3.rom",
+      "size": 262144,
+      "sha256": "ce0b5ee6c0ce7daf23dfcc4fb78a11bcc5caa600eeb3e6d7badbdf0fb880b396"
+    },
+    {
+      "path": "mk1/mks-u12.rom",
+      "size": 262144,
+      "sha256": "a0512682b093a849a73ef4c7315695753bd713f1e6fef45ff10998a9de4e896b"
+    },
+    {
+      "path": "mk1/mks-u13.rom",
+      "size": 262144,
+      "sha256": "f5200b5b3e5abb47c2220a57d9fb0d8fc7f6e1c1e617ce82f71d078a00697fcd"
+    }
+  ],
+  "game_rules_changed": false
+}

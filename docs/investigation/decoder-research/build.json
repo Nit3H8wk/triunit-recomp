@@ -1,0 +1,19 @@
+{
+  "compiler": "C:\\msys64\\mingw64\\bin\\g++.exe",
+  "compiler_version": "g++.exe (Rev4, Built by MSYS2 project) 16.1.0",
+  "command": [
+    "C:\\msys64\\mingw64\\bin\\g++.exe",
+    "-std=c++17",
+    "-O2",
+    "-static",
+    "-Idocs/investigation/decoder-research/shim",
+    "-Idocs/investigation/decoder-research/upstream",
+    "docs/investigation/decoder-research/disassemble.cpp",
+    "docs/investigation/decoder-research/upstream/34010dsm.cpp",
+    "-o",
+    "docs/investigation/decoder-research/tms34010-decoder.exe"
+  ],
+  "executable_sha256": "f3457efd43345b65cf4f8729caf62cc34efd13135ef40d4f300dea9d63543dc4",
+  "purpose": "Offline disassembly research only; no emulated CPU or game runtime.",
+  "note": "Paths are relative to the repository root. The setup builds its own decoder with tools/setup/decoder.py."
+}

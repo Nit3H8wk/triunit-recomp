@@ -1,0 +1,1294 @@
+{
+ "schema": "mk3-r4-routes/1",
+ "front": "K4 A",
+ "note": "R4 operator routes; tapes are rebuilt by tools/mk3/operator_routes.py (tower.menu_rows steps; (0,0) = 1 s wait) and checked against tape_sha256. native_plan: Profile::Game, no Original.",
+ "evidence": {
+  "main_menu": {
+   "table": "0xffad1a80",
+   "header_reader": "0xffaca630",
+   "text_reader": "0xffacbe00",
+   "handler_reader": "0xffacbe20",
+   "help_reader": "0xffacbf90 (one read per cursor move: 250,100,199 / 256,266,975 / 262,549,138 / 268,833,016)",
+   "rows": [
+    [
+     "ffaca630",
+     "ffad1a80",
+     3,
+     6,
+     205849650
+    ],
+    [
+     "ffaca630",
+     "ffad1a90",
+     3,
+     183,
+     205849656
+    ],
+    [
+     "ffaca630",
+     "ffad1aa0",
+     3,
+     3084,
+     205849662
+    ],
+    [
+     "ffacbe00",
+     "ffad1ab0",
+     8,
+     7776,
+     205849736
+    ],
+    [
+     "ffacbe00",
+     "ffad1ac0",
+     8,
+     65453,
+     205849736
+    ],
+    [
+     "ffacbe00",
+     "ffad1b10",
+     9,
+     8000,
+     205849831
+    ],
+    [
+     "ffacbe00",
+     "ffad1b20",
+     9,
+     65453,
+     205849831
+    ],
+    [
+     "ffacbe00",
+     "ffad1b70",
+     9,
+     8096,
+     205849926
+    ],
+    [
+     "ffacbe00",
+     "ffad1b80",
+     9,
+     65453,
+     205849926
+    ],
+    [
+     "ffacbe00",
+     "ffad1bd0",
+     9,
+     8128,
+     205850021
+    ],
+    [
+     "ffacbe00",
+     "ffad1be0",
+     9,
+     65453,
+     205850021
+    ],
+    [
+     "ffacbe00",
+     "ffad1c30",
+     12,
+     8160,
+     205850116
+    ],
+    [
+     "ffacbe00",
+     "ffad1c40",
+     12,
+     65453,
+     205850116
+    ],
+    [
+     "ffacbe00",
+     "ffad1c90",
+     4,
+     49824,
+     205850211
+    ],
+    [
+     "ffacbe00",
+     "ffad1ca0",
+     4,
+     65456,
+     205850211
+    ],
+    [
+     "ffacbe00",
+     "ffad1cf0",
+     4,
+     7888,
+     205850306
+    ],
+    [
+     "ffacbe00",
+     "ffad1d00",
+     4,
+     65453,
+     205850306
+    ],
+    [
+     "ffacbe00",
+     "ffad1d50",
+     4,
+     8240,
+     205850401
+    ],
+    [
+     "ffacbe00",
+     "ffad1d60",
+     4,
+     65453,
+     205850401
+    ],
+    [
+     "ffacbe00",
+     "ffad1db0",
+     3,
+     0,
+     205850496
+    ],
+    [
+     "ffacbe00",
+     "ffad1dc0",
+     3,
+     0,
+     205850496
+    ],
+    [
+     "ffacbe20",
+     "ffad1ad0",
+     8,
+     6624,
+     205849741
+    ],
+    [
+     "ffacbe20",
+     "ffad1ae0",
+     8,
+     65452,
+     205849741
+    ],
+    [
+     "ffacbe20",
+     "ffad1b30",
+     9,
+     14992,
+     205849836
+    ],
+    [
+     "ffacbe20",
+     "ffad1b40",
+     9,
+     65452,
+     205849836
+    ],
+    [
+     "ffacbe20",
+     "ffad1b90",
+     9,
+     17184,
+     205849931
+    ],
+    [
+     "ffacbe20",
+     "ffad1ba0",
+     9,
+     65452,
+     205849931
+    ],
+    [
+     "ffacbe20",
+     "ffad1bf0",
+     9,
+     11856,
+     205850026
+    ],
+    [
+     "ffacbe20",
+     "ffad1c00",
+     9,
+     65456,
+     205850026
+    ],
+    [
+     "ffacbe20",
+     "ffad1c50",
+     12,
+     11152,
+     205850121
+    ],
+    [
+     "ffacbe20",
+     "ffad1c60",
+     12,
+     65452,
+     205850121
+    ],
+    [
+     "ffacbe20",
+     "ffad1cb0",
+     4,
+     43824,
+     205850216
+    ],
+    [
+     "ffacbe20",
+     "ffad1cc0",
+     4,
+     65456,
+     205850216
+    ],
+    [
+     "ffacbe20",
+     "ffad1d10",
+     4,
+     64592,
+     205850311
+    ],
+    [
+     "ffacbe20",
+     "ffad1d20",
+     4,
+     65451,
+     205850311
+    ],
+    [
+     "ffacbe20",
+     "ffad1d70",
+     4,
+     0,
+     205850406
+    ],
+    [
+     "ffacbe20",
+     "ffad1d80",
+     4,
+     0,
+     205850406
+    ],
+    [
+     "ffacbf90",
+     "ffad1af0",
+     1,
+     8368,
+     205924344
+    ],
+    [
+     "ffacbf90",
+     "ffad1b00",
+     1,
+     65453,
+     205924344
+    ],
+    [
+     "ffacbf90",
+     "ffad1b50",
+     1,
+     8608,
+     250100199
+    ],
+    [
+     "ffacbf90",
+     "ffad1b60",
+     1,
+     65453,
+     250100199
+    ],
+    [
+     "ffacbf90",
+     "ffad1bb0",
+     1,
+     8752,
+     256266975
+    ],
+    [
+     "ffacbf90",
+     "ffad1bc0",
+     1,
+     65453,
+     256266975
+    ],
+    [
+     "ffacbf90",
+     "ffad1c10",
+     1,
+     8864,
+     262549138
+    ],
+    [
+     "ffacbf90",
+     "ffad1c20",
+     1,
+     65453,
+     262549138
+    ],
+    [
+     "ffacbf90",
+     "ffad1c70",
+     1,
+     9008,
+     268833016
+    ],
+    [
+     "ffacbf90",
+     "ffad1c80",
+     1,
+     65453,
+     268833016
+    ]
+   ],
+   "capture": "Original read watchpoints, r4util tape, 199,000,000-281,250,001; core 84b690da, program 1bc7a53a"
+  },
+  "coin_table": {
+   "table": "0xffae4260",
+   "reader": "0xffae4060 reads 0xffae42a0 (value 0x0001 = COIN1 mask) 275 times from 100,354,839 on the r4coin tape",
+   "rows": [
+    [
+     "ffae4060",
+     "ffae42a0",
+     275,
+     1,
+     100354839
+    ]
+   ]
+  },
+  "screens": "native VRAM renders (scratch, deleted) of the operator menu screens; their texts are not reproduced"
+ },
+ "routes": [
+  {
+   "name": "r4util",
+   "criterion": "R4 operator route r4util: legal tape from reset to the horizon",
+   "steps": [
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ]
+   ],
+   "extra": [],
+   "horizon": 768750000,
+   "tape_rows": 120,
+   "tape_sha256": "58f5ecda286c7b0ac6446dad55d630104cacfebb10b2d3c85ce4355bb1c39525",
+   "native_plan": {
+    "end": 768750001,
+    "frontier": "none",
+    "dcs_frontier": "",
+    "commands": 165,
+    "cmos_writes": 3337,
+    "new_over_verified": {
+     "TmsBlock": 355,
+     "TmsEdge": 1,
+     "AdspBlock": 0,
+     "AdspEdge": 0,
+     "DmaPath": 0,
+     "IrqPath": 0,
+     "DevicePath": 0
+    },
+    "tape_rows": 120,
+    "tape_sha256": "58f5ecda286c7b0ac6446dad55d630104cacfebb10b2d3c85ce4355bb1c39525",
+    "wall_seconds": 37.139952,
+    "coin_blocks": {
+     "0xffae3f80": false,
+     "0xffae3d70": false
+    }
+   }
+  },
+  {
+   "name": "r4adj",
+   "criterion": "R4 operator route r4adj: legal tape from reset to the horizon",
+   "steps": [
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ]
+   ],
+   "extra": [
+    [
+     475000000,
+     3,
+     65531
+    ],
+    [
+     475624996,
+     3,
+     65535
+    ]
+   ],
+   "horizon": 631250000,
+   "tape_rows": 48,
+   "tape_sha256": "3bb18168ebccbdd5a78b97eaad98655e01bcfe93efe0867913b79ac6142ef628",
+   "native_plan": {
+    "end": 631250002,
+    "frontier": "none",
+    "dcs_frontier": "",
+    "commands": 115,
+    "cmos_writes": 1587,
+    "new_over_verified": {
+     "TmsBlock": 27,
+     "TmsEdge": 1,
+     "AdspBlock": 0,
+     "AdspEdge": 0,
+     "DmaPath": 0,
+     "IrqPath": 0,
+     "DevicePath": 0
+    },
+    "tape_rows": 48,
+    "tape_sha256": "3bb18168ebccbdd5a78b97eaad98655e01bcfe93efe0867913b79ac6142ef628",
+    "wall_seconds": 33.799271,
+    "coin_blocks": {
+     "0xffae3f80": false,
+     "0xffae3d70": false
+    }
+   }
+  },
+  {
+   "name": "r4book",
+   "criterion": "R4 operator route r4book: legal tape from reset to the horizon",
+   "steps": [
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     16
+    ]
+   ],
+   "extra": [],
+   "horizon": 312500000,
+   "tape_rows": 16,
+   "tape_sha256": "abb88b2ba63512eb233a37fefc92ab5aed7d2bb2f1b2272846b1a9119d654f5a",
+   "native_plan": {
+    "end": 312500003,
+    "frontier": "none",
+    "dcs_frontier": "",
+    "commands": 29,
+    "cmos_writes": 558,
+    "new_over_verified": {
+     "TmsBlock": 276,
+     "TmsEdge": 0,
+     "AdspBlock": 0,
+     "AdspEdge": 0,
+     "DmaPath": 0,
+     "IrqPath": 0,
+     "DevicePath": 0
+    },
+    "tape_rows": 16,
+    "tape_sha256": "abb88b2ba63512eb233a37fefc92ab5aed7d2bb2f1b2272846b1a9119d654f5a",
+    "wall_seconds": 16.954363,
+    "coin_blocks": {
+     "0xffae3f80": false,
+     "0xffae3d70": false
+    }
+   }
+  },
+  {
+   "name": "r4aud",
+   "criterion": "R4 operator route r4aud: legal tape from reset to the horizon",
+   "steps": [
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     16
+    ]
+   ],
+   "extra": [],
+   "horizon": 325000000,
+   "tape_rows": 20,
+   "tape_sha256": "bf46bbe448d5d261e5baa4dcb0a498e91b483ba75ae46712e6d3453307ebad47",
+   "native_plan": {
+    "end": 325000006,
+    "frontier": "none",
+    "dcs_frontier": "",
+    "commands": 37,
+    "cmos_writes": 582,
+    "new_over_verified": {
+     "TmsBlock": 257,
+     "TmsEdge": 0,
+     "AdspBlock": 0,
+     "AdspEdge": 0,
+     "DmaPath": 0,
+     "IrqPath": 0,
+     "DevicePath": 0
+    },
+    "tape_rows": 20,
+    "tape_sha256": "bf46bbe448d5d261e5baa4dcb0a498e91b483ba75ae46712e6d3453307ebad47",
+    "wall_seconds": 17.337214,
+    "coin_blocks": {
+     "0xffae3f80": false,
+     "0xffae3d70": false
+    }
+   }
+  },
+  {
+   "name": "r4hw",
+   "criterion": "R4 operator route r4hw: legal tape from reset to the horizon",
+   "steps": [
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ]
+   ],
+   "extra": [],
+   "horizon": 375000000,
+   "tape_rows": 36,
+   "tape_sha256": "2e7a34645d490907470c89fdf8ec19dea446f41dd0d49c1c095270766ac5c789",
+   "native_plan": {
+    "end": 375000002,
+    "frontier": "none",
+    "dcs_frontier": "",
+    "commands": 579,
+    "cmos_writes": 684,
+    "new_over_verified": {
+     "TmsBlock": 311,
+     "TmsEdge": 0,
+     "AdspBlock": 0,
+     "AdspEdge": 0,
+     "DmaPath": 0,
+     "IrqPath": 0,
+     "DevicePath": 0
+    },
+    "tape_rows": 36,
+    "tape_sha256": "2e7a34645d490907470c89fdf8ec19dea446f41dd0d49c1c095270766ac5c789",
+    "wall_seconds": 20.159729,
+    "coin_blocks": {
+     "0xffae3f80": false,
+     "0xffae3d70": false
+    }
+   }
+  },
+  {
+   "name": "r4cpu",
+   "criterion": "R4 operator route r4cpu: legal tape from reset to the horizon",
+   "steps": [
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ]
+   ],
+   "extra": [
+    [
+     312500000,
+     3,
+     65531
+    ],
+    [
+     325000000,
+     3,
+     65535
+    ]
+   ],
+   "horizon": 456250000,
+   "tape_rows": 12,
+   "tape_sha256": "0b78be1d64862d2d8743931421829d25e4b703a19ad7a9318f4a412d71ab2dfb",
+   "native_plan": {
+    "end": 456250000,
+    "frontier": "none",
+    "dcs_frontier": "",
+    "commands": 29,
+    "cmos_writes": 690,
+    "new_over_verified": {
+     "TmsBlock": 637,
+     "TmsEdge": 0,
+     "AdspBlock": 261,
+     "AdspEdge": 1,
+     "DmaPath": 1,
+     "IrqPath": 0,
+     "DevicePath": 0
+    },
+    "tape_rows": 12,
+    "tape_sha256": "0b78be1d64862d2d8743931421829d25e4b703a19ad7a9318f4a412d71ab2dfb",
+    "wall_seconds": 27.046709,
+    "coin_blocks": {
+     "0xffae3f80": false,
+     "0xffae3d70": false
+    }
+   }
+  },
+  {
+   "name": "r4snd",
+   "criterion": "R4 operator route r4snd: legal tape from reset to the horizon",
+   "steps": [
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ]
+   ],
+   "extra": [],
+   "horizon": 400000000,
+   "tape_rows": 44,
+   "tape_sha256": "26a7c391a017f3ae3e23274c2e9c9e6cdb14a0958801ed229d02c9c7e4fb1674",
+   "native_plan": {
+    "end": 400000006,
+    "frontier": "none",
+    "dcs_frontier": "",
+    "commands": 56,
+    "cmos_writes": 726,
+    "new_over_verified": {
+     "TmsBlock": 110,
+     "TmsEdge": 0,
+     "AdspBlock": 261,
+     "AdspEdge": 1,
+     "DmaPath": 0,
+     "IrqPath": 0,
+     "DevicePath": 0
+    },
+    "tape_rows": 44,
+    "tape_sha256": "26a7c391a017f3ae3e23274c2e9c9e6cdb14a0958801ed229d02c9c7e4fb1674",
+    "wall_seconds": 23.749382,
+    "coin_blocks": {
+     "0xffae3f80": false,
+     "0xffae3d70": false
+    }
+   }
+  },
+  {
+   "name": "r4coin",
+   "criterion": "R4 operator route r4coin: legal tape from reset to the horizon",
+   "steps": null,
+   "extra": [
+    [
+     100000000,
+     3,
+     65534
+    ],
+    [
+     131250000,
+     3,
+     65535
+    ]
+   ],
+   "horizon": 200000000,
+   "tape_rows": 2,
+   "tape_sha256": "64dec6598cf11ce11362fe0bc947cd5b4a1edfaef7fa073a4b4047d9998e1a23",
+   "native_plan": {
+    "end": 200000001,
+    "frontier": "none",
+    "dcs_frontier": "",
+    "commands": 8,
+    "cmos_writes": 342,
+    "new_over_verified": {
+     "TmsBlock": 13,
+     "TmsEdge": 0,
+     "AdspBlock": 0,
+     "AdspEdge": 0,
+     "DmaPath": 0,
+     "IrqPath": 0,
+     "DevicePath": 0
+    },
+    "tape_rows": 2,
+    "tape_sha256": "64dec6598cf11ce11362fe0bc947cd5b4a1edfaef7fa073a4b4047d9998e1a23",
+    "wall_seconds": 11.787484,
+    "coin_blocks": {
+     "0xffae3f80": true,
+     "0xffae3d70": true
+    }
+   }
+  },
+  {
+   "name": "r4sw",
+   "criterion": "R4 operator route r4sw: legal tape from reset to the horizon",
+   "steps": [
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     16
+    ],
+    [
+     0,
+     0
+    ]
+   ],
+   "extra": [
+    [
+     281250000,
+     3,
+     65499
+    ],
+    [
+     284374980,
+     3,
+     65535
+    ]
+   ],
+   "horizon": 356250000,
+   "tape_rows": 32,
+   "tape_sha256": "efe6d6b99d07dba0782f27c08d0ef140384b5ce1a25bcdb6a76bcaa5fca5f108",
+   "native_plan": {
+    "note": "scratch probe with the 0xffae8690 IE fix (Profile::Game): switch test and DIP switch test screens reached, frontier none; before the fix the switch test stopped at 257,987,865"
+   }
+  }
+ ]
+}
