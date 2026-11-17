@@ -1,5 +1,7 @@
 # TriUnit Recomp
 
+<a href="https://recomplauncher.com"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
+
 TriUnit Recomp is a set of tools that turns the program of a 1990s arcade
 board into native C++ for Windows. It covers three board families built on the
 TMS34010 graphics processor (Y-Unit, T-Unit and Wolf Unit), with their sound
@@ -142,6 +144,26 @@ Other options:
   the g++ version found against the validated one;
 - `--progress <file>` keeps a small JSON file at the current step, with the
   compiled-unit count during compilation; the launcher reads it.
+
+## RecompLauncher
+
+A release carries `recomplauncher.json` next to `triunit.exe`, so
+[RecompLauncher](https://recomplauncher.com) can install TriUnit Recomp and
+run its setup. The player picks the folder with their own ROM files and ticks
+the same ROM ownership confirmation as the Legal page; the launcher then runs
+
+```powershell
+triunit.exe --prepare --roms <folder with your own ROM files> --confirm-roms
+```
+
+which opens no window, verifies every game against the folder, builds the
+games it holds with the same setup queue as the app and prints
+`progress <0..1> <text>` lines. Without `--confirm-roms` it runs only when the
+confirmation was already given in the app. Exit codes: 0 built, 1 a build
+failed (`logs/setup-<game>.log`), 2 no supported ROM set in the folder, 3
+ownership not confirmed, 5 Python or the compiler not found, 6 the app is
+open. Play then opens `triunit.exe` as usual. Started without arguments,
+`triunit.exe` behaves exactly as before.
 
 ## Launcher modes
 

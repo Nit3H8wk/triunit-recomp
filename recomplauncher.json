@@ -1,0 +1,54 @@
+{
+  "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
+  "format": 1,
+  "name": "TriUnit Recomp",
+  "repo": "macielrecomp/triunit-recomp",
+  "game": {
+    "kind": "folder",
+    "label": "The folder with your own ROM files of a supported board revision (see Compatibility in the README). One folder can hold every game; only files that match the setup's manifests exactly are used."
+  },
+  "start": {
+    "program": ["triunit.exe"]
+  },
+  "prepare": {
+    "program": ["triunit.exe"],
+    "args": ["--prepare", "--roms", "{game}"],
+    "label": "Checking your ROM files, then generating and compiling each game on this PC",
+    "timeout": 3600,
+    "options": [
+      {
+        "id": "own_roms",
+        "label": "I own the original board or ROM files and obtained them legally",
+        "note": "The same confirmation as the Legal page of TriUnit Recomp. The setup doesn't run without it.",
+        "args": ["--confirm-roms"],
+        "license": {
+          "name": "TriUnit Recomp legal notice",
+          "url": "https://github.com/macielrecomp/triunit-recomp/blob/main/DISCLAIMER.md"
+        }
+      }
+    ]
+  },
+  "saves": [
+    "{install}/build/native/manual-temporary-8-20261025/profile/cmos.bin",
+    "{install}/build/native/manual-temporary-8-20261025/profile/launcher.ini",
+    "{install}/build/native/mk2-native-v1/product/profiles/player/cmos.bin",
+    "{install}/build/native/mk2-native-v1/profile/launcher.ini",
+    "{install}/build/native/mk3-native/product/profiles/player/cmos.bin",
+    "{install}/build/native/mk3-native/profile/launcher.ini",
+    "{install}/build/native/launcher-profile/launcher.cfg"
+  ],
+  "folders": {
+    "logs": [{ "path": "{install}/logs" }]
+  },
+  "actions": [
+    { "id": "logs", "label": "Logs", "help": "The setup log of each game and the logs of the last runs.", "open": "logs" }
+  ],
+  "exit_codes": {
+    "1": "A game didn't build. Its log is logs/setup-<game>.log in the game's folder (the Logs button opens it).",
+    "2": "No supported ROM set was found in that folder. TriUnit Recomp only uses the exact revisions listed in its README, under Compatibility. Pick the folder again.",
+    "3": "Tick the ROM ownership confirmation on the setup screen, then run the setup again.",
+    "4": "TriUnit Recomp could not start. Keep triunit.exe in its folder, next to native, build and tools.",
+    "5": "TriUnit Recomp builds the games on your PC and needs Python 3.12 or later and MSYS2 MinGW-w64 g++ at C:/msys64/mingw64/bin/g++.exe. Install them (README, Requirements) and run the setup again.",
+    "6": "Close the TriUnit Recomp window, then run the setup again."
+  }
+}

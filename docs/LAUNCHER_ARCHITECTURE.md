@@ -32,6 +32,14 @@ contract tests drive (`launcher_selection_tests.cpp`,
 `triunit.exe --ui-capture <png> [overview|roms|build|play|legal]` and
 `--settings-capture <png>` draw one deterministic frame for layout checks.
 
+`triunit.exe --prepare --roms <folder> [--confirm-roms]` runs the setup queue
+below without a window (RecompLauncher's setup step, `recomplauncher.json`):
+`--requirements`, `--verify-only` for every game on that folder, then a full
+setup of each game that verified, with `progress <0..1> <text>` lines on stdout.
+It holds the launcher mutex, so it refuses to run while the app is open (exit
+6). A game that does not verify on that folder gets its saved folder back
+(a game without one keeps the new folder).
+
 ## Setup queue
 
 `Backend::queueSetup(game, verifyOnly)` runs `tools/setup/setup.py` one game at a

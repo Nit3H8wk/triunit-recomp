@@ -52,6 +52,13 @@ contains generated code, a game executable, a launcher package
 game's C++ is always generated, compiled and installed on the user's machine by
 `tools/setup/setup.py`, which the app runs.
 
+Name the release zip `TriUnit-Recomp-<tag>-Windows-x64.zip` and keep
+`recomplauncher.json` at its top, next to `triunit.exe` (it is in the tree, so
+a zip of the tree carries it). When a release changes what the setup produces
+for players who already built (generators, acceptance digests, install
+layout), change `prepare.version` in `recomplauncher.json` so RecompLauncher
+runs the setup again; keep its `saves` paths in step with `tools/setup/install.py`.
+
 Before tagging, check that the release folder holds no `roms/`, `generated/`,
 `build/`, `logs/` or `custom_audio/` file and that `python tools/publish/audit.py`
 reports 0 findings.
