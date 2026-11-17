@@ -26,6 +26,8 @@ public:
     void bezel(bool enabled);
     void quad(int texture,Rect destination,Rect uv={0,0,1,1},Color tint={},int effect=0,float time=0);
     void fill(Rect rectangle,Color color);
+    // Rounded rectangle (signed distance, antialiased): filled, or an outline `border` layout pixels wide.
+    void rounded(Rect rectangle,float radius,Color color,float border=0);
     void triangle(float ax,float ay,float bx,float by,float cx,float cy,Color color);
     void line(float ax,float ay,float bx,float by,float thickness,Color color);
     void text(const std::wstring& value,float x,float y,float size,Color color={},float tracking=0);

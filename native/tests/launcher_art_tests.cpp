@@ -21,7 +21,7 @@ int wmain(int argc,wchar_t** argv){try{
     }
     need(!fs::exists(project/L"native/runtime/arcade-bezel.png")&&!fs::exists(project/L"native/launcher/assets"),"image assets still present");
     const auto legal=upper(slurp(project/L"native/launcher/launcher_legal.hpp"));
-    for(const char* term:{"WARNER BROS. ENTERTAINMENT INC.","NETHERREALM STUDIOS","NAO INCLUI ARQUIVOS DOS JOGOS","SEM AFILIACAO"})
+    for(const char* term:{"WARNER BROS. ENTERTAINMENT INC.","NETHERREALM STUDIOS","NO GAME FILES ARE INCLUDED","NOT AFFILIATED"})
         need(legal.find(term)!=std::string::npos,"legal notice incomplete");
     // Setup state: without a finished setup record no game is offered.
     fs::create_directories(scratch);
@@ -42,7 +42,8 @@ int wmain(int argc,wchar_t** argv){try{
         {
             App app(scratch);app.window=window;app.graphics=std::make_unique<Renderer>(window);app.launcher.reducedMotion=true;
             app.draw(1,true);unsigned w=0,h=0;const auto pixels=app.graphics->capture(w,h);
-            size_t lit=0,legalBand=0;for(size_t n=0;n<pixels.size();++n){const unsigned v=(pixels[n]>>16&255)+(pixels[n]>>8&255)+(pixels[n]&255);lit+=v>60;if(n/w>=size_t(h*948/1024)&&n/w<size_t(h*990/1024)&&n%w<size_t(w*480/1536))legalBand+=v>150;}
+            // Legal footer: y 972..1016 of the 1024-unit layout, left part.
+            size_t lit=0,legalBand=0;for(size_t n=0;n<pixels.size();++n){const unsigned v=(pixels[n]>>16&255)+(pixels[n]>>8&255)+(pixels[n]&255);lit+=v>60;if(n/w>=size_t(h*974/1024)&&n/w<size_t(h*1014/1024)&&n%w<size_t(w*480/1536))legalBand+=v>150;}
             need(lit>pixels.size()/50,"start screen did not draw");
             need(legalBand>200,"legal notice not drawn on the start screen");
         }

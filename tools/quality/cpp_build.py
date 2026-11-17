@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import hashlib
 import io
+import itertools
 import json
 import os
 import shutil
@@ -20,6 +21,7 @@ ARCHIVE_SHA256 = '6993ce645e53192cec592ee23186200b574ac4c59097ecde8d9cfd681b47ae
 URL = f'https://github.com/ccache/ccache/releases/download/v{VERSION}/ccache-{VERSION}-windows-x86_64.zip'
 CACHE_DIRECTORY = q.ROOT / 'build/native/compiler-cache'
 MAX_CACHE_BYTES = 64000000
+on_unit = None   # optional callable(done, total) after each unit compiles (setup --progress)
 
 
 def route(args):
@@ -216,7 +218,11 @@ def build(compiler, flags, sources, link_flags, executable, scratch, *, env=None
                 execution = command(([CCACHE] if enabled else []) + args, cwd=scratch if local else q.ROOT)
                 execution['source'] = str(source)
                 execution['object_bytes'] = output.stat().st_size if output.is_file() else 0
+                if on_unit:
+                    on_unit(next(finished), len(sources))
                 return execution, output
+
+            finished = itertools.count(1)   # next() is atomic under the GIL: safe from both workers
 
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 compiled = list(pool.map(compile_one, enumerate(sources)))

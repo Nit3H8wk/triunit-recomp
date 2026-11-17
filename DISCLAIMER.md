@@ -12,7 +12,10 @@ files and is never distributed by this project.
 **Your own ROMs.** To use the tools you need ROM files that you have obtained
 legally. The project does not provide ROM files, links to them, or instructions
 for obtaining them. Whether a particular copy is lawful depends on how it was
-obtained and on the law where you live; that is your responsibility.
+obtained and on the law where you live; that is your responsibility. Before it
+verifies or builds anything, the app asks you to confirm that you own the
+original board / ROM files and obtained them legally; the confirmation is kept
+only on your machine.
 
 **Trademarks.** Mortal Kombat, Mortal Kombat II, Mortal Kombat 3 and Ultimate
 Mortal Kombat 3, and any other names of games, companies or products, are

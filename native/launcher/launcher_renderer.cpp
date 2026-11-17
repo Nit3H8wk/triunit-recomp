@@ -43,6 +43,12 @@ float4 ps(V v):SV_Target {
     if(params.w==3){c.a*=pow(saturate(1-q.y),2)*.32;}
     if(params.w==4){c.rgb*=.78+.22*sin(q.y*320+sin(t*.4)*.5);c.a*=.14;}
     if(params.w==5){float d=length((q-.5)*2);return float4(tint.rgb,pow(saturate(1-d),2)*tint.a);}
+    if(params.w==6){
+        float2 s=rect.zw,p=(q-.5)*s;float r=min(texrect.x,min(s.x,s.y)*.5);float2 d=abs(p)-(s*.5-r);
+        float dist=length(max(d,0))+min(max(d.x,d.y),0)-r;float a=saturate(.5-dist);
+        if(texrect.y>0)a*=saturate(dist+texrect.y+.5);
+        return float4(tint.rgb,a*tint.a);
+    }
     return c;
 }
 )";
@@ -158,6 +164,7 @@ void Renderer::begin(){
 void Renderer::bezel(bool enabled){p->bezel_enabled=enabled;}
 void Renderer::quad(int id,Rect r,Rect uv,Color c,int effect,float time){r={r.x*p->scale+p->ox,r.y*p->scale+p->oy,r.w*p->scale,r.h*p->scale};p->draw(id,r,uv,c,effect,time);}
 void Renderer::fill(Rect r,Color c){quad(p->white,r,{0,0,1,1},c);}
+void Renderer::rounded(Rect r,float radius,Color c,float border){quad(p->white,r,{radius*p->scale,border*p->scale,0,0},c,6);}
 void Renderer::triangle(float ax,float ay,float bx,float by,float cx,float cy,Color c){p->draw(p->white,{ax*p->scale+p->ox,ay*p->scale+p->oy,bx*p->scale+p->ox,by*p->scale+p->oy},{cx*p->scale+p->ox,cy*p->scale+p->oy,0,0},c,10,0);}
 void Renderer::line(float ax,float ay,float bx,float by,float t,Color c){float d=std::hypot(bx-ax,by-ay);if(d<.001f)return;float dx=-(by-ay)/d*t*.5f,dy=(bx-ax)/d*t*.5f;triangle(ax+dx,ay+dy,bx+dx,by+dy,ax-dx,ay-dy,c);triangle(ax-dx,ay-dy,bx+dx,by+dy,bx-dx,by-dy,c);}
 void Renderer::text(const std::wstring& value,float x,float y,float size,Color c,float tracking){

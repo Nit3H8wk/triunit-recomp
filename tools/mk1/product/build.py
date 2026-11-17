@@ -34,7 +34,9 @@ def inventory():
     for name2 in dirs+files:unlinked(Path(directory)/name2)
     paths.extend(Path(directory)/n for n in files)
  return {p.relative_to(ROOT).as_posix():sha(p) for p in paths if p.is_file()}
-def main(action):
+def main(action,engine=None):
+ """action 'package': the engine built by build_runtime.py (build.json); 'setup': `engine`, the executable the local setup
+ built (tools/setup/install.py), copied into the product first."""
  unlinked(STAGE);STAGE.mkdir(parents=True,exist_ok=True);PRODUCT.mkdir(exist_ok=True)
  before=inventory();temp=STAGE/('temporary-package-'+uuid.uuid4().hex);temp.mkdir();rec={'passed':False}
  try:
@@ -48,8 +50,13 @@ def main(action):
    destination=ROOT/'triunit.exe';unlinked(destination);shutil.copy2(exe,destination)
    rec.update(launcher=destination.name,launcher_sha256=sha(destination),launcher_bytes=destination.stat().st_size)
   else:
-   build=json.loads((STAGE/'build.json').read_text());assert build['passed']
-   engine=PRODUCT/'mk5-native-audio.exe';assert sha(engine)==build['sha256']
+   if action=='setup':
+    built=Path(engine);target=PRODUCT/'mk5-native-audio.exe';unlinked(built);unlinked(target)
+    shutil.copy2(built,temp/target.name);os.replace(temp/target.name,target);engine=target
+    assert sha(engine)==sha(built),'engine copy differs'
+   else:
+    build=json.loads((STAGE/'build.json').read_text());assert build['passed']
+    engine=PRODUCT/'mk5-native-audio.exe';assert sha(engine)==build['sha256']
    old=json.loads((OLD/'manifest.json').read_text()) if (OLD/'manifest.json').is_file() else json.loads((ROOT/'tools/mk1/runtime-inputs.json').read_text())
    for name,want in old.get('files',{}).items():
     assert Path(name).name==name and sha(OLD/name)==want,'Predecessor integrity: '+name

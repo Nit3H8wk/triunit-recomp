@@ -4,10 +4,22 @@
 #endif
 #include <windows.h>
 #include <array>
+#include <deque>
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 namespace mklauncher {
+// One game of the local setup queue (tools/setup/setup.py run by the user's Python, see Backend::queueSetup).
+struct SetupGame {
+ std::filesystem::path folder;                 // ROM folder chosen for this game (build/native/launcher-profile/setup.cfg)
+ bool queued=false,active=false,verified=false; // verified: the last --verify-only report or a finished setup was ok
+ std::string mode,step,state,message,program;  // last progress file; state: queued, running, done, failed, cancelled
+ int unitsDone=0,unitsTotal=0;double elapsed=0,estimate=0; // estimate: seconds of the last finished setup here (0 = none)
+ std::vector<std::pair<std::string,std::string>> files; // last --verify-only report: file name, status
+ std::vector<std::string> checks;              // digests the manifest pins (size, crc32, sha1, sha256)
+};
+struct SetupRequirements {bool checked=false,ok=false,windows64=false,pythonSupported=false;std::string python,compiler,validated;};
 struct VideoConfig {
  int scanlines=0,filter=0,sync=1,color=0,brightness=100,scalefxAmount=100,scaleMode=0,cas=0,bilateral=0;
  bool scalefx=false,bezel=true,highRefresh=false,smaa=false,fullscreen=true;
@@ -57,8 +69,21 @@ public:
  bool remasteredAvailable() const;
  // Local setup (tools/setup/setup.py): a game is offered only after its record in generated/<game>/<sha>/ exists.
  bool setupFinished(int index) const;
- bool startSetup(const std::filesystem::path& roms);
- bool setupRunning();
+ bool startSetup(const std::filesystem::path& roms); // one folder for every game: sets the three folders, queues three setups
+ bool setupRunning();                                // also advances the queue
+ // Setup queue: one setup.py at a time in a kill-on-close Job Object (Cancel or closing the launcher ends its whole tree).
+ // Python is looked up on PATH only (python.exe, then py.exe -3) by a --requirements run queued before the first job.
+ const SetupGame& setupGame(int index)const{return setupGames_.at(size_t(index));}
+ const SetupRequirements& setupRequirements()const{return requirements_;}
+ bool setRomFolder(int index,const std::filesystem::path& folder);
+ // The user confirms owning the original board/ROM files before any verify or build (saved in setup.cfg).
+ bool romsAcknowledged()const{return acknowledged_;}
+ bool acknowledgeRoms(bool value);
+ bool queueSetup(int index,bool verifyOnly);
+ void checkRequirements();
+ void cancelSetup();
+ std::filesystem::path setupLog(int index)const;    // logs/setup-<game>.log
+ std::filesystem::path setupOutput(int index)const; // generated/<game>/<sha>/ of the finished record, empty without one
  bool launchNativeExperiment(const std::filesystem::path& manifest,const std::filesystem::path& settings={});
  bool launch(unsigned frames=0);void poll();bool running() const;
  void requestStop();
@@ -71,7 +96,13 @@ private:
  std::filesystem::path root_;
  std::filesystem::path gameExecutable_;
  std::wstring status_;
- HANDLE process_=nullptr,setupProcess_=nullptr;
+ HANDLE process_=nullptr,setupProcess_=nullptr,setupJob_=nullptr;
+ struct SetupJob {int game;bool verify;}; // game -1: --requirements
+ std::deque<SetupJob> setupQueue_;SetupJob activeSetup_{-1,false};
+ std::array<SetupGame,3> setupGames_{};SetupRequirements requirements_;
+ std::wstring interpreter_;size_t interpreterTry_=0;bool setupCancelled_=false,acknowledged_=false;ULONGLONG nextSetupRead_=0;
+ void pollSetup();void startSetupJob(SetupJob);void finishSetup(DWORD code);void readSetupProgress(int game);
+ void loadSetupFolders();bool saveSetupFolders()const;void refreshSetupEstimate(int game);
  DWORD processId_=0,exitCode_=0,gamePid_=0;
  ULONGLONG nextDiscovery_=0;
  bool stopping_=false,nativeExperiment_=false,nativeLiveExperiment_=false,nativePlayable_=false;

@@ -34,5 +34,14 @@ def build(destination=ROOT/NAME,cc=q.DEFAULT_CC):
     return q.sha(destination)
 
 
+def stale(destination=ROOT/NAME):
+    """True when the launcher is missing or older than a source it is built from (the native tree or these scripts)."""
+    if not destination.is_file():return True
+    built=destination.stat().st_mtime
+    sources=[p for p in (ROOT/'native').rglob('*') if p.suffix in ('.cpp','.hpp','.h','.inc')]
+    return any(p.stat().st_mtime>built for p in [*sources,Path(__file__),ROOT/'tools/launcher_backend_build.py'])
+
+
 if __name__=='__main__':
-    print(NAME,build())
+    if '--if-stale' in sys.argv[1:] and not stale():print(NAME,'up to date')
+    else:print(NAME,build())

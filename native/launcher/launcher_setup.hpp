@@ -11,6 +11,7 @@ struct SetupRecord {
  bool finished=false;
  std::filesystem::path directory,executable;
  std::string program,executableSha256;
+ double seconds=0; // generate + compile + seed seconds of that setup (the launcher's time estimate)
 };
 inline bool hex64(const std::string& v){return v.size()==64&&v.find_first_not_of("0123456789abcdef")==std::string::npos;}
 // The most recent finished record of a game (by file time), or finished=false.
@@ -34,7 +35,11 @@ inline SetupRecord readSetup(const std::filesystem::path& root,const wchar_t* ga
   path=(root/path).lexically_normal();
   if(path.parent_path()!=entry.path().lexically_normal()||!fs::is_regular_file(path,error)||tinyjson::Linked(path))continue;
   const auto time=fs::last_write_time(file,error);if(error)continue;
-  if(!best.finished||time>newest){best={true,entry.path(),path,name,sha->second.text};newest=time;}
+  const auto number=[](const tinyjson::Value& object,const char* key){
+   const auto f=object.fields.find(key);return f!=object.fields.end()&&f->second.kind==tinyjson::Value::Number?f->second.number:0.0;};
+  double seconds=number(value,"generate_seconds")+number(compile->second,"seconds");
+  const auto seed=value.fields.find("seed");if(seed!=value.fields.end()&&seed->second.kind==tinyjson::Value::Object)seconds+=number(seed->second,"seconds");
+  if(!best.finished||time>newest){best={true,entry.path(),path,name,sha->second.text,seconds};newest=time;}
  }
  return best;
 }

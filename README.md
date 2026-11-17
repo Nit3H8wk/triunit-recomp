@@ -26,15 +26,52 @@ The digests that the generated output must reproduce are in
 
 ## Requirements
 
-- Windows with a DirectX 12 GPU.
+- Windows 10 or 11, 64-bit, with a DirectX 12 GPU.
 - MSYS2 with the MinGW-w64 g++ compiler at `C:/msys64/mingw64/bin/g++.exe`
-  (validated version: 16.1.0).
-- Python 3.
+  (validated version: 16.1.0; another version is reported as not validated).
+- Python 3.12 or later on `PATH` (`python` or the `py` launcher; validated with
+  3.13.2). The setup uses only the standard library.
 
 The toolchain and Python are not bundled; the setup uses the ones installed on
-your machine.
+your machine. The app shows what it found on its Overview page.
 
-## Build a game
+## Quick start
+
+1. Double-click `TriUnit Setup.cmd`. It builds the app (`triunit.exe`) when it
+   is missing or older than its sources, then opens it. A release already
+   contains `triunit.exe`.
+2. **Legal**: read the notice and confirm that you own the original board / ROM
+   files and obtained them legally. Verify and Build stay disabled until then.
+3. **ROM Setup**: choose the folder with the ROM files of each game (or one
+   folder for all) and press **Verify**. Every file is checked against the
+   manifest; the report lists each file with its result.
+4. **Build**: press **Build** (or **Build all**). The page shows the current
+   step, the compiled units, the elapsed time and the time of the last run, and
+   ends with *Ready to play* or with the step that failed and its log.
+5. **Play**: choose a cabinet, switch between Arcade Original and Remastered,
+   and press **PLAY**.
+
+Nothing is downloaded. Everything the setup writes stays on your machine
+(`roms/`, `generated/`, `build/`, `logs/`, all ignored by Git).
+
+## The app (`triunit.exe`)
+
+One window, drawn entirely in code (no image files), with keyboard, mouse and
+XInput controller navigation (PgUp / PgDn or LB / RB change pages):
+
+| Page | What it does |
+|------|--------------|
+| Overview | The six setup steps, one card per game (revision, board, ROM folder, manifest and the digests it pins, Build), requirements found on this machine, output and receipt locations, launcher modes and custom audio. |
+| ROM Setup | ROM folder per game, Verify, and the per-file verification report. |
+| Build | One game at a time: progress, Cancel (ends the whole build), Open log (`logs/setup-<game>.log`), Open folder, Play. |
+| Play | The cabinets, the selected game and edition, PLAY. |
+| Settings | Video, Audio, Display, Launcher, Adjustments and Utilities of the selected game and of the app. |
+| Legal | The legal notice, the ROM ownership confirmation and links to `DISCLAIMER.md`, `THIRD_PARTY_NOTICES.md` and `LICENSE`. |
+
+The app runs `tools/setup/setup.py` with the Python found on `PATH`, one game at
+a time, and offers a game only when its setup finished on this machine.
+
+## Build a game from the command line
 
 ```powershell
 python tools/setup/setup.py --game mk1 --roms <folder with your own ROM files>
@@ -52,21 +89,30 @@ The setup:
 4. generates the game's C++ into `generated/<game>/<sha256>/`, where `<sha256>`
    identifies the program image;
 5. compares the generated output with the acceptance digests;
-6. compiles the game executable into the same folder.
+6. compiles the game executable into the same folder;
+7. installs the launcher package of the game from that executable
+   (`build/native/…/product`, local and ignored by Git); the player's saved
+   profile is kept.
 
 `--no-compile` stops after step 5. The receipt `setup.json` in the output
 folder keeps only identities, digests, counts and timings. `roms/` and
 `generated/` are ignored by Git.
 
-## Launcher
+Other options:
 
-Build it with `python tools/launcher/build.py` (writes `triunit.exe` at the
-project root). Its start screen has a ROM-folder button that runs the setup for
-every supported game, shows the setup state of each cabinet and the legal
-notice. `triunit.exe` only offers games whose setup has finished (a record in
-`generated/<game>/<sha256>/setup.json`), and accepts a game executable only by
-the SHA-256 that record holds. All launcher art is drawn in code. Each game has
-two modes:
+- `--verify-only` checks every ROM file on its own (missing, size, CRC32,
+  SHA-1, SHA-256) and the program image, and writes nothing;
+- `--requirements` (no `--game`) reports 64-bit Windows, the Python version and
+  the g++ version found against the validated one;
+- `--progress <file>` keeps a small JSON file at the current step, with the
+  compiled-unit count during compilation; the launcher reads it.
+
+## Launcher modes
+
+`python tools/launcher/build.py` builds the app by hand (`--if-stale` skips an
+up-to-date build). `triunit.exe` only offers games whose setup has finished (a
+record in `generated/<game>/<sha256>/setup.json`), and accepts a game
+executable only by the SHA-256 that record holds. Each game has two modes:
 
 - **Arcade Original**: the board's audio exactly as the arcade produces it, with
   the arcade image (video filters stay optional). This mode never reads
@@ -106,7 +152,7 @@ python tools/quality/run.py fast
 
 `fast` needs no GPU or installed game, but several of its cases read your ROM
 files and the setup output: run the setup of the three games first. Scope and other suites:
-`docs/CPP_QUALITY.md`.
+`docs/CPP_QUALITY.md`. Launcher internals: `docs/LAUNCHER_ARCHITECTURE.md`.
 
 ## Legal notice
 

@@ -279,46 +279,219 @@ Mk3Spec mk3Spec(const fs::path& root,bool verifyPayload){
  return spec;
 }
 }
+namespace {
+const fs::path setupFoldersFile=L"build/native/launcher-profile/setup.cfg";
+std::string setupId(size_t game){const std::wstring id=mklauncher::compatibleGames.at(game).setupId;return {id.begin(),id.end()};}
+fs::path setupProgress(const fs::path& root,size_t game){return root/L"logs"/(L"setup-"+std::wstring(mklauncher::compatibleGames.at(game).setupId)+L".progress.json");}
+// The user's Python, looked up on PATH only (never the launcher or working folder): python.exe, then the py launcher.
+std::vector<std::wstring> interpreters(){
+ std::vector<std::wstring> out;const DWORD need=GetEnvironmentVariableW(L"PATH",nullptr,0);if(!need)return out;
+ std::wstring path(need,L'\0');path.resize(GetEnvironmentVariableW(L"PATH",path.data(),need));
+ for(const auto& [name,arguments]:{std::pair{L"python.exe",L""},std::pair{L"py.exe",L" -3"}}){
+  std::vector<wchar_t> found(32768);const DWORD n=SearchPathW(path.c_str(),name,nullptr,DWORD(found.size()),found.data(),nullptr);
+  if(n&&n<found.size())out.push_back(quote(found.data())+arguments);
+ }
+ return out;
+}
+// Progress and requirement files: shared for delete, so setup.py can replace them atomically while the launcher reads.
+bool readObject(const fs::path& path,tinyjson::Value& value){
+ if(tinyjson::Linked(path))return false;
+ Handle file;file.h=CreateFileW(path.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+ if(file.h==INVALID_HANDLE_VALUE)return false;
+ std::string bytes(65536,'\0');DWORD n=0;
+ if(!ReadFile(file.h,bytes.data(),DWORD(bytes.size()),&n,nullptr)||n==bytes.size())return false;
+ bytes.resize(n);tinyjson::Parser parser(bytes);
+ return parser.Parse(value)&&parser.End()&&value.kind==tinyjson::Value::Object;
+}
+const tinyjson::Value* member(const tinyjson::Value& object,const char* key,tinyjson::Value::Kind kind){
+ const auto f=object.fields.find(key);return f!=object.fields.end()&&f->second.kind==kind?&f->second:nullptr;
+}
+std::string text(const tinyjson::Value& object,const char* key){const auto* v=member(object,key,tinyjson::Value::String);return v?v->text:std::string();}
+double number(const tinyjson::Value& object,const char* key){const auto* v=member(object,key,tinyjson::Value::Number);return v?v->number:0;}
+// One setup.py run in a kill-on-close Job Object: Cancel, or closing the launcher, ends its whole process tree.
+HANDLE spawnSetup(const fs::path& root,std::wstring command,const fs::path& out,const fs::path& err,HANDLE& job){
+ for(const auto& path:{out,err}){unlinked(path);fs::create_directories(path.parent_path());unlinked(path);}
+ SECURITY_ATTRIBUTES security{sizeof(security),nullptr,TRUE};Handle output,error,input,owned;
+ output.h=CreateFileW(out.c_str(),GENERIC_WRITE,FILE_SHARE_READ,&security,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
+ if(err!=out)error.h=CreateFileW(err.c_str(),GENERIC_WRITE,FILE_SHARE_READ,&security,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
+ input.h=CreateFileW(L"NUL",GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,&security,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+ const HANDLE errors=err==out?output.h:error.h;
+ if(output.h==INVALID_HANDLE_VALUE||errors==INVALID_HANDLE_VALUE||input.h==INVALID_HANDLE_VALUE)throw std::runtime_error("setup log");
+ owned.h=CreateJobObjectW(nullptr,nullptr);if(!owned.h)throw std::runtime_error("setup job");
+ JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};limits.BasicLimitInformation.LimitFlags=JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+ if(!SetInformationJobObject(owned.h,JobObjectExtendedLimitInformation,&limits,sizeof(limits)))throw std::runtime_error("setup job limits");
+ STARTUPINFOW si{};si.cb=sizeof(si);si.dwFlags=STARTF_USESTDHANDLES;si.hStdInput=input.h;si.hStdOutput=output.h;si.hStdError=errors;
+ PROCESS_INFORMATION pi{};
+ if(!CreateProcessW(nullptr,command.data(),nullptr,nullptr,TRUE,CREATE_NO_WINDOW|CREATE_SUSPENDED,nullptr,root.c_str(),&si,&pi))
+  throw std::runtime_error("setup CreateProcess");
+ if(!AssignProcessToJobObject(owned.h,pi.hProcess)){TerminateProcess(pi.hProcess,ERROR_CANCELLED);CloseHandle(pi.hThread);CloseHandle(pi.hProcess);
+  throw std::runtime_error("setup job assignment");}
+ ResumeThread(pi.hThread);CloseHandle(pi.hThread);job=owned.h;owned.h=nullptr;return pi.hProcess;
+}
+}
 namespace mklauncher {
-Backend::Backend(const fs::path& root):root_(fs::absolute(root).lexically_normal()),status_(L"Escolha a pasta de ROMs para preparar os jogos, depois selecione um gabinete."){}
-Backend::~Backend(){if(process_)CloseHandle(process_);if(setupProcess_)CloseHandle(setupProcess_);}
+Backend::Backend(const fs::path& root):root_(fs::absolute(root).lexically_normal()),status_(L"Choose the folder with your ROM files to prepare the games."){
+ try{loadSetupFolders();}catch(...){/* unreadable setup.cfg: folders are chosen again */}
+ for(int i=0;i<3;++i)refreshSetupEstimate(i);
+}
+Backend::~Backend(){if(process_)CloseHandle(process_);if(setupProcess_)CloseHandle(setupProcess_);if(setupJob_)CloseHandle(setupJob_);}
 bool Backend::setupFinished(int index)const{
  if(index<0||index>2)return false;
  try{return readSetup(root_,compatibleGames[size_t(index)].setupId).finished;}catch(...){return false;}
 }
-bool Backend::setupRunning(){
- if(!setupProcess_)return false;
- if(WaitForSingleObject(setupProcess_,0)!=WAIT_OBJECT_0)return true;
- DWORD code=ERROR_GEN_FAILURE;if(!GetExitCodeProcess(setupProcess_,&code))code=ERROR_GEN_FAILURE;CloseHandle(setupProcess_);setupProcess_=nullptr;
- status_=code==0?L"Setup concluido: jogos gerados nesta maquina a partir das suas ROMs.":L"Setup terminou; jogos sem ROMs validas ficam pendentes. Consulte logs/setup-latest.log.";
- return false;
-}
+bool Backend::setupRunning(){pollSetup();return setupProcess_||!setupQueue_.empty();}
 // Runs tools/setup/setup.py for every game the setup supports, on the folder chosen by the user. Nothing is downloaded.
 bool Backend::startSetup(const fs::path& roms){
- if(running()||setupRunning()){status_=L"Aguarde o termino da sessao ou do setup atual.";return false;}
+ if(running()||setupRunning()){status_=L"Wait for the running game or setup to finish.";return false;}
+ if(!acknowledged_){status_=L"Confirm on the Legal page that you own the original ROM files.";return false;}
+ for(int i=0;i<3;++i)if(!setRomFolder(i,roms))return false;
+ for(int i=0;i<3;++i)queueSetup(i,false);
+ status_=L"Setup running: checking your ROM files and generating the games on this machine...";return true;
+}
+bool Backend::acknowledgeRoms(bool value){
+ const bool before=acknowledged_;acknowledged_=value;
+ if(saveSetupFolders())return true;
+ acknowledged_=before;status_=L"Could not save the confirmation.";return false;
+}
+fs::path Backend::setupLog(int index)const{return root_/L"logs"/(L"setup-"+std::wstring(compatibleGames.at(size_t(index)).setupId)+L".log");}
+fs::path Backend::setupOutput(int index)const{
+ if(index<0||index>2)return {};
+ try{return readSetup(root_,compatibleGames[size_t(index)].setupId).directory;}catch(...){return {};}
+}
+void Backend::refreshSetupEstimate(int index){
+ try{const auto record=readSetup(root_,compatibleGames[size_t(index)].setupId);setupGames_[size_t(index)].estimate=record.finished?record.seconds:0;}
+ catch(...){setupGames_[size_t(index)].estimate=0;}
+}
+void Backend::loadSetupFolders(){
+ const auto file=root_/setupFoldersFile;if(!ordinary(file))return;
+ std::istringstream lines(smallFile(file,65536));std::string line;
+ while(std::getline(lines,line)){
+  line=trim(line);const auto equals=line.find('=');if(equals==std::string::npos)continue;
+  if(line=="acknowledged=1")acknowledged_=true;
+  const auto folder=fs::u8path(line.substr(equals+1));
+  for(size_t i=0;i<3;++i)if(line.compare(0,equals,setupId(i))==0&&folder.is_absolute())setupGames_[i].folder=folder;
+ }
+}
+bool Backend::saveSetupFolders()const{
+ std::string bytes=acknowledged_?"acknowledged=1\n":"";
+ for(size_t i=0;i<3;++i)if(!setupGames_[i].folder.empty())bytes+=setupId(i)+"="+setupGames_[i].folder.u8string()+"\n";
+ try{writePreferences(root_/setupFoldersFile,bytes);return true;}catch(...){return false;}
+}
+bool Backend::setRomFolder(int index,const fs::path& folder){
+ if(index<0||index>2)return false;
+ auto& game=setupGames_[size_t(index)];
+ if(game.queued||game.active){status_=L"Wait for this game's setup to finish.";return false;}
  try{
-  const auto folder=fs::absolute(roms).lexically_normal();unlinked(folder);if(!fs::is_directory(folder))throw std::runtime_error("ROM folder");
-  wchar_t system[32768];const UINT n=GetSystemDirectoryW(system,32768);if(!n||n>=32768)throw std::runtime_error("system directory");
-  std::wstring chain;
-  for(size_t i=0;i<3;++i){
-   const std::wstring game=compatibleGames[i].setupId;
-   if(!ordinary(root_/L"tools/setup"/(game+L".py")))continue;
-   if(!chain.empty())chain+=L" & ";
-   chain+=L"python tools\\setup\\setup.py --game "+game+L" --roms "+quote(folder.wstring());
+  const auto chosen=fs::absolute(folder).lexically_normal();unlinked(chosen);if(!fs::is_directory(chosen))throw std::runtime_error("ROM folder");
+  if(chosen!=game.folder){game.folder=chosen;game.verified=false;game.files.clear();game.checks.clear();game.program.clear();}
+  if(!saveSetupFolders())throw std::runtime_error("setup folders not saved");
+  return true;
+ }catch(const std::exception& error){status_=L"Folder refused: "+nativeError(error.what());return false;}
+}
+bool Backend::queueSetup(int index,bool verifyOnly){
+ if(index<0||index>2)return false;
+ auto& game=setupGames_[size_t(index)];
+ if(!acknowledged_){status_=L"Confirm on the Legal page that you own the original ROM files.";return false;}
+ if(running()){status_=L"Close the game before preparing files.";return false;}
+ if(game.folder.empty()){status_=L"Choose the ROM folder of this game.";return false;}
+ if(game.queued||game.active){status_=L"This game is already in the setup; wait or cancel.";return false;}
+ game.queued=true;game.mode=verifyOnly?"verify":"setup";game.state="queued";game.step.clear();game.message.clear();
+ setupQueue_.push_back({index,verifyOnly});pollSetup();return true;
+}
+void Backend::checkRequirements(){
+ if(activeSetup_.game==-1&&setupProcess_)return;
+ for(const auto& job:setupQueue_)if(job.game==-1)return;
+ requirements_={};interpreter_.clear();interpreterTry_=0;setupQueue_.push_front({-1,false});pollSetup();
+}
+void Backend::cancelSetup(){
+ for(const auto& job:setupQueue_)if(job.game>=0){auto& game=setupGames_[size_t(job.game)];game.queued=false;game.state="cancelled";}
+ setupQueue_.clear();
+ if(setupJob_){setupCancelled_=true;TerminateJobObject(setupJob_,ERROR_CANCELLED);}
+ status_=L"Setup cancelled.";
+}
+void Backend::pollSetup(){
+ if(setupProcess_){
+  const bool exited=WaitForSingleObject(setupProcess_,0)==WAIT_OBJECT_0;
+  if(activeSetup_.game>=0&&(exited||GetTickCount64()>=nextSetupRead_)){nextSetupRead_=GetTickCount64()+250;readSetupProgress(activeSetup_.game);}
+  if(!exited)return;
+  DWORD code=ERROR_GEN_FAILURE;if(!GetExitCodeProcess(setupProcess_,&code))code=ERROR_GEN_FAILURE;
+  CloseHandle(setupProcess_);setupProcess_=nullptr;CloseHandle(setupJob_);setupJob_=nullptr;
+  finishSetup(code);
+ }
+ while(!setupProcess_&&!setupQueue_.empty()){
+  auto job=setupQueue_.front();setupQueue_.pop_front();
+  if(job.game>=0&&!requirements_.checked){setupQueue_.push_front(job);job={-1,false};}
+  try{startSetupJob(job);}
+  catch(const std::exception& error){
+   if(job.game<0){requirements_={};requirements_.checked=true;}
+   else{auto& game=setupGames_[size_t(job.game)];game.queued=game.active=false;game.state="failed";game.message=error.what();}
+   status_=L"Setup refused: "+nativeError(error.what());
   }
-  if(chain.empty())throw std::runtime_error("setup modules");
-  std::wstring command=quote((fs::path(system)/L"cmd.exe").wstring())+L" /d /s /c \""+chain+L"\"";
-  const auto log=root_/L"logs/setup-latest.log";unlinked(log);fs::create_directories(log.parent_path());unlinked(log);
-  SECURITY_ATTRIBUTES security{sizeof(security),nullptr,TRUE};Handle output,input;
-  output.h=CreateFileW(log.c_str(),GENERIC_WRITE,FILE_SHARE_READ,&security,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
-  input.h=CreateFileW(L"NUL",GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,&security,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
-  if(output.h==INVALID_HANDLE_VALUE||input.h==INVALID_HANDLE_VALUE)throw std::runtime_error("setup log");
-  STARTUPINFOW si{};si.cb=sizeof(si);si.dwFlags=STARTF_USESTDHANDLES;si.hStdInput=input.h;si.hStdOutput=output.h;si.hStdError=output.h;
-  PROCESS_INFORMATION pi{};
-  if(!CreateProcessW(nullptr,command.data(),nullptr,nullptr,TRUE,CREATE_NO_WINDOW,nullptr,root_.c_str(),&si,&pi))throw std::runtime_error("setup CreateProcess");
-  CloseHandle(pi.hThread);setupProcess_=pi.hProcess;
-  status_=L"Setup em curso: verificando as ROMs e gerando os jogos nesta maquina...";return true;
- }catch(const std::exception& error){status_=L"Setup recusado: "+nativeError(error.what());return false;}
+ }
+}
+void Backend::startSetupJob(SetupJob job){
+ const auto script=quote((root_/L"tools/setup/setup.py").wstring());
+ if(!ordinary(root_/L"tools/setup/setup.py"))throw std::runtime_error("tools/setup/setup.py missing");
+ setupCancelled_=false;
+ if(job.game<0){
+  const auto found=interpreters();
+  if(interpreterTry_>=found.size()){requirements_={};requirements_.checked=true;status_=L"Python 3 was not found on PATH.";return;}
+  setupProcess_=spawnSetup(root_,found[interpreterTry_]+L" -I "+script+L" --requirements",root_/L"logs/setup-requirements.json",
+                           root_/L"logs/setup-requirements.log",setupJob_);
+  activeSetup_=job;return;
+ }
+ auto& game=setupGames_[size_t(job.game)];game.queued=false;
+ if(interpreter_.empty())throw std::runtime_error("Python 3 was not found on PATH");
+ unlinked(game.folder);if(!fs::is_directory(game.folder))throw std::runtime_error("ROM folder not found");
+ const auto progress=setupProgress(root_,size_t(job.game));unlinked(progress);DeleteFileW(progress.c_str());
+ std::wstring command=interpreter_+L" -I "+script+L" --game "+compatibleGames[size_t(job.game)].setupId+L" --roms "+
+                      quote(game.folder.wstring())+L" --progress "+quote(progress.wstring())+(job.verify?L" --verify-only":L"");
+ setupProcess_=spawnSetup(root_,command,setupLog(job.game),setupLog(job.game),setupJob_);
+ activeSetup_=job;nextSetupRead_=0;
+ game.active=true;game.state="running";game.step="verify";game.message.clear();game.unitsDone=game.unitsTotal=0;game.elapsed=0;
+ status_=job.verify?L"Checking the ROM files...":L"Setup running: checking the ROM files and generating the game on this machine...";
+}
+void Backend::finishSetup(DWORD code){
+ const auto job=activeSetup_;activeSetup_={-1,false};
+ if(job.game<0){
+  tinyjson::Value value;
+  if(!readObject(root_/L"logs/setup-requirements.json",value)){
+   if(++interpreterTry_<interpreters().size())setupQueue_.push_front({-1,false});
+   else{requirements_={};requirements_.checked=true;status_=L"Python 3 was not found on PATH.";}
+   return;
+  }
+  interpreter_=interpreters().at(interpreterTry_);
+  requirements_.checked=true;requirements_.python=text(value,"python");
+  if(const auto* windows=member(value,"windows_64bit",tinyjson::Value::Bool))requirements_.windows64=windows->boolean;
+  if(const auto* supported=member(value,"python_supported",tinyjson::Value::Bool))requirements_.pythonSupported=supported->boolean;
+  if(const auto* ok=member(value,"ok",tinyjson::Value::Bool))requirements_.ok=ok->boolean;
+  if(const auto* compiler=member(value,"compiler",tinyjson::Value::Object)){
+   requirements_.compiler=text(*compiler,"version");requirements_.validated=text(*compiler,"validated");}
+  return;
+ }
+ auto& game=setupGames_[size_t(job.game)];game.active=false;
+ if(setupCancelled_){game.state="cancelled";game.message="Cancelled";}
+ else if(code==0){game.state="done";if(game.mode=="setup")game.verified=true;}
+ else if(game.state!="failed"){game.state="failed";if(game.message.empty())game.message="setup.py exited with code "+std::to_string(code);}
+ refreshSetupEstimate(job.game);
+ const std::wstring name=compatibleGames[size_t(job.game)].title;
+ status_=game.state=="done"?(game.mode=="verify"?name+L": ROM files verified.":name+L": ready to play."):
+         game.state=="cancelled"?name+L": setup cancelled.":name+L": failed; see "+setupLog(job.game).filename().wstring()+L".";
+}
+void Backend::readSetupProgress(int index){
+ tinyjson::Value value;if(!readObject(setupProgress(root_,size_t(index)),value))return;
+ auto& game=setupGames_[size_t(index)];
+ game.mode=text(value,"mode");game.step=text(value,"step");game.state=text(value,"state");game.message=text(value,"message");
+ game.elapsed=number(value,"elapsed");game.unitsDone=game.unitsTotal=0;
+ if(const auto* units=member(value,"units",tinyjson::Value::Object)){game.unitsDone=int(number(*units,"done"));game.unitsTotal=int(number(*units,"total"));}
+ if(const auto* report=member(value,"report",tinyjson::Value::Object)){
+  game.files.clear();game.checks.clear();game.program=text(*report,"program");
+  if(const auto* files=member(*report,"files",tinyjson::Value::Array))
+   for(const auto& file:files->items)if(file.kind==tinyjson::Value::Object)game.files.emplace_back(text(file,"name"),text(file,"status"));
+  if(const auto* checks=member(*report,"checks",tinyjson::Value::Array))
+   for(const auto& check:checks->items)if(check.kind==tinyjson::Value::String)game.checks.push_back(check.text);
+  const auto* ok=member(*report,"ok",tinyjson::Value::Bool);game.verified=ok&&ok->boolean;
+ }
 }
 bool Backend::selectGame(int index){
  if(running()||index<0||index>2)return false;
@@ -574,6 +747,7 @@ bool Backend::launchNative(const fs::path& manifest,const fs::path& settings,boo
 }
 bool Backend::launch(unsigned frames){
  poll();if(process_){status_=L"A sessao atual ainda esta em execucao.";return false;}
+ if(setupRunning()){status_=L"Aguarde o termino do setup antes de jogar.";return false;}
  if(gameIndex_==1&&publicNativePresent(root_)!=selectedNative_){status_=L"A instalacao mudou. Reabra Settings antes de jogar.";return false;}
  gameExecutable_.clear();nativeExperiment_=false;nativeLiveExperiment_=false;nativePlayable_=false;mk3Native_=false;
  if(frames>500000){status_=L"Limite de quadros de diagnostico invalido.";return false;}

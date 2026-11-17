@@ -44,10 +44,17 @@ and the first `push` need the maintainer's own account and are done by hand.
 
 ## Releases
 
-A release contains only the setup, the launcher and the tools. It never
-contains generated code, a game executable, a CMOS seed, ROM data, captures or
-music. The game's C++ is always generated and compiled on the user's machine
-by `tools/setup/setup.py`.
+A release contains only the setup, the launcher and the tools: the repository
+tree, `TriUnit Setup.cmd` and a prebuilt `triunit.exe` (built from the tagged
+tree with `python tools/launcher/build.py`; it holds no game code). It never
+contains generated code, a game executable, a launcher package
+(`build/native/…/product`), a CMOS seed, ROM data, captures or music. The
+game's C++ is always generated, compiled and installed on the user's machine by
+`tools/setup/setup.py`, which the app runs.
+
+Before tagging, check that the release folder holds no `roms/`, `generated/`,
+`build/`, `logs/` or `custom_audio/` file and that `python tools/publish/audit.py`
+reports 0 findings.
 
 The toolchain is not bundled: the setup records the identity (version and
 SHA-256) of the MSYS2 g++ 16.1.0 that validated the routes. Bundling another

@@ -81,7 +81,8 @@ int wmain(int argc,wchar_t** argv){
   const auto root=fs::absolute(argv[1]);
   const auto stage=root/L"build/native/manual-temporary-8-20261025";
   {
-   App controller(root);controller.mk1Available=true;controller.active=false;
+   App controller(root);controller.mk1Available=true;controller.active=false;controller.act(10);
+   verify(controller.page==pagePlay&&!controller.settings,"Play in the navigation opens the cabinets");
    verify(controller.padEdges(XINPUT_GAMEPAD_A)==0,"inactive controller cannot activate UI");
    controller.active=true;verify(controller.padEdges(XINPUT_GAMEPAD_A)==0,"held A after focus return must wait for release");
    verify(controller.padEdges(XINPUT_GAMEPAD_A|XINPUT_GAMEPAD_START)==0,"held action buttons remain blocked");
@@ -93,6 +94,13 @@ int wmain(int argc,wchar_t** argv){
   }
   App app(root);app.mk1Available=app.mk2Available=true;
   auto enabled=[&](int id){app.hitTargets();auto it=std::find_if(app.controls.begin(),app.controls.end(),[&](const Control& c){return c.id==id;});return it!=app.controls.end()&&it->enabled;};
+  verify(app.page==pageOverview,"without a finished setup the launcher opens on Overview");
+  for(int id:{40,41,42,10,11,43})verify(enabled(id),"every page of the navigation is reachable");
+  app.key(VK_NEXT);verify(app.page==pageRoms,"PgDn walks the navigation");app.key(VK_PRIOR);verify(app.page==pageOverview,"PgUp walks back");
+  app.act(43);verify(app.page==pageLegal&&!app.backend.romsAcknowledged(),"Legal page without confirmation");
+  app.act(41);verify(!enabled(60)&&!enabled(70),"no verify or build before the confirmation");
+  app.act(43);app.act(120);verify(app.backend.romsAcknowledged(),"confirmation from the Legal page");app.act(120);verify(!app.backend.romsAcknowledged(),"confirmation withdrawn");
+  app.act(10);
   verify(!enabled(20),"Play disabled before explicit selection");
   app.act(1);
   verify(app.chosen==0&&app.selected==0&&!app.details&&!app.backend.running(),"first click selects without popup or launch");

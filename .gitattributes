@@ -23,3 +23,4 @@ native/launcher/** -text whitespace=trailing-space,space-before-tab,cr-at-eol
 native/tests/mk2* -text whitespace=trailing-space,space-before-tab,cr-at-eol
 tools/mk2/** -text whitespace=trailing-space,space-before-tab,cr-at-eol
 tools/quality/run.py -text whitespace=trailing-space,space-before-tab,cr-at-eol
+*.cmd text eol=crlf

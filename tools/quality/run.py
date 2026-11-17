@@ -420,6 +420,8 @@ def fast(cc, sanitizer, scratch, graphics=False):
                             "native/src/mk5_program.cpp"], ["-lbcrypt"], []),
         ("backend", [f"{CURRENT}/backend_tests.cpp", "native/launcher/launcher_backend.cpp"],
          ["-municode", "-luser32"]+backend_arguments(ROOT), [str(scratch / "backend-root")]),
+        ("setup-queue", ["native/tests/setup_queue_tests.cpp", "native/launcher/launcher_backend.cpp"],
+         ["-municode", "-luser32"]+backend_arguments(ROOT), [str(scratch / "setup-queue-root")]),
         ("mk3-launcher", ["native/tests/mk3_launcher_tests.cpp", "native/launcher/launcher_backend.cpp"],
          ["-municode", "-luser32"]+backend_arguments(ROOT), [str(scratch / "mk3-launcher-root")]),
         ("launcher-selection", ["native/tests/launcher_selection_tests.cpp", "native/launcher/launcher_renderer.cpp", "native/launcher/launcher_backend.cpp"],
@@ -490,6 +492,10 @@ def fast(cc, sanitizer, scratch, graphics=False):
                    "script_sha256": sha(script), "run": compact(result)}
             rows.append(row)
             print(f"{'PASS' if row['passed'] else 'FAIL'} {row['name']}", flush=True)
+        script = ROOT / "tools/setup/test_setup.py"
+        result = command([sys.executable, "-B", script], scratch, timeout=60)
+        rows.append({"name": "setup-cli", "passed": result["passed"], "script_sha256": sha(script), "run": compact(result)})
+        print(f"{'PASS' if result['passed'] else 'FAIL'} setup-cli", flush=True)
     return rows
 
 

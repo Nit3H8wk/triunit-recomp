@@ -32,7 +32,7 @@ bool environment(const std::string& log,std::initializer_list<std::pair<const ch
  for(const auto& [key,value]:want)if(!has(log,std::string(key)+"="+value+";"))return false;
  return true;
 }
-const wchar_t* label(int engine){return engine==2?L"NATIVO  /  REMASTERIZADA":L"NATIVO  /  ORIGINAL";}
+const wchar_t* label(int engine){return engine==2?L"NATIVE  /  REMASTERED":L"NATIVE  /  ORIGINAL";}
 // A new launcher session with the MK3 card chosen.
 struct Session {
  App app;

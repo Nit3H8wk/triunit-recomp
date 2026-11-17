@@ -12,16 +12,18 @@ GENERATED=ROOT/'generated'
 TOOLS=GENERATED/'tools'
 
 
+MANIFESTS={'mk1':'tools/mk1/roms-l1.json','mk2':'tools/mk2/roms-l31.json','mk3':'tools/mk3/roms-21.json'}
+
+
+def manifest(game):
+    """Versioned ROM manifest of the revision the project supports."""
+    if game not in MANIFESTS:raise ValueError('Unknown game: '+game)
+    return ROOT/MANIFESTS[game]
+
+
 def program_sha256(game):
     """Program identity of the revision the project supports (from the versioned ROM manifest; no ROM read)."""
-    if game=='mk3':
-        from tools.mk3 import roms
-        return json.loads(roms.MANIFEST.read_text('utf-8'))['program_sha256']
-    if game=='mk2':
-        return json.loads((ROOT/'tools/mk2/roms-l31.json').read_text('utf-8'))['program_sha256']
-    if game=='mk1':
-        return json.loads((ROOT/'tools/mk1/roms-l1.json').read_text('utf-8'))['program_sha256']
-    raise ValueError('Unknown game: '+game)
+    return json.loads(manifest(game).read_text('utf-8'))['program_sha256']
 
 
 def output(game):

@@ -5,17 +5,19 @@
 namespace mklauncher {
 inline constexpr const wchar_t* productName=L"TriUnit Recomp";
 inline constexpr const wchar_t* productTitle=L"TRIUNIT RECOMP";
-// Index = launcher game index (0, 1, 2) and the setup id of tools/setup/setup.py.
-struct CompatibleGame {const wchar_t* name;const wchar_t* revision;const wchar_t* setupId;};
+// Index = launcher game index (0, 1, 2) and the setup id of tools/setup/setup.py. manifest: the versioned ROM manifest
+// the setup checks the user's files against (tools/setup/paths.py MANIFESTS).
+struct CompatibleGame {const wchar_t* name;const wchar_t* title;const wchar_t* revision;const wchar_t* board;const wchar_t* setupId;
+                       const wchar_t* manifest;};
 inline constexpr std::array<CompatibleGame,4> compatibleGames{{
- {L"MORTAL KOMBAT",L"T-UNIT",L"mk1"},
- {L"MORTAL KOMBAT II",L"L3.1",L"mk2"},
- {L"MORTAL KOMBAT 3",L"REV 2.1",L"mk3"},
- {L"ULTIMATE MORTAL KOMBAT 3",L"",L"umk3"},
+ {L"MORTAL KOMBAT",L"Mortal Kombat",L"5.0",L"T-Unit (ADPCM sound)",L"mk1",L"tools/mk1/roms-l1.json"},
+ {L"MORTAL KOMBAT II",L"Mortal Kombat II",L"L3.1",L"T-Unit",L"mk2",L"tools/mk2/roms-l31.json"},
+ {L"MORTAL KOMBAT 3",L"Mortal Kombat 3",L"2.1",L"Wolf Unit",L"mk3",L"tools/mk3/roms-21.json"},
+ {L"ULTIMATE MORTAL KOMBAT 3",L"Ultimate Mortal Kombat 3",L"",L"Wolf Unit",L"umk3",L""},
 }};
 inline constexpr std::array<const wchar_t*,3> legalNotice{{
- L"PROJETO INDEPENDENTE, SEM AFILIACAO COM WARNER BROS. ENTERTAINMENT INC. OU NETHERREALM STUDIOS.",
- L"NAO INCLUI ARQUIVOS DOS JOGOS: O CODIGO E GERADO NESTA MAQUINA A PARTIR DAS ROMS DO USUARIO.",
- L"NOMES DOS JOGOS USADOS SO PARA INDICAR COMPATIBILIDADE; MARCAS PERTENCEM AOS SEUS TITULARES.",
+ L"Independent project, not affiliated with or endorsed by Warner Bros. Entertainment Inc. or NetherRealm Studios.",
+ L"No game files are included: the game's C++ is generated on this machine from the user's own ROM files.",
+ L"Game names are used only to identify compatibility; all marks belong to their respective owners.",
 }};
 }
