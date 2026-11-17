@@ -9,6 +9,7 @@
 #include "mk5_smaa.hpp"
 #include "mk5_video.hpp"
 #include "mk5_gamepad.hpp"
+#include "mk5_hid.hpp"
 #include "mk5_timing.hpp"
 #include "mk5_color.hpp"
 #include "mk5_bezel.hpp"
@@ -128,6 +129,7 @@ struct Mk5Window::Impl {
     std::atomic<bool> running{true},exclusive{false};
     std::atomic<bool> focused{false};
     mutable mk5pad::Devices pads;
+    mk5controls::Config controls;std::array<mk5controls::Socd,2> socd{};
     mutable std::atomic<unsigned> controller_count{0};
     std::mutex stats_mutex;mk5timing::Stats producer_timing,display_timing,prepare_timing;
     bool bezel=true,fullscreen=true,legacy_pacing=false,high_refresh=false,tearing=false,immediate_headroom=false;
@@ -248,6 +250,9 @@ struct Mk5Window::Impl {
         validate_graphics=validation=="1";
         std::wstring image(32768,L'\0');image.resize(GetEnvironmentVariableW(L"MK1_BEZEL_IMAGE",image.data(),DWORD(image.size())));
         bezel_image=image.size()<32768?image:std::wstring();
+        // MK1_CONTROLS: the launcher's player controls (mk5controls::format); absent: the original layout.
+        std::string text(4096,'\0');text.resize(GetEnvironmentVariableA("MK1_CONTROLS",text.data(),DWORD(text.size())));
+        if(!text.empty()&&(text.size()>=4096||!mk5controls::parse(text,controls)))throw std::runtime_error("MK1_CONTROLS is invalid");
         const auto mode=option("MK1_HDR","off");
         if(mode!="off"&&mode!="auto"&&mode!="force")throw std::runtime_error("MK1_HDR must be off, auto or force");
         hdr_mode=mode=="off"?0:(mode=="auto"?1:2);
@@ -273,6 +278,8 @@ struct Mk5Window::Impl {
         if(!self)return DefWindowProcW(window,message,key,value);
         if(message==WM_CLOSE){self->close_requested=true;PostMessageW(window,WM_CANCELMODE,0,0);return 0;}
         if(message==WM_DESTROY){self->hwnd=nullptr;self->running=false;return 0;}
+        if(message==WM_INPUT){mk5hid::shared().input(value);return DefWindowProcW(window,message,key,value);}
+        if(message==WM_INPUT_DEVICE_CHANGE){if(key==GIDC_REMOVAL)mk5hid::shared().removed(reinterpret_cast<HANDLE>(value));return 0;}
         if(message==WM_ACTIVATEAPP)self->focused=key!=0;
         if(message==WM_SETFOCUS)self->focused=true;
         if(message==WM_KILLFOCUS || (message==WM_ACTIVATEAPP && !key)){self->focused=false;self->clear_keys();if(!self->switching_mode)self->leave_exclusive=true;return 0;}
@@ -1062,7 +1069,7 @@ struct Mk5Window::Impl {
             hwnd=CreateWindowExW(0,c.lpszClassName,L"TriUnit Recomp | Alt+Enter fullscreen exclusivo | Esc",WS_OVERLAPPEDWINDOW,CW_USEDEFAULT,CW_USEDEFAULT,rect.right-rect.left,rect.bottom-rect.top,nullptr,nullptr,c.hInstance,this);
             if(!hwnd)throw std::runtime_error("MK5 window creation failed");
             if(fullscreen){MONITORINFO monitor{};monitor.cbSize=sizeof(monitor);GetMonitorInfoW(MonitorFromWindow(hwnd.load(),MONITOR_DEFAULTTONEAREST),&monitor);const auto& r=monitor.rcMonitor;SetWindowLongPtrW(hwnd.load(),GWL_STYLE,WS_POPUP|WS_VISIBLE);SetWindowPos(hwnd.load(),HWND_TOP,r.left,r.top,r.right-r.left,r.bottom-r.top,SWP_FRAMECHANGED);}
-            graphics();ShowWindow(hwnd.load(),SW_SHOW);UpdateWindow(hwnd.load());resize_buffers();
+            mk5hid::shared().listen(hwnd.load());graphics();ShowWindow(hwnd.load(),SW_SHOW);UpdateWindow(hwnd.load());resize_buffers();
             {std::lock_guard<std::mutex> lock(state_mutex);ready=true;}ready_cv.notify_one();
             while(running){
                 MSG msg{};while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
@@ -1137,8 +1144,19 @@ Mk5Window::~Mk5Window(){
 }
 bool Mk5Window::Pump(){impl->check_failure();return impl->running;}
 BootDiInputs Mk5Window::Inputs(BootDiInputs base)const{
-    std::array<bool,256> keys{};for(size_t i=0;i<keys.size();++i)keys[i]=impl->keys[i].load();base=Mk5KeyboardInputs(keys,base);
-    if(impl->focused){base=impl->pads.inputs(base);impl->controller_count=impl->pads.count();}else impl->controller_count=0;
+    std::array<bool,256> keys{};for(size_t i=0;i<keys.size();++i)keys[i]=impl->keys[i].load();
+    const auto& c=impl->controls;std::array<uint32_t,2> held{{mk5controls::from_keys(c,0,keys),mk5controls::from_keys(c,1,keys)}};
+    if(impl->focused){
+        // Players without an XInput pad take the HID controllers in arrival order.
+        impl->pads.poll();const auto hid=mk5hid::shared().pads();size_t next=0;
+        for(unsigned p=0;p<2;++p){
+            if(const auto* g=impl->pads.player(p))held[p]|=mk5controls::from_pad(c,p,mk5pad::buttons(*g),mk5pad::directions(*g));
+            else if(next<hid.size()){held[p]|=mk5controls::from_pad(c,p,hid[next].buttons,hid[next].directions);++next;}
+        }
+        impl->controller_count=impl->pads.count()+unsigned(hid.size());
+    }else impl->controller_count=0;
+    for(unsigned p=0;p<2;++p)held[p]=mk5controls::clean(held[p],c.socd,impl->socd[p]);
+    base.in01=mk5controls::shared(held[0],held[1],base.in01,true);
     return base;
 }
 void Mk5Window::Present(const std::vector<uint32_t>& pixels,unsigned width,unsigned height,

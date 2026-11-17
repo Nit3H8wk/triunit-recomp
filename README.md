@@ -40,6 +40,10 @@ your ROM.
   Windows HDR is on (paper white and peak from Windows or set by hand; highlight
   expansion in Remastered only). The arcade runs at its own 54.7069 frames per
   second.
+- **Controls.** Per-player keyboard keys and controller buttons for every action
+  (Settings > Controls, shared by all games); XInput pads and DirectInput / HID
+  arcade sticks (Raw Input); opposite directions held together (SOCD) are
+  neutral, as on an arcade lever, or last input wins.
 - **Audio.** The board's own sound program, recompiled like the game. Adjustable
   audio queue (balanced or safe) and per-game software volume. In Mortal Kombat
   and Mortal Kombat II, Remastered can play your own music

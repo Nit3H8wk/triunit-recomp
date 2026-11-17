@@ -5,6 +5,7 @@
 #endif
 #include <windows.h>
 #include "mk5_gamepad.hpp"
+#include "mk5_hid.hpp"
 #include "mk5_window.hpp"
 #include <cstdio>
 #include <cwchar>
@@ -37,32 +38,30 @@ Ports FromShared(uint32_t shared) {
             uint16_t(((shared >> 16) & 0x27) | 0xffd8)};                                 // coins 1-2, starts
 }
 struct Extra { unsigned key; bool in2; uint16_t mask; };
-constexpr Extra kExtra[] = {{'C', false, 0x0004}, {'N', false, 0x0040},                 // P1 / P2 Run
-    {'T', true, 0x0008}, {VK_F2, true, 0x0010}, {'9', true, 0x0040}, {'7', true, 0x0080}, {'8', true, 0x0100},
+constexpr Extra kExtra[] = {{'T', true, 0x0008}, {VK_F2, true, 0x0010}, {'9', true, 0x0040}, {'7', true, 0x0080}, {'8', true, 0x0100},
     {VK_OEM_MINUS, true, 0x0800}, {VK_OEM_PLUS, true, 0x1000}, {VK_BACK, true, 0x8000}};
+
+// Held actions (mk5controls) -> Wolf-Unit ports. Run is MK3's own (IN1), so it never doubles as Block here.
+Ports Held(const std::array<uint32_t, 2>& held, const std::array<bool, 256>& keys) {
+    Ports out = FromShared(mk5controls::shared(held[0], held[1], 0xffffffffu, false));
+    if (held[0] >> mk5controls::Run & 1) out.in1 &= ~0x0004;
+    if (held[1] >> mk5controls::Run & 1) out.in1 &= ~0x0040;
+    for (const auto& e : kExtra) if (keys[e.key]) (e.in2 ? out.in2 : out.in1) &= uint16_t(~e.mask);
+    return out;
+}
+uint32_t PadHeld(const mk5controls::Config& c, unsigned player, const Pad& p) {
+    XINPUT_GAMEPAD g{};
+    g.wButtons = p.buttons; g.bLeftTrigger = p.left_trigger; g.bRightTrigger = p.right_trigger; g.sThumbLX = p.lx; g.sThumbLY = p.ly;
+    return mk5controls::from_pad(c, player, mk5pad::buttons(g), mk5pad::directions(g));
+}
 }
 
 Ports Map(const std::array<bool, 256>& keys, const Pad* p1, const Pad* p2) {
-    BootDiInputs in = Mk5KeyboardInputs(keys, {0xffffffffu, 0xffffffffu});
-    const Pad* pads[2] = {p1, p2};
-    bool block[2]{}, run[2]{};
-    for (unsigned player = 0; player < 2; ++player) {
-        const Pad* p = pads[player];
-        if (!p) continue;
-        XINPUT_GAMEPAD g{};   // shoulders and triggers are MK3's own (Block / Run), the rest the shared layout
-        g.wButtons = WORD(p->buttons & ~(XINPUT_GAMEPAD_LEFT_SHOULDER | XINPUT_GAMEPAD_RIGHT_SHOULDER));
-        g.sThumbLX = p->lx; g.sThumbLY = p->ly;
-        in = mk5pad::map(g, player, in);
-        block[player] = (p->buttons & XINPUT_GAMEPAD_RIGHT_SHOULDER) || p->right_trigger >= 128;
-        run[player] = (p->buttons & XINPUT_GAMEPAD_LEFT_SHOULDER) || p->left_trigger >= 128;
-    }
-    Ports out = FromShared(in.in01);
-    if (block[0]) out.in0 &= ~0x0020;
-    if (block[1]) out.in0 &= ~0x2000;
-    if (run[0]) out.in1 &= ~0x0004;
-    if (run[1]) out.in1 &= ~0x0040;
-    for (const auto& e : kExtra) if (keys[e.key]) (e.in2 ? out.in2 : out.in1) &= uint16_t(~e.mask);
-    return out;
+    const mk5controls::Config c;   // the original layout
+    std::array<uint32_t, 2> held{{mk5controls::from_keys(c, 0, keys), mk5controls::from_keys(c, 1, keys)}};
+    if (p1) held[0] |= PadHeld(c, 0, *p1);
+    if (p2) held[1] |= PadHeld(c, 1, *p2);
+    return Held(held, keys);
 }
 
 std::string InputMapJson() {
@@ -97,30 +96,47 @@ std::string InputMapJson() {
     return out + row;
 }
 
-struct Input::Impl { mk5pad::Devices devices; mk5pad::Ports slots; unsigned pads = 0; };
-Input::Input() : impl(std::make_unique<Impl>()) {}
+struct Input::Impl {
+    mk5pad::Devices devices; mk5pad::Ports slots; unsigned pads = 0;
+    mk5controls::Config controls; std::array<mk5controls::Socd, 2> socd{};
+};
+Input::Input() : impl(std::make_unique<Impl>()) {
+    // MK1_CONTROLS: the launcher's player controls; absent: the original layout.
+    std::string text(4096, ' ');
+    text.resize(GetEnvironmentVariableA("MK1_CONTROLS", text.data(), DWORD(text.size())));
+    if (!text.empty() && (text.size() >= 4096 || !mk5controls::parse(text, impl->controls))) throw std::runtime_error("MK1_CONTROLS is invalid");
+}
 Input::~Input() = default;
 unsigned Input::pads() const { return impl->pads; }
 Ports Input::Poll() {
     std::array<bool, 256> keys{};
-    Pad pads[2];
-    const Pad* use[2]{};
+    const auto& c = impl->controls;
+    std::array<uint32_t, 2> held{};
     impl->pads = 0;
     const HWND h = Window();
     if (h && GetForegroundWindow() == h) {
         for (int vk = 1; vk < 256; ++vk) keys[size_t(vk)] = (GetAsyncKeyState(vk) & 0x8000) != 0;
+        held = {mk5controls::from_keys(c, 0, keys), mk5controls::from_keys(c, 1, keys)};
         impl->devices.poll();
         impl->slots.update(impl->devices.connected);
+        // Players without an XInput pad take the Raw Input (HID) controllers in arrival order.
+        const auto hid = mk5hid::shared().pads();
+        size_t next = 0;
         for (unsigned p = 0; p < 2; ++p) {
             const int slot = impl->slots.slots[p];
-            if (slot < 0 || !impl->devices.connected[unsigned(slot)]) continue;
-            const auto& g = impl->devices.states[unsigned(slot)].Gamepad;
-            pads[p] = {g.wButtons, g.bLeftTrigger, g.bRightTrigger, g.sThumbLX, g.sThumbLY};
-            use[p] = &pads[p];
-            ++impl->pads;
+            if (slot >= 0 && impl->devices.connected[unsigned(slot)]) {
+                const auto& g = impl->devices.states[unsigned(slot)].Gamepad;
+                held[p] |= mk5controls::from_pad(c, p, mk5pad::buttons(g), mk5pad::directions(g));
+                ++impl->pads;
+            } else if (next < hid.size()) {
+                held[p] |= mk5controls::from_pad(c, p, hid[next].buttons, hid[next].directions);
+                ++next;
+                ++impl->pads;
+            }
         }
     }
-    return Map(keys, use[0], use[1]);
+    for (unsigned p = 0; p < 2; ++p) held[p] = mk5controls::clean(held[p], c.socd, impl->socd[p]);
+    return Held(held, keys);
 }
 
 namespace {

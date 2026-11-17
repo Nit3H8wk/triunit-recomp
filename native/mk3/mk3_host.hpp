@@ -7,6 +7,8 @@
 //   XInput pads (players 1 and 2, the shared slot assignment of mk5_gamepad.hpp): the shared MK2 layout (D-pad/stick,
 //   X HP, Y HK, A LP, B LK, Back coin, Start start) except the shoulders: RB/RT Block and LB/LT Run, as the MK3
 //   temporary core's controls (tools/mk3_arcade/build.py: RB blocks, LB runs).
+//   These are the defaults of mk5controls::Config; the launcher's CONTROLS tab remaps the player actions (MK1_CONTROLS),
+//   adds Raw Input (HID) controllers and SOCD cleaning. Map keeps the defaults; Input::Poll uses the player's controls.
 #pragma once
 #include <array>
 #include <cstdint>

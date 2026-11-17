@@ -448,7 +448,7 @@ def run(rom_directory,window=False,reference_frames=False,settings=None,audio=Fa
         "native/include/mk5_video.hpp","native/include/mk5_smaa.hpp","native/include/mk5_smaa_shader.hpp",
         "native/include/mk5_smaa_upstream/AreaTex.h","native/include/mk5_smaa_upstream/SearchTex.h","native/include/mk5_smaa_upstream/SMAA.hlsl.h",
         "native/include/mk5_color.hpp","native/include/mk5_bezel.hpp","native/include/mk5_hdr.hpp",
-        "native/include/mk5_timing.hpp","native/include/mk5_gamepad.hpp",
+        "native/include/mk5_timing.hpp","native/include/mk5_gamepad.hpp","native/include/mk5_controls.hpp","native/include/mk5_hid.hpp",
         "native/include/mk5_machine.hpp","native/include/mk5_irq.hpp",
         "native/include/mk5_audio_link.hpp","tools/mk2/native.py","tools/mk2/batch_reference.py",
         "native/mk2/mk2_audio.hpp","native/mk2/mk2_music.hpp","native/runtime/mk2_music_manifest.hpp","native/audio/williams_resampler.hpp","native/audio/host_gain.hpp","native/audio/custom_audio.hpp","native/audio/tiny_json.hpp","native/include/mk5_audio_output.hpp","native/include/mk5_audio_volume.hpp",

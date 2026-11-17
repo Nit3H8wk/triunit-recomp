@@ -3,6 +3,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include "mk5_controls.hpp"
 #include <array>
 #include <deque>
 #include <filesystem>
@@ -54,6 +55,8 @@ public:
  bool load();bool save();void reset();
  LauncherPreferences loadLauncherPreferences(const Config& legacy)const;
  bool saveLauncherPreferences(const LauncherPreferences&)const;
+ // Player controls of every game (build/native/launcher-profile/controls.cfg); absent or invalid: the original layout.
+ mk5controls::Config loadControls()const;bool saveControls(const mk5controls::Config&)const;
  GameAdjustments adjustments;
  bool refreshAdjustments();bool adjustmentsAvailable()const;
  std::wstring coinageLabel(const GameAdjustments&)const;

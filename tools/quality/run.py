@@ -394,6 +394,7 @@ def fast(cc, sanitizer, scratch, graphics=False):
             return rows
     cases = [
         ("controls", [f"{CURRENT}/controls_contract.cpp"], [], []),
+        ("player-controls", ["native/tests/mk5_controls_tests.cpp"], [], []),
         ("mono-audio", [f"{CURRENT}/audio_contract.cpp"], [], []),
         ("stereo-audio", ["native/tests/mk5_stereo_output_tests.cpp"], [], []),
         ("pacing", ["native/tests/mk5_pacing_tests.cpp"], [], []),

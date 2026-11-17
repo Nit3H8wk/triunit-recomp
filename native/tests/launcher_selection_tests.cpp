@@ -171,6 +171,18 @@ int wmain(int argc,wchar_t** argv){
    app.act(212);
    videoMatrix(app,game);
   }
-  std::cout<<"PASS: cabinet selection and rollback; 608 individual video values and 404 combined INI round trips across both games and editions\n";return 0;
+  // CONTROLS (every game): capture a key, cancel with Esc, toggle SOCD, save, reload, restore the original layout.
+  app.openSettings();app.key('7');verify(app.category==controlsTab,"CONTROLS tab reachable by key 7");
+  const int highPunch=controlCell+mk5controls::HighPunch;
+  app.act(highPunch);verify(app.capture==highPunch,"cell starts a capture");app.key('Q');
+  verify(app.capture<0&&app.draftControls.keys[0][mk5controls::HighPunch]=='Q',"captured key bound to P1 high punch");
+  app.act(highPunch);app.key(VK_ESCAPE);verify(app.capture<0&&app.settings&&app.draftControls.keys[0][mk5controls::HighPunch]=='Q',"Esc cancels the capture only");
+  app.act(controlCell+25+mk5controls::Up);verify(app.capture<0,"controller directions are not mappable");
+  app.act(socdControl);verify(app.draftControls.socd==1,"SOCD toggles to last input");
+  app.act(210);const auto stored=app.backend.loadControls();
+  verify(stored.keys[0][mk5controls::HighPunch]==81&&stored.socd==1,"controls saved and reloaded");
+  app.act(211);app.act(210);verify(mk5controls::format(app.backend.loadControls())==mk5controls::format(mk5controls::Config{}),"original controls restored");
+  app.act(212);
+  std::cout<<"PASS: cabinet selection and rollback; 608 individual video values and 404 combined INI round trips across both games and editions; controls tab\n";return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }

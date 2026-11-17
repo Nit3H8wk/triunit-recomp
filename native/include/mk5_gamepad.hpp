@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdint>
 #include "mk5_machine.hpp"
+#include "mk5_controls.hpp"
 namespace mk5pad {
 struct Ports {
  std::array<int,2> slots{{-1,-1}};
@@ -17,22 +18,20 @@ struct Ports {
   }
  }
 };
-inline BootDiInputs map(const XINPUT_GAMEPAD& pad,unsigned player,BootDiInputs base){
- if(player>1)return base;
- const unsigned offset=player*8;
- auto press=[&](bool down,unsigned bit){if(down)base.in01&=~(uint32_t(1)<<bit);};
+// Directions of a pad: D-pad or left stick past its deadzone (bits Up Down Left Right of mk5controls).
+inline unsigned directions(const XINPUT_GAMEPAD& pad){
  const auto b=pad.wButtons;
- press((b&XINPUT_GAMEPAD_DPAD_UP)||pad.sThumbLY>16000,offset);
- press((b&XINPUT_GAMEPAD_DPAD_DOWN)||pad.sThumbLY<-16000,offset+1);
- press((b&XINPUT_GAMEPAD_DPAD_LEFT)||pad.sThumbLX<-16000,offset+2);
- press((b&XINPUT_GAMEPAD_DPAD_RIGHT)||pad.sThumbLX>16000,offset+3);
- press(b&XINPUT_GAMEPAD_X,offset+4); // high punch
- press((b&(XINPUT_GAMEPAD_LEFT_SHOULDER|XINPUT_GAMEPAD_RIGHT_SHOULDER))||pad.bLeftTrigger>=128||pad.bRightTrigger>=128,offset+5);
- press(b&XINPUT_GAMEPAD_Y,offset+6); // high kick
- press(b&XINPUT_GAMEPAD_A,player?25:28); // low punch
- press(b&XINPUT_GAMEPAD_B,player?26:29); // low kick
- press(b&XINPUT_GAMEPAD_BACK,16+player); // original coin
- press(b&XINPUT_GAMEPAD_START,player?21:18);
+ return unsigned((b&XINPUT_GAMEPAD_DPAD_UP)||pad.sThumbLY>16000)|unsigned((b&XINPUT_GAMEPAD_DPAD_DOWN)||pad.sThumbLY<-16000)<<1|
+        unsigned((b&XINPUT_GAMEPAD_DPAD_LEFT)||pad.sThumbLX<-16000)<<2|unsigned((b&XINPUT_GAMEPAD_DPAD_RIGHT)||pad.sThumbLX>16000)<<3;
+}
+inline uint32_t buttons(const XINPUT_GAMEPAD& pad){
+ return pad.wButtons|(pad.bLeftTrigger>=128?mk5controls::LT:0)|(pad.bRightTrigger>=128?mk5controls::RT:0);
+}
+// One pad on the shared MK1/MK2 word with the given controls (default: the original layout).
+inline BootDiInputs map(const XINPUT_GAMEPAD& pad,unsigned player,BootDiInputs base,const mk5controls::Config& controls={}){
+ if(player>1)return base;
+ const uint32_t held=mk5controls::from_pad(controls,player,buttons(pad),directions(pad));
+ base.in01=mk5controls::shared(player?0:held,player?held:0,base.in01,true);
  return base;
 }
 // Dynamically resolve the OS driver: no vendor install and no dependency on a
@@ -48,7 +47,8 @@ public:
  Devices(const Devices&)=delete;Devices& operator=(const Devices&)=delete;
  void poll(){const auto now=GetTickCount64();if(now<next)return;next=now+4;
   for(unsigned i=0;i<4;++i){if(!connected[i]&&now<retry[i])continue;states[i]={};connected[i]=get&&get(i,&states[i])==ERROR_SUCCESS;if(!connected[i])retry[i]=now+250;}ports.update(connected);}
- BootDiInputs inputs(BootDiInputs base){poll();for(unsigned player=0;player<2;++player){const int slot=ports.slots[player];if(slot>=0&&connected[unsigned(slot)])base=map(states[unsigned(slot)].Gamepad,player,base);}return base;}
+ // The pad of a player, or nullptr (the shared P1/P2 slot assignment).
+ const XINPUT_GAMEPAD* player(unsigned p)const{const int slot=ports.slots[p];return slot>=0&&connected[unsigned(slot)]?&states[unsigned(slot)].Gamepad:nullptr;}
  unsigned count()const{unsigned n=0;for(bool c:connected)n+=c;return n;}
 };
 }

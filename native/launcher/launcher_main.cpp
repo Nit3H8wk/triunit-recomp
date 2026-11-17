@@ -21,6 +21,7 @@
 #include <shellapi.h>
 #include <mmsystem.h>
 #include "../include/mk5_gamepad.hpp"
+#include "../include/mk5_hid.hpp"
 #include "../include/mk5_timing.hpp"
 #include <array>
 #include <algorithm>
@@ -113,7 +114,9 @@ struct Button{int id;Rect box;std::wstring label;bool enabled;ButtonStyle style;
 enum VideoControl {videoProfile=274,videoPage,videoScale,videoCas,videoSmaa,videoBilateral,videoFullscreen};
 enum MenuAudioControl {menuVolume=281,menuMute};
 enum DisplayControl {displayPage=290,hdrMode,hdrPaper,hdrPeak,hdrHighlights};
-constexpr int launcherTab=3;
+constexpr int launcherTab=3,controlsTab=6,tabCount=7;
+// CONTROLS tab cells: 300 + player*50 + column*25 + action (column 0 keyboard, 1 controller); 390 SOCD.
+constexpr int controlCell=300,socdControl=390;
 constexpr Rect menuVolumeBox{969,700,166,54},menuMuteBox{1145,700,84,54};
 struct App {
     HWND window=nullptr;Backend backend;std::unique_ptr<Renderer> graphics;
@@ -127,6 +130,7 @@ struct App {
     Config draft{};GameAdjustments draftAdjustments{};
     LauncherPreferences launcher{},draftLauncher{};
     bool editingGame=false,resetScoresPending=false,videoRemastered=false,displayHdr=false;
+    mk5controls::Config draftControls;int capture=-1;uint32_t captureHeld=0;
     RECT placement{};std::wstring notice;
     std::array<float,3> glows{};float mx=-1,my=-1;const uint64_t started=frameTicks();bool receivedInput=false;
     WORD gamepadButtons=0;ULONGLONG nextPad=0,nextPoll=0,availabilityDue=0;
@@ -196,7 +200,7 @@ struct App {
     const wchar_t* mk3Edition()const{return backend.mk3Engine()==2?L"NATIVE  /  REMASTERED":L"NATIVE  /  ORIGINAL";}
     bool gameSelected()const{return settingsEnabled()&&chosen==selected&&ready(selected);}
     void rememberEdition(int game){if(game==0)mk1Remastered=backend.config.remastered;else if(game==1)mk2Remastered=backend.config.remastered;}
-    bool tabEnabled(int tab)const{return tab==launcherTab||editingGame;}
+    bool tabEnabled(int tab)const{return tab==launcherTab||tab==controlsTab||editingGame;}
     // MK1 package, native MK2 and the MK3 native package share the presenter options (filters, CRT, effects, sync, volume).
     bool nativeVideo()const{return selected==0||(selected==1&&backend.nativeMk2Installed())||selected==2;}
     VideoConfig& video(){return draft.video(videoRemastered);}
@@ -279,6 +283,37 @@ struct App {
         const auto& s=backend.setupGame(i);
         return s.active?(s.mode=="verify"?L"Verifying":L"Building"):s.queued?L"Queued":records[size_t(i)].finished?L"Rebuild":L"Build";
     }
+    // CONTROLS tab cells (ids, boxes and their player / column / action).
+    static std::tuple<int,int,unsigned> cell(int id){const int n=id-controlCell;return {n/50,n%50/25,unsigned(n%25)};}
+    static Rect cellBox(int id){const auto [player,column,action]=cell(id);return {560+float(player*2+column)*170,370+float(action)*30,160,26};}
+    static std::vector<int> controlCells(){
+        std::vector<int> ids;for(int player:{0,1})for(int column:{0,1})for(unsigned a=0;a<mk5controls::Count;++a)
+            if(!column||a>=mk5controls::HighPunch)ids.push_back(controlCell+player*50+column*25+int(a));
+        return ids;
+    }
+    // Every controller's buttons (XInput pads and Raw Input HID) as one mk5controls mask.
+    uint32_t controllerHeld()const{
+        uint32_t held=0;for(unsigned i=0;i<4;++i)if(pads.connected[i])held|=mk5pad::buttons(pads.states[i].Gamepad);
+        for(const auto& hid:mk5hid::shared().pads())held|=hid.buttons;
+        return held;
+    }
+    static std::wstring keyName(uint8_t vk){
+        if(!vk)return L"-";
+        UINT scan=MapVirtualKeyW(vk,MAPVK_VK_TO_VSC);
+        const bool extended=(vk>=VK_PRIOR&&vk<=VK_DOWN)||vk==VK_INSERT||vk==VK_DELETE||vk==VK_DIVIDE||vk==VK_NUMLOCK||vk==VK_RCONTROL||vk==VK_RMENU;
+        wchar_t name[64]{};if(scan&&GetKeyNameTextW(LONG(scan<<16|(extended?1u<<24:0)),name,64)>0){std::wstring s=name;for(auto& c:s)c=wchar_t(towupper(c));return s;}
+        wchar_t hex[16];swprintf(hex,16,L"KEY %02X",vk);return hex;
+    }
+    static std::wstring padName(uint32_t mask){
+        constexpr std::array<std::pair<uint32_t,const wchar_t*>,12> named{{{mk5controls::A,L"A"},{mk5controls::B,L"B"},{mk5controls::X,L"X"},{mk5controls::Y,L"Y"},
+            {mk5controls::LB,L"LB"},{mk5controls::RB,L"RB"},{mk5controls::LT,L"LT"},{mk5controls::RT,L"RT"},{mk5controls::BACK,L"BACK"},
+            {mk5controls::START,L"START"},{0x40,L"L3"},{0x80,L"R3"}}};
+        std::wstring out;
+        for(const auto& [bit,name]:named)if(mask&bit)out+=(out.empty()?L"":L" / ")+std::wstring(name);
+        for(unsigned b=0;b<32;++b){const uint32_t bit=1u<<b;bool known=false;for(const auto& n:named)known|=n.first==bit;
+            if((mask&bit)&&!known)out+=(out.empty()?L"":L" / ")+(b>=18?L"BUTTON "+std::to_wstring(b-7):std::wstring(L"D-PAD"));}
+        return out.empty()?L"-":out;
+    }
     std::wstring badge(int i)const{
         const auto& s=backend.setupGame(i);
         if(s.active)return s.mode=="verify"?L"Verifying":L"Building";
@@ -345,7 +380,8 @@ struct App {
         if(!settings&&!details&&page==pagePlay){for(int i=0;i<3;++i){auto r=positions[size_t(i)];controls.push_back({i+1,{r.x+cabinetShift(i),r.y+15,r.w,680},!backend.running()});}if(chosen>=0)controls.push_back({20,rightAligned({1256,888,244,52}),gameSelected()});}
         if(!settings&&page!=pagePlay)for(const auto& button:pageButtons())controls.push_back({button.id,button.box,button.enabled});
         if(settings){
-            for(int i=0;i<6;++i)controls.push_back({220+i,{300+float(i)*156,294,156,40},tabEnabled(i)});
+            for(int i=0;i<tabCount;++i)controls.push_back({220+i,{300+float(i)*134,294,134,40},tabEnabled(i)});
+            if(category==controlsTab){for(int id:controlCells())controls.push_back({id,cellBox(id),true});controls.push_back({socdControl,{969,738,260,30},true});}
             if(category==0){float y=350;for(int id:videoControls()){controls.push_back({id,{969,y,260,54},videoControlEnabled(id)});y+=60;}}
             if(category==1){controls.push_back({245,{969,350,260,54},musicAvailable||draft.remastered});controls.push_back({205,{969,420,260,54},true});controls.push_back({243,{969,490,260,54},false});controls.push_back({244,{969,560,260,54},false});}
             if(category==2){float y=350;for(int id:displayControls()){controls.push_back({id,{969,y,260,54},videoControlEnabled(id)});y+=60;}}
@@ -369,7 +405,7 @@ struct App {
             backend.load();musicAvailable=backend.remasteredAvailable();
             draft=backend.config;draftAdjustments=backend.adjustments;videoRemastered=selected==2?draft.mk3Engine==2:draft.remastered;
         }else category=launcherTab;
-        draftLauncher=launcher;
+        draftLauncher=launcher;draftControls=backend.loadControls();capture=-1;
         resetScoresPending=false;settings=true;details=false;focus=0;notice.clear();
         eventLog(backend.root(),"settings-open");
     }
@@ -377,7 +413,7 @@ struct App {
         if(!settings||!tabEnabled(tab))return;
         category=tab;resetScoresPending=false;focus=0;
     }
-    void closeSettings(){settings=false;draft=backend.config;focus=page==pagePlay&&chosen>=0?chosen:0;notice.clear();}
+    void closeSettings(){settings=false;capture=-1;draft=backend.config;focus=page==pagePlay&&chosen>=0?chosen:0;notice.clear();}
     void showPage(int next){
         if(settings)closeSettings();
         details=false;page=next;notice.clear();focus=page==pagePlay&&chosen>=0?chosen:0;
@@ -496,6 +532,10 @@ struct App {
                 notice=backend.status();
             }
         }
+        if(id==211&&settings&&category==controlsTab){draftControls={};capture=-1;notice=L"Original controls restored on screen. Use SAVE to apply.";}
+        if(id==210&&settings&&category==controlsTab){
+            notice=backend.saveControls(draftControls)?L"Controls saved for every game.":L"Could not save the controls.";capture=-1;
+        }
         if(id==211&&settings){
             if(category==launcherTab){
                 draftLauncher={};
@@ -514,7 +554,14 @@ struct App {
             }
         }
         if(id==212)closeSettings();
-        if(id>=220&&id<=225)selectTab(id-220);
+        if(id>=220&&id<220+tabCount)selectTab(id-220);
+        if(settings&&category==controlsTab){
+            const auto cells=controlCells();if(std::find(cells.begin(),cells.end(),id)!=cells.end()){
+                capture=id;captureHeld=controllerHeld();const auto [player,column,action]=cell(id);
+                notice=std::wstring(L"Press ")+(column?L"a controller button":L"a key")+L" for P"+std::to_wstring(player+1)+L" "+mk5controls::names[action]+L". Esc cancels.";
+            }
+            if(id==socdControl)draftControls.socd=!draftControls.socd;
+        }
     }
     std::vector<int> actions()const{
         if(!settings){
@@ -532,11 +579,20 @@ struct App {
             if(gameVolumeEnabled())a.push_back(270);
             if(backend.adjustmentsAvailable())a.push_back(271);
             if(resetScoresPending){a.push_back(272);a.push_back(273);}
-        }else a={202,203,204,206,230,menuVolume,menuMute};
+        }else if(category==controlsTab){a=controlCells();a.push_back(socdControl);}
+        else a={202,203,204,206,230,menuVolume,menuMute};
         a.insert(a.end(),{210,211,212});return a;
     }
     void key(WPARAM key){
-        invalidate();if(key==VK_F11){borderless(!fullscreen);return;}
+        invalidate();
+        if(capture>=0){ // the next key binds the cell, Esc cancels; a controller cell takes only Esc here
+            const auto [player,column,action]=cell(capture);
+            if(key==VK_ESCAPE)notice=L"Unchanged.";
+            else if(column)return;
+            else{draftControls.keys[size_t(player)][action]=uint8_t(key);notice=L"Key set. Use SAVE to apply.";}
+            capture=-1;return;
+        }
+        if(key==VK_F11){borderless(!fullscreen);return;}
         if(key==VK_ESCAPE){if(fullscreen){borderless(false);eventLog(backend.root(),"fullscreen-exit-escape");return;}if(details){details=false;notice.clear();}else if(settings)closeSettings();else close();return;}
         if(key==VK_PRIOR||key==VK_NEXT){cyclePage(key==VK_NEXT?1:-1);return;}
         if(key==VK_TAB){auto a=actions();focus=(focus+1)%int(a.size());return;}
@@ -562,7 +618,7 @@ struct App {
             if(details&&(key==VK_LEFT||key==VK_RIGHT)){focus=(focus+1)%int(a.size());}
             const int id=a[size_t(focus)];const bool editable=(id>=200&&id<=209)||id==245||id==250||id==251||id==255||(id>=videoProfile&&id<=videoFullscreen)||(id>=displayPage&&id<=hdrHighlights);
             if(key==VK_RETURN||key==VK_SPACE||((key==VK_LEFT||key==VK_RIGHT)&&editable))act(id);
-            if(key>='1'&&key<='6')selectTab(int(key-'1'));
+            if(key>='1'&&key<'1'+tabCount)selectTab(int(key-'1'));
         }
     }
     WORD padEdges(WORD buttons){
@@ -574,11 +630,17 @@ struct App {
     void padActions(WORD edge){
         if(edge&XINPUT_GAMEPAD_B){if(settings)closeSettings();else if(details){details=false;notice.clear();}return;}
         for(auto pair:{std::pair<WORD,int>{XINPUT_GAMEPAD_DPAD_LEFT,VK_LEFT},{XINPUT_GAMEPAD_DPAD_RIGHT,VK_RIGHT},{XINPUT_GAMEPAD_DPAD_UP,VK_UP},{XINPUT_GAMEPAD_DPAD_DOWN,VK_DOWN},{WORD(XINPUT_GAMEPAD_A|XINPUT_GAMEPAD_START),VK_RETURN},{XINPUT_GAMEPAD_Y,'S'}})if(edge&pair.first)key(WPARAM(pair.second));
-        if(edge&(XINPUT_GAMEPAD_LEFT_SHOULDER|XINPUT_GAMEPAD_RIGHT_SHOULDER)){const bool right=(edge&XINPUT_GAMEPAD_RIGHT_SHOULDER)!=0;if(settings)selectTab((category+(right?1:5))%6);else cyclePage(right?1:-1);}
+        if(edge&(XINPUT_GAMEPAD_LEFT_SHOULDER|XINPUT_GAMEPAD_RIGHT_SHOULDER)){const bool right=(edge&XINPUT_GAMEPAD_RIGHT_SHOULDER)!=0;if(settings)selectTab((category+(right?1:tabCount-1))%tabCount);else cyclePage(right?1:-1);}
     }
     void pad(){
         if(!active){padReady=false;gamepadButtons=0;return;}
         const auto now=GetTickCount64();if(now<nextPad)return;nextPad=now+4;pads.poll();XINPUT_STATE state{};bool found=false;
+        if(capture>=0&&std::get<1>(cell(capture))){ // binding a controller button: the first newly pressed one
+            const uint32_t held=controllerHeld(),fresh=held&~captureHeld;captureHeld=held;
+            if(fresh){const auto [player,column,action]=cell(capture);draftControls.pad[size_t(player)][action]=fresh&(~fresh+1);
+                capture=-1;notice=L"Button set. Use SAVE to apply.";gamepadButtons=0xffff;}
+            return;
+        }
         for(unsigned i=0;i<4;++i)if(pads.connected[i]){state=pads.states[i];found=true;break;}
         if(!found){padReady=false;gamepadButtons=0;padDirections=0;return;}
         WORD buttons=state.Gamepad.wButtons;if(state.Gamepad.sThumbLX<-18000)buttons|=XINPUT_GAMEPAD_DPAD_LEFT;if(state.Gamepad.sThumbLX>18000)buttons|=XINPUT_GAMEPAD_DPAD_RIGHT;if(state.Gamepad.sThumbLY>18000)buttons|=XINPUT_GAMEPAD_DPAD_UP;if(state.Gamepad.sThumbLY<-18000)buttons|=XINPUT_GAMEPAD_DPAD_DOWN;
@@ -978,12 +1040,12 @@ struct App {
         const auto* videoEdition=videoRemastered?L"REMASTERED":L"ORIGINAL ARCADE";
         const auto* headingEdition=category==0||category==2?videoEdition:(draft.remastered?L"REMASTERED":L"ORIGINAL ARCADE");
         g.text(L"Settings",300+shift,190,31,white,.6f);
-        const std::wstring subtitle=category==launcherTab
+        const std::wstring subtitle=category==launcherTab||category==controlsTab
             ?(editingGame?L"COLLECTION PREFERENCES":L"COLLECTION PREFERENCES  /  SELECT A CABINET ON PLAY TO ADJUST A GAME")
             :selected==2?std::wstring(compatibleGames[2].name)+L"  /  "+mk3Edition()
             :std::wstring(compatibleGames[size_t(selected==1)].name)+L"  /  "+headingEdition;
         g.text(subtitle,302+shift,246,12,gold,1.5f);
-        for(int i=0;i<6;++i)control(220+i,{300+shift+float(i)*156,294,156,40},std::array<std::wstring,6>{L"VIDEO",L"AUDIO",L"DISPLAY",L"LAUNCHER",L"ADJUSTMENTS",L"UTILITIES"}[size_t(i)],tabEnabled(i),category==i,13);
+        for(int i=0;i<tabCount;++i)control(220+i,{300+shift+float(i)*134,294,134,40},std::array<std::wstring,tabCount>{L"VIDEO",L"AUDIO",L"DISPLAY",L"LAUNCHER",L"ADJUSTMENTS",L"UTILITIES",L"CONTROLS"}[size_t(i)],tabEnabled(i),category==i,13);
         if(category==0){
             row(videoProfile,350,L"VIDEO PROFILE",selected==2?L"Choose which profile to edit. The edition is chosen on the cabinet.":L"Choose which profile to edit. The game version is set on the Audio tab.",videoEdition,nativeVideo());
             row(videoPage,410,L"VIDEO CONTROLS",L"Switch between scaling and additional filters.",draft.videoEffects?L"EFFECTS":L"SCALING AND CRT",nativeVideo());
@@ -1050,6 +1112,19 @@ struct App {
             row(271,420,L"RESET HIGH SCORES",L"Resets the records through the original routine; keeps the adjustments.",L"RESET RANKING",backend.adjustmentsAvailable());
             if(resetScoresPending){g.text(L"Erase this game's saved ranking?",306+shift,535,16,gold,.2f);control(272,{969+shift,520,125,54},L"CONFIRM",true,false,12);control(273,{1104+shift,520,125,54},L"CANCEL",true,false,12);}
             g.text(L"Clearing the ranking is separate from SAVE and RESTORE DEFAULTS.",306+shift,723,13,muted,.2f);
+        }else if(category==controlsTab){
+            // Every game: keyboard keys and controller buttons per player. Controller directions: D-pad, left stick or hat.
+            g.text(L"ACTION",306+shift,346,12,muted,1);
+            for(int k=0;k<4;++k)g.text(std::array<const wchar_t*,4>{L"P1 KEYBOARD",L"P1 CONTROLLER",L"P2 KEYBOARD",L"P2 CONTROLLER"}[size_t(k)],560+shift+float(k)*170,346,12,muted,1);
+            for(unsigned a=0;a<mk5controls::Count;++a){
+                const float y=372+float(a)*30;g.text(mk5controls::names[a],306+shift,y+5,13,white,.4f);
+                if(a<mk5controls::HighPunch)for(int player:{0,1})g.text(L"D-PAD / STICK",730+shift+float(player)*340+10,y+7,11,muted,.6f);
+            }
+            for(int id:controlCells()){auto box=cellBox(id);box.x+=shift;const auto [player,column,action]=cell(id);
+                control(id,box,capture==id?L"PRESS...":column?padName(draftControls.pad[size_t(player)][action]):keyName(draftControls.keys[size_t(player)][action]),true,capture==id,11);}
+            g.text(L"OPPOSITE DIRECTIONS (SOCD)",306+shift,744,13,white,.4f);
+            g.text(L"An arcade lever cannot hold both: neutral is the original.",560+shift,746,11,muted,.2f);
+            control(socdControl,{969+shift,738,260,30},draftControls.socd?L"LAST INPUT WINS":L"NEUTRAL",true,false,12);
         }else{
             row(202,350,L"LAUNCHER FPS LIMIT",L"Unfocused: 10 FPS. Minimized: rendering paused.",std::to_wstring(draftLauncher.fps)+L" FPS");
             row(203,420,L"LAUNCHER V-SYNC",L"Syncs the launcher with the monitor.",draftLauncher.vsync?L"ON":L"OFF");
@@ -1109,6 +1184,8 @@ struct App {
             case WM_LBUTTONDOWN:self->move({GET_X_LPARAM(lp),GET_Y_LPARAM(lp)});self->pressed=self->hit(self->mx,self->my);self->dragSlider();SetCapture(hwnd);return 0;
             case WM_LBUTTONUP:{self->move({GET_X_LPARAM(lp),GET_Y_LPARAM(lp)});int action=self->hit(self->mx,self->my),down=self->pressed;self->pressed=-1;ReleaseCapture();if(action==down&&action>=0)self->act(action);return 0;}
             case WM_KEYDOWN:if(!(lp&(1LL<<30)))self->key(wp);return 0;
+            case WM_INPUT:mk5hid::shared().input(lp);break;
+            case WM_INPUT_DEVICE_CHANGE:if(wp==GIDC_REMOVAL)mk5hid::shared().removed(reinterpret_cast<HANDLE>(lp));return 0;
             case WM_SYSCOMMAND:if((wp&0xfff0)==SC_KEYMENU)return 0;break;
             }
         }catch(const std::exception& e){self->notice=L"Error: "+widen(e.what());try{eventLog(self->backend.root(),"ui-error "+std::string(e.what()));}catch(...){}}
@@ -1180,21 +1257,21 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int){
     try{
         std::vector<wchar_t> filename(32768);DWORD n=GetModuleFileNameW(nullptr,filename.data(),DWORD(filename.size()));if(!n||n>=filename.size())throw std::runtime_error("launcher executable path");root=fs::path(filename.data()).parent_path();
         int count=0;auto raw=CommandLineToArgvW(GetCommandLineW(),&count);if(!raw)throw std::runtime_error("launcher arguments");std::vector<std::wstring> args;for(int i=1;i<count;++i)args.emplace_back(raw[i]);LocalFree(raw);
-        fs::path capture;bool captureSettings=false;int capturePage=-1;
-        // --ui-capture <png> [overview|roms|build|play|legal]: one deterministic frame of a page (layout checks).
+        fs::path capture;bool captureSettings=false,captureControls=false;int capturePage=-1;
+        // --ui-capture <png> [overview|roms|build|play|legal] / --settings-capture <png> [controls]: one deterministic frame (layout checks).
         if(!args.empty()){unattended=true;if(args[0]==L"--prepare")return prepare(root,args);if((args[0]==L"--ui-capture"||args[0]==L"--settings-capture")&&(args.size()==2||args.size()==3)){capture=args[1];captureSettings=args[0]==L"--settings-capture";rejectLinks(capture);
-                if(args.size()==3){const std::array<const wchar_t*,5> names{L"overview",L"roms",L"build",L"play",L"legal"};for(int k=0;k<5;++k)if(args[2]==names[size_t(k)])capturePage=k;if(capturePage<0)throw std::runtime_error("unknown capture page");}}
+                if(args.size()==3){if(captureSettings&&args[2]==L"controls")captureControls=true;else{const std::array<const wchar_t*,5> names{L"overview",L"roms",L"build",L"play",L"legal"};for(int k=0;k<5;++k)if(args[2]==names[size_t(k)])capturePage=k;if(capturePage<0)throw std::runtime_error("unknown capture page");}}}
             else return diagnostics(root,args);}
         HANDLE singleton=nullptr;if(capture.empty()){singleton=CreateMutexW(nullptr,TRUE,L"Local\\TriUnitRecompLauncher");if(!singleton)throw std::runtime_error("launcher mutex");if(GetLastError()==ERROR_ALREADY_EXISTS){CloseHandle(singleton);auto existing=FindWindowW(L"MkArcadeCollection",nullptr);if(existing){ShowWindow(existing,SW_RESTORE);SetForegroundWindow(existing);}return 0;}}
         struct MutexGuard{HANDLE h;~MutexGuard(){if(h){ReleaseMutex(h);CloseHandle(h);}}} mutexGuard{singleton};
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);HRESULT com=CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);if(FAILED(com))throw std::runtime_error("launcher COM");struct ComGuard{~ComGuard(){CoUninitialize();}} comGuard;
         App app(root);WNDCLASSW cls{};cls.lpfnWndProc=App::procedure;cls.hInstance=instance;cls.lpszClassName=L"MkArcadeCollection";cls.hCursor=LoadCursorW(nullptr,IDC_ARROW);cls.hIcon=LoadIconW(nullptr,IDI_APPLICATION);if(!RegisterClassW(&cls)&&GetLastError()!=ERROR_CLASS_ALREADY_EXISTS)throw std::runtime_error("launcher class");
         RECT work{};SystemParametersInfoW(SPI_GETWORKAREA,0,&work,0);int w=capture.empty()?std::min(1382,int(work.right-work.left-60)):1536,h=capture.empty()?std::min(922,int(work.bottom-work.top-60)):1024;
-        HWND window=CreateWindowExW(WS_EX_APPWINDOW,cls.lpszClassName,productName,WS_POPUP|WS_THICKFRAME|WS_MINIMIZEBOX|WS_MAXIMIZEBOX|WS_SYSMENU,(work.right-w)/2,(work.bottom-h)/2,w,h,nullptr,nullptr,instance,&app);if(!window)throw std::runtime_error("launcher window");
+        HWND window=CreateWindowExW(WS_EX_APPWINDOW,cls.lpszClassName,productName,WS_POPUP|WS_THICKFRAME|WS_MINIMIZEBOX|WS_MAXIMIZEBOX|WS_SYSMENU,(work.right-w)/2,(work.bottom-h)/2,w,h,nullptr,nullptr,instance,&app);if(!window)throw std::runtime_error("launcher window");mk5hid::shared().listen(window);
         struct WindowGuard{HWND h;~WindowGuard(){if(IsWindow(h))DestroyWindow(h);}} windowGuard{window};
         app.graphics=std::make_unique<Renderer>(window);// Art is drawn in code; the launcher reads no image file.
         if(!capture.empty()){
-            SetWindowPos(window,nullptr,0,0,1536,1024,SWP_NOZORDER|SWP_NOACTIVATE);app.launcher.reducedMotion=true;app.settings=captureSettings;app.category=launcherTab;app.notice.clear();if(capturePage>=0)app.page=capturePage;app.draw(1,true);app.graphics->saveCapture(capture);return 0;
+            SetWindowPos(window,nullptr,0,0,1536,1024,SWP_NOZORDER|SWP_NOACTIVATE);app.launcher.reducedMotion=true;app.settings=captureSettings;app.category=captureControls?controlsTab:launcherTab;app.notice.clear();if(capturePage>=0)app.page=capturePage;app.draw(1,true);app.graphics->saveCapture(capture);return 0;
         }
         eventLog(root,"launcher-start DX12");app.borderless(app.launcher.fullscreen);ShowWindow(window,SW_SHOW);UpdateWindow(window);
         try{
