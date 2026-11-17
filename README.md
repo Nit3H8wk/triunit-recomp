@@ -55,7 +55,6 @@ your ROM.
 | Mortal Kombat II | L3.1 | T-Unit | supported | `tools/mk2/roms-l31.json` |
 | Mortal Kombat 3 | 2.1 | Wolf Unit | supported | `tools/mk3/roms-21.json` |
 | Mortal Kombat | 5.0 | T-Unit (ADPCM sound) | supported | `tools/mk1/roms-l1.json` |
-| Ultimate Mortal Kombat 3 | — | Wolf Unit | not supported | — |
 
 Each manifest lists the file names the setup accepts with their size, CRC32,
 SHA-1 and SHA-256. Only files that match the manifest exactly are accepted.

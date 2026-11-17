@@ -64,9 +64,9 @@ struct FrameTimer {
 };
 constexpr Color red{.88f,.10f,.11f,1},redHot{1,.24f,.20f,1},gold{1,.70f,.28f,1},white{.93f,.93f,.95f,1},muted{.58f,.58f,.63f,1},blue{.10f,.43f,1,1};
 constexpr Color ink{.028f,.027f,.032f,1},panelFill{.058f,.056f,.064f,.97f},panelEdge{.20f,.19f,.22f,1},fieldFill{.034f,.033f,.039f,1};
-const std::array<std::wstring,4> games={compatibleGames[0].name,compatibleGames[1].name,compatibleGames[2].name,compatibleGames[3].name};
-constexpr std::array<Rect,4> positions={Rect{250,155,290,680},Rect{575,155,270,680},Rect{880,155,270,680},Rect{1185,155,305,680}};
-constexpr std::array<float,4> wideCabinetShift{48,112,173,236};
+const std::array<std::wstring,3> games={compatibleGames[0].name,compatibleGames[1].name,compatibleGames[2].name};
+constexpr std::array<Rect,3> positions={Rect{250,155,330,680},Rect{705,155,330,680},Rect{1160,155,330,680}};
+constexpr std::array<float,3> wideCabinetShift{48,142,236};
 // English labels of mk5video::presets (same order; the presets themselves are shared with the game renderer).
 constexpr std::array<const wchar_t*,10> crtLabels{L"OFF",L"LIGHT / 25%",L"MEDIUM / 50%",L"STRONG / 75%",L"BVM / 1080p",L"BVM / 4K",
                                                  L"BVM / SOFT",L"CRT / ENERGY",L"PVM / SOFT",L"CRT / PHOSPHOR"};
@@ -128,7 +128,7 @@ struct App {
     LauncherPreferences launcher{},draftLauncher{};
     bool editingGame=false,resetScoresPending=false,videoRemastered=false,displayHdr=false;
     RECT placement{};std::wstring notice;
-    std::array<float,4> glows{};float mx=-1,my=-1;const uint64_t started=frameTicks();bool receivedInput=false;
+    std::array<float,3> glows{};float mx=-1,my=-1;const uint64_t started=frameTicks();bool receivedInput=false;
     WORD gamepadButtons=0;ULONGLONG nextPad=0,nextPoll=0,availabilityDue=0;
     bool mk1Available=false,mk2Available=false,mk3Available=false,musicAvailable=false,mk1Remastered=false,mk2Remastered=false;
     std::future<std::array<bool,3>> availability;
@@ -249,7 +249,7 @@ struct App {
             eventLog(backend.root(),backend.config.remastered?"mode-remastered":"mode-original");return;
         }
         if(index<3){
-            const auto before=backend.config;const int previous=chosen<3&&chosen>=0?chosen:0;
+            const auto before=backend.config;const int previous=chosen>=0?chosen:0;
             if(!backend.selectGame(index)){notice=backend.status();backend.selectGame(previous);backend.config=before;return;}
             draft=backend.config;musicAvailable=backend.remasteredAvailable();rememberEdition(index);
         }
@@ -258,7 +258,7 @@ struct App {
             if(menuMusic)menuMusic->duck();
             coinSound();
         }
-        notice=index<3?(gameSelected()?L"":L"Game unavailable: build it on the Build page first."):L"This game is not supported by the setup.";
+        notice=gameSelected()?L"":L"Game unavailable: build it on the Build page first.";
         eventLog(backend.root(),"game-select "+std::to_string(index));
     }
     void openDetails(){selectMachine(selected);}
@@ -280,7 +280,6 @@ struct App {
         return s.active?(s.mode=="verify"?L"Verifying":L"Building"):s.queued?L"Queued":records[size_t(i)].finished?L"Rebuild":L"Build";
     }
     std::wstring badge(int i)const{
-        if(i==3)return L"Not Supported";
         const auto& s=backend.setupGame(i);
         if(s.active)return s.mode=="verify"?L"Verifying":L"Building";
         if(s.queued)return L"Queued";
@@ -300,7 +299,7 @@ struct App {
     // ---- Geometry of the setup pages (shared by drawing, hit-testing and keyboard focus) ----
     Rect navBox(int k)const{return {16,142+float(k)*58,192,48};}
     Rect sidePanel()const{return {contentRight()-340,206,340,464};}
-    Rect cardRect(int i)const{const float right=sidePanel().x-16,w=(right-contentLeft-14)/2;return {contentLeft+float(i%2)*(w+14),246+float(i/2)*218,w,206};}
+    Rect cardRect(int i)const{const float right=sidePanel().x-16,w=(right-contentLeft-14)/2;return {contentLeft+float(i%2)*(w+14),246+float(i/2)*218,i==2?right-contentLeft:w,206};}
     Rect folderField(Rect card)const{const float x=card.x+218;return {x,card.y+98,card.x+card.w-14-x,28};}
     Rect romRow(int i)const{return {contentLeft,290+float(i)*94,contentRight()-contentLeft,84};}
     Rect buildRow(int i)const{return {contentLeft,228+float(i)*228,contentRight()-contentLeft,214};}
@@ -343,7 +342,7 @@ struct App {
         // Input follows current state immediately, including multiple messages
         // delivered before the next GPU frame completes.
         controls.clear();
-        if(!settings&&!details&&page==pagePlay){for(int i=0;i<4;++i){auto r=positions[size_t(i)];controls.push_back({i+1,{r.x+cabinetShift(i),r.y+15,r.w,680},!backend.running()});}if(chosen>=0)controls.push_back({20,rightAligned({1256,888,244,52}),gameSelected()});}
+        if(!settings&&!details&&page==pagePlay){for(int i=0;i<3;++i){auto r=positions[size_t(i)];controls.push_back({i+1,{r.x+cabinetShift(i),r.y+15,r.w,680},!backend.running()});}if(chosen>=0)controls.push_back({20,rightAligned({1256,888,244,52}),gameSelected()});}
         if(!settings&&page!=pagePlay)for(const auto& button:pageButtons())controls.push_back({button.id,button.box,button.enabled});
         if(settings){
             for(int i=0;i<6;++i)controls.push_back({220+i,{300+float(i)*156,294,156,40},tabEnabled(i)});
@@ -420,7 +419,7 @@ struct App {
         hitTargets();
         auto it=std::find_if(controls.begin(),controls.end(),[&](const Control& c){return c.id==id;});if(it!=controls.end()&&!it->enabled)return;
         invalidate();
-        if(id>=1&&id<=4){selectMachine(id-1);return;}
+        if(id>=1&&id<=3){selectMachine(id-1);return;}
         if(id==40||id==41||id==42||id==43){showPage(id==40?pageOverview:id==41?pageRoms:id==42?pageBuild:pageLegal);return;}
         if(id==30){chooseFolder(-1);return;}
         if(id>=50&&id<=52){chooseFolder(id-50);return;}
@@ -430,7 +429,7 @@ struct App {
         if(id>=80&&id<=82){backend.cancelSetup();notice=backend.status();return;}
         if(id>=90&&id<=92){openPath(backend.setupLog(id-90));return;}
         if(id>=95&&id<=97){openPath(backend.setupOutput(id-95));return;}
-        if(id>=110&&id<=112){if(chosen!=id-110)selectMachine(id-110);page=pagePlay;focus=4;return;}
+        if(id>=110&&id<=112){if(chosen!=id-110)selectMachine(id-110);page=pagePlay;focus=3;return;}
         if(id==120){backend.acknowledgeRoms(!backend.romsAcknowledged());notice=backend.romsAcknowledged()?L"Confirmation saved. You can verify and build your games.":L"Confirmation withdrawn.";return;}
         if(id>=121&&id<=123){openPath(backend.root()/std::array<const wchar_t*,3>{L"DISCLAIMER.md",L"THIRD_PARTY_NOTICES.md",L"LICENSE"}[size_t(id-121)]);return;}
         if(id==124){backend.checkRequirements();notice=L"Checking Python and the compiler...";return;}
@@ -519,7 +518,7 @@ struct App {
     }
     std::vector<int> actions()const{
         if(!settings){
-            if(page==pagePlay)return {1,2,3,4,20,11};
+            if(page==pagePlay)return {1,2,3,20,11};
             std::vector<int> a;for(const auto& button:pageButtons())if(button.enabled)a.push_back(button.id);
             if(a.empty())a.push_back(navIds[size_t(page==pageOverview?0:page==pageRoms?1:page==pageBuild?2:5)]);
             return a;
@@ -542,9 +541,9 @@ struct App {
         if(key==VK_PRIOR||key==VK_NEXT){cyclePage(key==VK_NEXT?1:-1);return;}
         if(key==VK_TAB){auto a=actions();focus=(focus+1)%int(a.size());return;}
         if(!settings&&!details&&page==pagePlay){
-            if(key==VK_LEFT||key==VK_RIGHT){focus=focus<4?(focus+(key==VK_LEFT?3:1))%4:(focus==4?5:4);}
-            if(key==VK_DOWN)focus=focus<4?4:(focus==4?5:4);
-            if(key==VK_UP)focus=focus>=4?(chosen>=0?chosen:0):5;
+            if(key==VK_LEFT||key==VK_RIGHT){focus=focus<3?(focus+(key==VK_LEFT?2:1))%3:(focus==3?4:3);}
+            if(key==VK_DOWN)focus=focus<3?3:(focus==3?4:3);
+            if(key==VK_UP)focus=focus>=3?(chosen>=0?chosen:0):4;
             if(key==VK_RETURN||key==VK_SPACE){auto a=actions();act(a[size_t(std::clamp(focus,0,int(a.size())-1))]);}
             if(key=='S'){openSettings();}
             if(key=='L'){act(21);}
@@ -763,7 +762,7 @@ struct App {
         icon(10,contentLeft+2,212,white);g.text(L"Supported Games",contentLeft+40,206,26,white,.5f);
         const std::wstring showing=L"Steps shown for: "+std::wstring(compatibleGames[size_t(stepGame())].title);
         g.text(showing,sidePanel().x-16-g.textWidth(showing,13,.1f),218,13,muted,.1f);
-        for(int i=0;i<4;++i)gameCard(i);
+        for(int i=0;i<3;++i)gameCard(i);
         // Requirements, output and receipt.
         const Rect s=sidePanel();panel(s);const auto& r=backend.setupRequirements();float y=s.y+18;const float x=s.x+22;
         icon(7,x,y+2,white);g.text(L"Requirements",x+38,y,22,white,.4f);y+=44;
@@ -795,16 +794,14 @@ struct App {
         g.text(fit(L"python tools/quality/run.py fast",14,code.w-16),code.x+10,code.y+7,14,white,.1f);
     }
     void gameCard(int i){
-        auto& g=*graphics;const Rect r=cardRect(i);const bool supported=i<3;
-        panel(r);miniCabinet({r.x+14,r.y+16,70,r.h-32},supported?red:Color{.40f,.40f,.44f,1},supported?1.f:.6f);
+        auto& g=*graphics;const Rect r=cardRect(i);
+        panel(r);miniCabinet({r.x+14,r.y+16,70,r.h-32},red,1.f);
         g.line(r.x+92,r.y+14,r.x+92,r.y+r.h-14,1,panelEdge);
         const float tx=r.x+104;const auto label=badge(i);const float bw=g.textWidth(label,13,.2f)+26;
         const Rect bb{r.x+r.w-bw-14,r.y+16,bw,28};const bool readyBadge=label==L"Ready",failed=label==L"Failed";
-        g.rounded(bb,6,!supported?Color{.10f,.10f,.11f,1}:readyBadge?Color{.70f,.06f,.07f,1}:Color{.18f,.03f,.04f,1});
-        g.rounded(bb,6,!supported?panelEdge:failed?gold:red,1.2f);center(label,bb.x+bw/2,bb.y+7,13,!supported?muted:failed?gold:white,.2f);
-        g.text(fit(compatibleGames[size_t(i)].title,22,bb.x-tx-10),tx,r.y+16,22,supported?white:muted,.3f);
-        if(!supported){g.text(L"Board:",tx,r.y+60,15,muted);g.text(compatibleGames[size_t(i)].board,tx+70,r.y+60,15,muted);
-                       paragraph(L"Not supported by the setup. No files are read for this game.",tx,r.y+96,14,r.x+r.w-tx-16,muted);return;}
+        g.rounded(bb,6,readyBadge?Color{.70f,.06f,.07f,1}:Color{.18f,.03f,.04f,1});
+        g.rounded(bb,6,failed?gold:red,1.2f);center(label,bb.x+bw/2,bb.y+7,13,failed?gold:white,.2f);
+        g.text(fit(compatibleGames[size_t(i)].title,22,bb.x-tx-10),tx,r.y+16,22,white,.3f);
         g.text(L"Revision:",tx,r.y+50,14,muted);g.text(compatibleGames[size_t(i)].revision,tx+82,r.y+50,14,white);
         g.text(L"Board:",tx,r.y+72,14,muted);g.text(compatibleGames[size_t(i)].board,tx+82,r.y+72,14,white);
         icon(2,tx,r.y+101,muted);g.text(L"ROM Folder:",tx+30,r.y+104,13,muted);
@@ -913,7 +910,7 @@ struct App {
     }
     const wchar_t* missing(int game)const{return backend.setupFinished(game)?L"INSTALL PENDING":L"SETUP PENDING";}
     static Rect cabinetScreen(Rect r){return {r.x+r.w*.14f,r.y+168,r.w*.72f,152};}
-    // Arcade cabinet drawn in code: body, side trims, marquee with the game's name, screen bezel, panel and base.
+    // Arcade cabinet drawn in code: body, side trims, marquee with the board and revision, screen bezel, panel and base.
     void cabinet(int i,Rect r,Color hue,float shade){
         auto& g=*graphics;auto tone=[&](float v){return Color{v*shade,v*shade*1.03f,v*shade*1.15f,1};};
         const float cx=r.x+r.w/2;
@@ -922,10 +919,14 @@ struct App {
         const Rect marquee{r.x+r.w*.08f,r.y+52,r.w*.84f,72};
         g.fill(marquee,{hue.r*.28f*shade,hue.g*.28f*shade,hue.b*.28f*shade,1});
         g.line(marquee.x,marquee.y+marquee.h,marquee.x+marquee.w,marquee.y+marquee.h,2,{hue.r,hue.g,hue.b,.85f});
-        const std::wstring name=compatibleGames[size_t(i)].name;
-        const float size=std::min(17.f,marquee.w*.9f/std::max(1.f,g.textWidth(name,1,.6f)));
-        center(name,cx,marquee.y+(marquee.h-size*1.15f)/2,size,white,.6f);
+        const std::wstring board=compatibleGames[size_t(i)].marquee;
+        const float size=std::min(17.f,marquee.w*.9f/std::max(1.f,g.textWidth(board,1,.6f)));
+        center(board,cx,marquee.y+(marquee.h-size*1.15f)/2,size,white,.6f);
         g.fill({r.x+r.w*.10f,r.y+150,r.w*.80f,188},tone(.022f));
+        // The game's name only as plain compatibility text (nominative use), smaller than the marquee.
+        const auto& game=compatibleGames[size_t(i)];
+        center(L"COMPATIBLE WITH",cx,r.y+348,9,muted,1);
+        center(fit(std::wstring(game.title)+L" (rev. "+game.revision+L")",11,r.w*.84f),cx,r.y+366,11,{.78f,.78f,.82f,1},.2f);
         const Rect panelRect{r.x+r.w*.03f,r.y+398,r.w*.94f,66};
         g.triangle(panelRect.x,panelRect.y+panelRect.h,panelRect.x+panelRect.w*.08f,panelRect.y,panelRect.x+panelRect.w*.92f,panelRect.y,tone(.11f));
         g.triangle(panelRect.x,panelRect.y+panelRect.h,panelRect.x+panelRect.w*.92f,panelRect.y,panelRect.x+panelRect.w,panelRect.y+panelRect.h,tone(.11f));
@@ -939,27 +940,22 @@ struct App {
         const float width=layoutWidth();
         backdrop(width);
         if(!launcher.reducedMotion){
-            for(float anchor:{510.f,815.f,1120.f,1440.f}){float x=anchor*width/baseWidth,y=anchor==815||anchor==1440?250.f:365.f;g.quad(0,{x-35,y+10,150,220},{0,0,1,1},{1,.24f,.02f,.12f+.025f*std::sin(t*2+x)},5,t);g.quad(0,{x,y,95,140},{0,0,1,1},{1,1,1,.38f},1,t+x);}
+            for(float anchor:{642.f,1097.f}){float x=anchor*width/baseWidth,y=anchor==1097?250.f:365.f;g.quad(0,{x-35,y+10,150,220},{0,0,1,1},{1,.24f,.02f,.12f+.025f*std::sin(t*2+x)},5,t);g.quad(0,{x,y,95,140},{0,0,1,1},{1,1,1,.38f},1,t+x);}
             g.quad(0,{0,520,width,280},{0,0,1,1},{.17f,.18f,.45f,.18f},2,t);
             for(int i=0;i<22;++i){float x=std::fmod(float(i*173)+t*(3+i%4),width),y=790-std::fmod(float(i*47)+t*(12+i%9),550.f);float a=.12f+.13f*std::sin(float(i)+t);g.fill({x,y,1.5f,1.5f},{1,.35f,.09f,a});}
         }
-        for(int i=0;i<4;++i){
+        for(int i=0;i<3;++i){
             float target=!settings&&!details&&(chosen==i||hover==i+1||focus==i)?1.f:0.f;glows[size_t(i)]+=std::clamp(dt*7,0.f,1.f)*(target-glows[size_t(i)]);float glow=deterministic?0:glows[size_t(i)];
             Rect r=positions[size_t(i)];const float shift=cabinetShift(i);r.x+=shift;float lift=launcher.reducedMotion?0:glow*3;r.y-=lift;
-            Color hue=i<2?red:(i==2?blue:Color{.7f,.12f,1,1});
+            Color hue=i<2?red:blue;
             g.quad(0,{r.x-55,660,r.w+110,235},{0,0,1,1},{hue.r,hue.g,hue.b,.13f+glow*.12f},5,t);
-            // Cabinet drawn in code (no image file): body, marquee with the game's name, screen, panel and base.
+            // Cabinet drawn in code (no image file): body, board marquee, compatibility line, screen, panel and base.
             float shade=i==0?1.f:.71f;shade+=glow*.17f;cabinet(i,r,hue,shade);
-            if(i<3){
-                Rect screen=cabinetScreen(r);g.fill(screen,{.012f,.018f,.03f,1});g.quad(0,screen,{0,0,1,1},{.5f,.7f,1,1},4,t);
-                center(ready(i)?L"READY TO PLAY":backend.setupFinished(i)?L"INSTALL PENDING":L"SETUP PENDING",screen.x+screen.w/2,screen.y+screen.h/2-8,9,ready(i)?gold:muted,1.4f);
-            }else{
-                const Rect screen=cabinetScreen(r);g.fill(screen,{.012f,.018f,.03f,1});
-                center(L"NOT SUPPORTED",screen.x+screen.w/2,screen.y+screen.h/2-20,13,{.45f,.46f,.55f,1},2.2f);center(L"BY THE SETUP",screen.x+screen.w/2,screen.y+screen.h/2+7,8,muted,1);
-            }
+            const Rect screen=cabinetScreen(r);g.fill(screen,{.012f,.018f,.03f,1});g.quad(0,screen,{0,0,1,1},{.5f,.7f,1,1},4,t);
+            center(ready(i)?L"READY TO PLAY":backend.setupFinished(i)?L"INSTALL PENDING":L"SETUP PENDING",screen.x+screen.w/2,screen.y+screen.h/2-8,9,ready(i)?gold:muted,1.4f);
             if(glow>.01f){g.line(r.x+20,831-lift,r.x+r.w-15,831-lift,2,{hue.r,hue.g,hue.b,glow*.8f});}
             if(!settings&&!details){controls.push_back({i+1,{r.x,r.y+15,r.w,680},!backend.running()});if(chosen==i)g.line(r.x+20,831-lift,r.x+r.w-15,831-lift,3,gold);}
-            Rect badgeRect{r.x+30,848,r.w-60,28};g.fill(badgeRect,{.006f,.009f,.022f,.85f});center(i==0?(mk1Available?(mk1Remastered?L"REMASTERED  /  AVAILABLE":L"ORIGINAL ARCADE  /  AVAILABLE"):missing(0)):i==1?(mk2Available?(mk2Remastered?L"REMASTERED  /  AVAILABLE":L"ORIGINAL ARCADE  /  AVAILABLE"):missing(1)):i==2?(ready(2)?mk3Edition():missing(2)):L"NOT SUPPORTED",badgeRect.x+badgeRect.w/2,badgeRect.y+6,10,i<3?gold:muted,1.3f);
+            Rect badgeRect{r.x+30,848,r.w-60,28};g.fill(badgeRect,{.006f,.009f,.022f,.85f});center(i==0?(mk1Available?(mk1Remastered?L"REMASTERED  /  AVAILABLE":L"ORIGINAL ARCADE  /  AVAILABLE"):missing(0)):i==1?(mk2Available?(mk2Remastered?L"REMASTERED  /  AVAILABLE":L"ORIGINAL ARCADE  /  AVAILABLE"):missing(1)):ready(2)?mk3Edition():missing(2),badgeRect.x+badgeRect.w/2,badgeRect.y+6,10,gold,1.3f);
         }
         if(!deterministic&&!launcher.reducedMotion){float fade=1-t/.65f;if(fade>0&&!receivedInput)g.fill({0,headerBottom,width,footerTop-headerBottom},{0,0,0,std::clamp(fade,0.f,1.f)});}
         // Selected game, its edition and Play.
@@ -967,7 +963,7 @@ struct App {
         if(chosen<0&&notice.empty())g.text(L"Select a cabinet, then press PLAY. Enter / A on a selected cabinet switches Original Arcade and Remastered.",bar.x+20,bar.y+22,15,muted,.1f);
         else if(chosen>=0){
             g.text(std::wstring(compatibleGames[size_t(chosen)].title)+L"  /  ",bar.x+20,bar.y+10,18,white,.3f);
-            g.text(chosen==2?mk3Edition():chosen<3?(backend.config.remastered?L"REMASTERED":L"ORIGINAL ARCADE"):L"NOT SUPPORTED",bar.x+28+g.textWidth(std::wstring(compatibleGames[size_t(chosen)].title)+L"  /  ",18,.3f),bar.y+12,15,gold,.8f);
+            g.text(chosen==2?mk3Edition():backend.config.remastered?L"REMASTERED":L"ORIGINAL ARCADE",bar.x+28+g.textWidth(std::wstring(compatibleGames[size_t(chosen)].title)+L"  /  ",18,.3f),bar.y+12,15,gold,.8f);
             control(20,rightAligned({1256,888,244,52}),backend.running()?L"RUNNING":gameSelected()?L"PLAY":L"UNAVAILABLE",gameSelected(),true,20);
         }
         if(!notice.empty())g.text(fit(notice,13,bar.w-320),bar.x+20,chosen<0?bar.y+22:bar.y+38,13,gold,.1f);

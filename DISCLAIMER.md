@@ -17,8 +17,8 @@ verifies or builds anything, the app asks you to confirm that you own the
 original board / ROM files and obtained them legally; the confirmation is kept
 only on your machine.
 
-**Trademarks.** Mortal Kombat, Mortal Kombat II, Mortal Kombat 3 and Ultimate
-Mortal Kombat 3, and any other names of games, companies or products, are
+**Trademarks.** Mortal Kombat, Mortal Kombat II and Mortal Kombat 3, and any
+other names of games, companies or products, are
 trademarks of their respective owners. They appear only as plain text, to
 identify which games the tools are compatible with. No logos, artwork or other
 marks are used.

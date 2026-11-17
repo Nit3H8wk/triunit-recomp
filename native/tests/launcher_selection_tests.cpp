@@ -122,7 +122,7 @@ int wmain(int argc,wchar_t** argv){
   app.act(1);verify(!app.backend.config.remastered,"next activation returns original");
   app.act(3);verify(app.chosen==2&&!enabled(20)&&enabled(11)&&!app.details,"unavailable cabinet keeps collection Settings but cannot play");
   app.mk3Available=true;verify(app.chosen==2&&enabled(20)&&!app.backend.config.remastered&&!app.backend.running(),"available MK3 native cabinet can play");
-  app.act(4);verify(app.chosen==3&&!enabled(20),"UMK3 stays unavailable");app.mk3Available=false;
+  app.act(4);verify(app.chosen==2,"only the three supported cabinets exist");app.mk3Available=false;
   app.act(1);verify(app.chosen==0&&!app.backend.config.remastered,"reselection keeps current saved version");
   app.key(VK_DOWN);verify(app.actions().at(size_t(app.focus))==20,"Down focuses separate Play action");
   app.key(VK_UP);verify(app.actions().at(size_t(app.focus))==1,"Up returns to cabinet activation");
