@@ -589,6 +589,7 @@ struct App {
             const auto [player,column,action]=cell(capture);
             if(key==VK_ESCAPE)notice=L"Unchanged.";
             else if(column)return;
+            else if(key==VK_F5||key==VK_F7){notice=L"F5/F7 save and load the game state.";return;}
             else{draftControls.keys[size_t(player)][action]=uint8_t(key);notice=L"Key set. Use SAVE to apply.";}
             capture=-1;return;
         }

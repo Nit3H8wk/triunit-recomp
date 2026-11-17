@@ -14,7 +14,7 @@ class ReplayCapture {
     std::vector<std::pair<uint64_t,uint32_t>> inputs_;
     std::size_t limit_=4096;
     uint64_t last_tick_=0;
-    bool complete_=true, observed_=false;
+    bool complete_=true, observed_=false, ended_=false;
 public:
     static constexpr std::size_t diagnostic_limit=16384;
 
@@ -29,7 +29,7 @@ public:
         program_=program;cmos_hash_=cmos_hash;cmos_=cmos;limit_=limit;inputs_.reserve(limit_);
     }
     void Observe(uint64_t tick,uint32_t input) {
-        if(program_.empty())return;
+        if(program_.empty() || ended_)return;
         if(observed_ && (tick<last_tick_ || (tick==last_tick_ && !inputs_.empty() && input!=inputs_.back().second)))
             {complete_=false;return;}
         last_tick_=tick;observed_=true;
@@ -38,6 +38,8 @@ public:
             else inputs_.emplace_back(tick,input);
         }
     }
+    // A save-state load leaves this input timeline; the inputs recorded so far stay a valid replay.
+    void End() { ended_=true; }
     void Write(std::ostream& out) const {
         if(program_.empty())return;
         out<<"MK2_REPLAY_V1 "<<program_<<' '<<cmos_hash_<<' '<<inputs_.size()<<' '<<(complete_?1:0)<<'\n';

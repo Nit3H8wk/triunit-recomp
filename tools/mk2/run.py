@@ -605,6 +605,8 @@ def main():
 
 HEADERS += ['native/mk2/mk2_live_host.hpp','native/mk2/mk2_live_limits.hpp']
 HEADERS += ['native/mk2/mk2_replay.hpp']
+HEADERS += ['native/mk2/mk2_save_state.hpp']
+VERIFIERS += ['native/tests/mk2_save_state_tests.cpp','tools/mk2/test_save_state.py']
 
 if __name__ == "__main__":
     raise SystemExit(main())

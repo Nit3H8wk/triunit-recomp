@@ -25,6 +25,7 @@ public:
 class OriginalAudio {
     mk5audio::HostGain host_{mk5audio::master_db::mk2_original};
     DcsFloatAudio audio_;
+    template<class A> friend void Fields(A& a,OriginalAudio& o){a(o.host_,o.audio_);}
 public:
     explicit OriginalAudio(mk5audio::AudioConsumer consumer)
         :audio_([this,consumer](const float* samples,size_t count) {

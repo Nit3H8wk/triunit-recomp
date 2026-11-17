@@ -46,6 +46,9 @@ custom_audio/**
 # The user's own game frame image stays local.
 custom_bezel/
 
+# Save states are tied to the user's own ROM.
+saves/
+
 # Regenerable local knowledge graph (not source or test evidence).
 /graphify-out/
 

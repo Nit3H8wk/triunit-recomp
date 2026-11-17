@@ -25,6 +25,7 @@ void Mk5Window::Present(const std::vector<uint32_t>&,unsigned,unsigned,
     ++impl->presentations;
 }
 void Mk5Window::Frontier(uint32_t){if(impl->closed)throw std::runtime_error("frontier submitted after window close");}
+std::vector<Mk5Window::StateRequest> Mk5Window::TakeStateRequests(){return {};}
 uint64_t Mk5Window::frames()const{return impl->presentations;}
 uint64_t Mk5Window::input_events()const{return impl->samples;}
 bool Mk5Window::GraphicsValidationEnabled()const{return false;}

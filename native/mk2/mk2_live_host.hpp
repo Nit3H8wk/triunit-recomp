@@ -17,6 +17,8 @@ class LiveHostContinuation {
     uint64_t generation_=0;
     LiveHostContinuation(TaskBatchInit&& state,DcsBootMachine& owner,uint64_t generation)
         :state_(std::move(state)),owner_(&owner),generation_(generation){}
+    // Save-state value fields; the owning machine binding never changes.
+    template<class A> friend void Fields(A& a,LiveHostContinuation& c){a(c.state_,c.generation_);}
 public:
     LiveHostContinuation(const LiveHostContinuation&)=delete;
     LiveHostContinuation& operator=(const LiveHostContinuation&)=delete;

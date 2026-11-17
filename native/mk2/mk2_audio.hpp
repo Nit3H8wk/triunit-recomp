@@ -11,6 +11,8 @@ template<class Sample> class DcsAudioStream {
     mk5audio::WilliamsResampler resampler_{31250};
     std::function<void(const Sample*,size_t)> consumer_;
     uint64_t output_samples_=0;
+    // Save-state fields; the consumer stays with the live session so Feed continues after a load.
+    template<class A> friend void Fields(A& a,DcsAudioStream& s){a(s.resampler_,s.output_samples_);}
 public:
     explicit DcsAudioStream(std::function<void(const Sample*,size_t)> consumer):consumer_(std::move(consumer)) {
         if (!consumer_) throw std::invalid_argument("DCS PCM requires an output consumer");

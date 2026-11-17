@@ -38,6 +38,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <thread>
+#include <utility>
 
 using Microsoft::WRL::ComPtr;
 namespace {
@@ -154,6 +155,7 @@ struct Mk5Window::Impl {
     std::atomic<unsigned> frame_queue_limit{0};
     std::atomic<uint64_t> repeats{0},occluded_presents{0};
     std::array<std::atomic<bool>,256> keys{};
+    std::mutex request_mutex;std::vector<Mk5Window::StateRequest> state_requests;
     std::atomic<uint64_t> frames{0},events{0},displayed{0},coalesced{0},toggles{0},mode_errors{0};
     std::atomic<uint32_t> last_mode_error{0};
     std::atomic<uint32_t> last_present_result{0};
@@ -287,6 +289,12 @@ struct Mk5Window::Impl {
         if(message==WM_SYSCOMMAND && (key&0xfff0)==SC_KEYMENU)return 0;
         if(message==WM_KEYDOWN || message==WM_KEYUP || message==WM_SYSKEYUP){
             if(key==VK_ESCAPE && message==WM_KEYDOWN){SendMessageW(window,WM_CLOSE,0,0);return 0;}
+            if((key==VK_F5 || key==VK_F7) && message==WM_KEYDOWN){
+                std::lock_guard<std::mutex> lock(self->request_mutex);
+                if(!(value&(1LL<<30)) && self->state_requests.size()<16)
+                    self->state_requests.push_back(key==VK_F5?Mk5Window::StateRequest::Save:Mk5Window::StateRequest::Load);
+                return 0;
+            }
             if(key<256){bool down=message==WM_KEYDOWN;if(self->keys[key].exchange(down)!=down)++self->events;}
             return message==WM_SYSKEYUP?DefWindowProcW(window,message,key,value):0;
         }
@@ -1143,6 +1151,9 @@ Mk5Window::~Mk5Window(){
     if(impl->compositor.joinable())impl->compositor.join();
 }
 bool Mk5Window::Pump(){impl->check_failure();return impl->running;}
+std::vector<Mk5Window::StateRequest> Mk5Window::TakeStateRequests(){
+    std::lock_guard<std::mutex> lock(impl->request_mutex);return std::exchange(impl->state_requests,{});
+}
 BootDiInputs Mk5Window::Inputs(BootDiInputs base)const{
     std::array<bool,256> keys{};for(size_t i=0;i<keys.size();++i)keys[i]=impl->keys[i].load();
     const auto& c=impl->controls;std::array<uint32_t,2> held{{mk5controls::from_keys(c,0,keys),mk5controls::from_keys(c,1,keys)}};

@@ -112,6 +112,21 @@ class AdspBoot {
     void ExecuteInstruction();
     void SetInterruptControl(unsigned reg, uint16_t value);
     void SetMstat();
+    // Save-state value fields (mk2_save_state.hpp); link, ROMs and observers stay bound to the live machine.
+    template<class A> friend void Fields(A& a, AdspBoot& d) {
+        a(d.presentation_only_, d.main_horizon_, d.live_host_domain_, d.service_irq_domain_, d.live_instruction_ceiling_,
+          d.discarded_observations_, d.rebooted_, d.reset_pending_, d.dac_write_sample_, d.dac_last_ticks_, d.dac_bufin_,
+          d.dac_bufout_, d.instruction_ticks_, d.instruction_count_, d.discarded_accesses_, d.instruction_pc_,
+          d.observe_trace_, d.dac_enabled_, d.dac_buffer_, d.pc_stack_, d.dag_base0_, d.loops_, d.counters_, d.alternate_,
+          d.interrupt_.pc, d.interrupt_.mstat, d.interrupt_.imask, d.interrupt_.astat,
+          d.pc, d.si, d.ar, d.af, d.cntr, d.mx0, d.mx1, d.ax0, d.ax1, d.ay0, d.ay1, d.my0, d.my1,
+          d.mr0, d.mr1, d.mr2, d.mf, d.se, d.sb, d.sr0, d.sr1, d.rom_bank, d.ifc, d.boot_reloads,
+          d.sport_ireg, d.sport_size, d.sport_incs, d.sport_base, d.sport_enabled, d.reboot_events, d.serial_events,
+          d.sport_transfers, d.sport_pcm, d.sport_dma_position, d.sport_dma_positions, d.sport_irq1_events,
+          d.sport_irq1_asserted, d.sport_irq1_latched, d.sport_timer_cancelled, d.px, d.mstat, d.imask, d.icntl,
+          d.astat, d.sstat, d.pc_sp, d.cntr_sp, d.loop_sp, d.stat_sp, d.cycles, d.i, d.l, d.m, d.pm, d.dm,
+          d.external_pm, d.control, d.trace, d.accesses);
+    }
 public:
     struct Access { uint16_t pc, address; uint32_t value; uint64_t cycle; char space; };
     uint16_t pc = 0, si = 0, ar = 0, af = 0, cntr = 0, mx0 = 0, mx1 = 0;
@@ -214,6 +229,14 @@ class DcsBootMachine {
         if (sport_deadline_ticks_) next = std::min(next, sport_deadline_ticks_);
         if (dma_deadline_subticks_) next = std::min(next, dma_deadline_subticks_ / 10);
         return sport_irq1_clear_ticks_ ? std::min(next, sport_irq1_clear_ticks_) : next;
+    }
+    // Save-state value fields; the scanline observer stays with the live session.
+    template<class A> friend void Fields(A& a, DcsBootMachine& m) {
+        a(m.valid_cmos_host_, m.operator_startup_profile_, m.operator_startup_horizon_, m.operator_draw_horizon_,
+          m.operator_dma_start_, m.live_generation_, m.main_horizon_, m.live_host_domain_, m.dsp_ticks_, m.target_ticks_,
+          m.main_limit_, m.last_main_, m.boost_expiry_ticks_, m.sport_deadline_ticks_, m.sport_irq1_clear_ticks_,
+          m.next_scanline_ticks_, m.next_sound_ticks_, m.scanline_events_, m.sliced_, m.dma_deadline_subticks_,
+          m.dma_completions_, m.link, m.dsp);
     }
 public:
     void SetScanlineObserver(std::function<void(const BoardBootControls&,const BootVideo&)> observer) {

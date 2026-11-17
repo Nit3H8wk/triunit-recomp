@@ -41,6 +41,13 @@ public:
     Protection protection;
     // Tags 0..5: scripted press/port; 6/7: host request/frame, three ports packed into 48 bits.
     std::vector<std::array<uint64_t, 4>> input_events;
+    // Save-state value fields; the host input provider stays with the live session.
+    template<class A> friend void Fields(A& a, BoardBootControls& b) {
+        a(b.main_horizon_, b.host_inputs_, b.live_host_domain_, b.live_discarded_input_events_, b.live_last_input_tick_,
+          b.requested_ports_, b.io, b.dma_command, b.video_control, b.dip_switches, b.input0, b.input1, b.input2,
+          b.vcount, b.display_address, b.scanline_events, b.active_updates, b.requested_p1_high_punch,
+          b.requested_coin1, b.requested_start1, b.protection, b.input_events);
+    }
 
     std::array<uint64_t,4> HostLatchState() const { return {requested_ports_[0],requested_ports_[1],requested_ports_[2],uint64_t(host_inputs_)}; }
     uint64_t LiveInputEventCount() const { return live_discarded_input_events_+input_events.size(); }

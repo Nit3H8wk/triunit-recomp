@@ -8,10 +8,13 @@ namespace mk2 {
 // DCS1 communication latches only; DSP execution and clocks belong to the scheduler.
 class DcsLink {
     enum class Kind { Reset, Input, Output, ClearIrq2 };
-    struct Event { Kind kind; uint16_t value; };
+    struct Event { Kind kind; uint16_t value; template<class A> friend void Fields(A& a, Event& e) { a(e.kind, e.value); } };
     std::deque<Event> pending_;
     uint16_t control_ = 0xc00, input_ = 0, output_ = 0, pending_output_ = 0;
     bool reset_ = false, irq2_ = false;
+    template<class A> friend void Fields(A& a, DcsLink& d) {
+        a(d.pending_, d.control_, d.input_, d.output_, d.pending_output_, d.reset_, d.irq2_);
+    }
     enum class Boundary { Host, Dsp, IsolatedDsp };
     bool SynchronizeEvents(Boundary boundary);
 public:

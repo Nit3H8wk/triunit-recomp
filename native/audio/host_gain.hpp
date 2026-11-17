@@ -18,6 +18,7 @@ constexpr double mk1_original=0.27,mk1_remastered=1.81,mk2_original=15.92,mk2_re
 class HostGain {
     double gain_,envelope_=1.0;
     uint64_t limited_=0,clipped_=0;
+    template<class A> friend void Fields(A& a,HostGain& h){a(h.envelope_,h.limited_,h.clipped_);}
 public:
     // -1.0 dBTP less the largest true-peak excess over sample peak measured (0.049 dB on 134 routes), rounded up: -1.1 dBFS.
     // shortcut: sample-peak detection; a near-Nyquist waveform held at the ceiling can still pass -1 dBTP; upgrade to

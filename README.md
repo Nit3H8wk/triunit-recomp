@@ -54,6 +54,9 @@ your ROM.
   scores through the game's own routine.
 - **Saved progress.** Each game keeps its own CMOS profile (settings and high
   scores) between sessions, as the cabinet does.
+- **Save states (Mortal Kombat II, Original edition).** F5 saves the whole
+  machine and F7 loads it, in memory and in `saves/mk2/<program SHA-256>/`;
+  loading also brings back the CMOS of that moment.
 - **Controllers.** Keyboard and XInput controllers, in the games and in the app.
 
 ## Compatibility

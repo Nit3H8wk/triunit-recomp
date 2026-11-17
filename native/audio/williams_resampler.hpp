@@ -14,6 +14,7 @@ class WilliamsResampler {
     // Sample's pre-decimation groups are aligned to divide. Accumulate each
     // group once, preserving the original left-to-right float summation order.
     float group_sum=0;std::array<float,256> groups{};
+    template<class A> friend void Fields(A& a,WilliamsResampler& r){a(r.samples,r.written,r.group_sum,r.groups);}
     static const std::array<std::array<float,4097>,2>& Table(){
         static const auto table=[] {
             std::array<std::array<float,4097>,2> t{};
