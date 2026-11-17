@@ -10,6 +10,42 @@ a launcher. It contains no game files. The game's C++ is generated on your
 machine, from ROM files you own, by a static recompilation done locally from
 your ROM.
 
+## What these recomps bring
+
+- **Native C++ games.** Each game's program becomes C++ generated from your own
+  ROM and compiled into a Windows executable on your machine. The board's
+  hardware (TMS34010 video, DCS ADSP-2105 / 6809 sound, CMOS, inputs) is
+  modelled in the project's own C++. No emulator runs the game.
+- **Floor blood that stays (Remastered).** In Mortal Kombat and Mortal
+  Kombat II, the blood splashes stay on the arena floor for the whole fight and
+  are cleared when a new fight starts. It is a presentation layer: the game's
+  state, rules and timing do not change. Mortal Kombat 3 is next.
+- **Two editions per game.** *Arcade Original* keeps the arcade's image and
+  audio; *Remastered* adds the presentation options below. Rules, timing, voices
+  and effects are the same in both.
+- **Video filters and scaling.** Fit 4:3 or integer scaling (auto, 2x, 3x, 4x,
+  integer lines); sharp pixels, bilinear, sharp bilinear or bicubic upscaling;
+  CRT and scanline presets (light, medium and strong scanlines, BVM 1080p,
+  BVM 4K, BVM soft, CRT energy, PVM soft, CRT phosphor); ScaleFX edge
+  reconstruction with adjustable strength; CAS adaptive sharpening; SMAA 1x;
+  bilateral filter; color modes (original, vivid, warm) and brightness; a red
+  neon bezel drawn in code.
+- **Display.** V-Sync, **VRR** (G-Sync / FreeSync) or immediate presentation;
+  high-refresh mode that shows the original frames at the desktop refresh rate
+  (no frame interpolation); fullscreen or window per edition. The arcade runs
+  at its own 54.7069 frames per second.
+- **Audio.** The board's own sound program, recompiled like the game. Adjustable
+  audio queue (balanced or safe) and per-game software volume. In Mortal Kombat
+  and Mortal Kombat II, Remastered can play your own music
+  (`custom_audio/`); a missing slot falls back to the arcade's music.
+- **Arcade adjustments (Mortal Kombat and Mortal Kombat II).** Computer
+  difficulty, the game's 58 coinage presets, free play, and the cabinet's blood
+  and violence DIP switches, written through the game's own CMOS; reset high
+  scores through the game's own routine.
+- **Saved progress.** Each game keeps its own CMOS profile (settings and high
+  scores) between sessions, as the cabinet does.
+- **Controllers.** Keyboard and XInput controllers, in the games and in the app.
+
 ## Compatibility
 
 | Game | Revision | Board | Setup | ROM manifest |
@@ -119,7 +155,10 @@ executable only by the SHA-256 that record holds. Each game has two modes:
   `custom_audio/`.
 - **Remastered**: presentation options on top of the same game: video filters
   (scaling, CRT presets, ScaleFX, CAS sharpening, SMAA, bilateral filter), a
-  bezel drawn in code, and optional music supplied by you.
+  bezel drawn in code, floor blood that stays for the whole fight (Mortal
+  Kombat and Mortal Kombat II), and optional music supplied by you (the
+  Mortal Kombat 3 Remastered edition changes the video only and keeps the
+  arcade audio).
 
 Game rules, timing, voices and effects are the same in both modes.
 
