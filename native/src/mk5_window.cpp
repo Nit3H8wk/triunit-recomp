@@ -58,69 +58,58 @@ constexpr DWORD kOccludedRetryMs=100;
 constexpr UINT kSourceSrv=0,kBezelSrv=1,kChainSrv=2,kPrefilterSrv=3,kStageSrv=5,kSceneSrv=6;
 constexpr auto kHdrSpace=DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
 constexpr UINT kShaderConstants=29;
-using Edges=std::array<int,4>;
-// The black opening in the supplied PNG, in source pixels.
-constexpr Edges artwork_x{0,230,1218,1448},artwork_y{0,31,1053,1086};
-struct BezelLayout {
-    Edges x{},y{};
-    bool draws(int px,int py)const{
-        return px>=x.front()&&px<x.back()&&py>=y.front()&&py<y.back()&&
-            (px<x[1]||px>=x[2]||py<y[1]||py>=y[2]);
-    }
-};
-BezelLayout bezel_layout(unsigned width,unsigned height,unsigned source_height,const mk5crt::Settings& crt){
-    if(width*9>=height*16){
-        const int top=int((height*artwork_y[1]+artwork_y.back()/2)/artwork_y.back());
-        const int bottom=int((height*(artwork_y[3]-artwork_y[2])+artwork_y.back()/2)/artwork_y.back());
-        const int opening=int(height)-top-bottom;
-        if(crt.phosphor()&&opening>0){
-            const auto area=mk5crt::phosphor_viewport(width,unsigned(opening),source_height);
-            const int left=int(area.x),upper=top+int(area.y);
-            return {{0,left,left+int(area.width),int(width)},{0,upper,upper+int(area.height),int(height)}};
-        }
-        const int h=opening/3*3,w=h/3*4;
-        if(h>0){
-            const int left=(int(width)-w)/2,upper=top+(opening-h)/2;
-            return {{0,left,left+w,int(width)},{0,upper,upper+h,int(height)}};
-        }
-    }
-    // Keep the sides at the vertical scale and resize the center to the 4:3 aperture.
-    const int opening=artwork_y[2]-artwork_y[1];
-    const auto fit=unsigned(std::max(1.f,std::min(float(height)*opening/artwork_y.back(),
-        float(width)/(4.f/3+float(artwork_x[1]+artwork_x[3]-artwork_x[2])/opening))));
-    const auto area=crt.phosphor()?mk5crt::phosphor_viewport(width,fit,source_height):mk5crt::viewport(width,fit,source_height,crt.enabled());
-    const int h=int(area.height),w=crt.phosphor()?int(area.width):h*4/3;
-    const int side=h*artwork_x[1]/opening,top=h*artwork_y[1]/opening,bottom=h*(artwork_y[3]-artwork_y[2])/opening;
-    const int left=(int(width)-w)/2,upper=(int(height)-h-top-bottom)/2+top;
-    return {{left-side,left,left+w,left+w+side},{upper-top,upper,upper+h,upper+h+bottom}};
-}
-int artwork_pixel(int pixel,const Edges& target,const Edges& source){
-    const size_t segment=pixel<target[1]?0:(pixel<target[2]?1:2);
-    const int from=target[segment],length=target[segment+1]-from,span=source[segment+1]-source[segment];
-    return source[segment]+((2*(pixel-from)+1)*span)/(2*length);
+// The game's area in the television frame: the 4:3 glass, or the Phosphor raster that fits inside it.
+mk5crt::Viewport bezel_area(const mk5bezel::Tv& tv,unsigned source_height,const mk5crt::Settings& crt){
+    const float w=float(tv.right-tv.left),h=float(tv.bottom-tv.top);
+    if(!crt.phosphor())return {float(tv.left),float(tv.top),w,h};
+    auto area=mk5crt::phosphor_viewport(unsigned(w),unsigned(h),source_height);
+    area.x+=float(tv.left);area.y+=float(tv.top);return area;
 }
 constexpr char bezel_shader[]=R"HLSL(
 Texture2D artwork : register(t0);
-cbuffer Edges : register(b0) {int4 targetX, targetY, sourceX, sourceY;};
-int sampleAxis(int pixel,int4 target,int4 source){
-    int i=pixel<target.y?0:(pixel<target.z?1:2);
-    return source[i]+((2*(pixel-target[i])+1)*(source[i+1]-source[i]))/(2*(target[i+1]-target[i]));
-}
+// The frame is drawn at the output size; alpha 0 marks the glass, where the game shows.
 float4 ps(float4 position:SV_Position):SV_Target {
-    int2 pixel=int2(position.xy);
-    if(pixel.x>=targetX.y && pixel.x<targetX.z && pixel.y>=targetY.y && pixel.y<targetY.z)discard;
-    return artwork.Load(int3(sampleAxis(pixel.x,targetX,sourceX),sampleAxis(pixel.y,targetY,sourceY),0));
+    float4 c=artwork.Load(int3(position.xy,0));
+    if(c.a==0)discard;
+    return float4(c.rgb,1);
 }
 )HLSL";
-// The bezel is drawn in code (mk5_bezel.hpp) at the artwork size; no image file is read.
-std::vector<uint32_t> load_bezel(){
-    const int width=artwork_x.back(),height=artwork_y.back();
-    std::vector<uint32_t> pixels(size_t(width)*height,0xff000000u);
-    auto channel=[](float linear){return uint32_t(std::lround(255.f*std::pow(std::clamp(linear,0.f,1.f),1.f/2.2f)));};
-    mk5bezel::draw(width,height,artwork_x[1],artwork_y[1],artwork_x[2],artwork_y[2],[&](int l,int t,int r,int b,float red,float green,float blue){
-        const uint32_t color=0xff000000u|(channel(red)<<16)|(channel(green)<<8)|channel(blue);
-        for(int y=t;y<b;++y)std::fill(pixels.begin()+size_t(y)*width+l,pixels.begin()+size_t(y)*width+r,color);
-    });
+// The television frame at the output size, drawn in code (mk5_bezel.hpp) on every core; no image file is read.
+std::vector<uint32_t> load_bezel(const mk5bezel::Tv& tv){
+    std::vector<uint32_t> pixels(size_t(tv.width)*size_t(tv.height));
+    const int workers=int(std::max(1u,std::thread::hardware_concurrency()));std::vector<std::thread> threads;
+    for(int k=0;k<workers;++k)threads.emplace_back([&,k]{
+        for(int y=k;y<tv.height;y+=workers)for(int x=0;x<tv.width;++x)pixels[size_t(y)*size_t(tv.width)+size_t(x)]=mk5bezel::tv_pixel(tv,x,y);});
+    for(auto& thread:threads)thread.join();
+    return pixels;
+}
+// The user's own frame (custom_bezel/<game>/bezel.png, never shipped): scaled to fit the output, transparent where the
+// screen is. The game takes the largest centred 4:3 rectangle inside the transparent area; `tv` receives that rectangle.
+std::vector<uint32_t> load_user_bezel(const std::wstring& path,mk5bezel::Tv& tv){
+    const HRESULT com=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
+    struct Uninit{bool on;~Uninit(){if(on)CoUninitialize();}} uninit{SUCCEEDED(com)};
+    ComPtr<IWICImagingFactory> factory;checked(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&factory)),"WIC factory");
+    ComPtr<IWICBitmapDecoder> decoder;checked(factory->CreateDecoderFromFilename(path.c_str(),nullptr,GENERIC_READ,WICDecodeMetadataCacheOnDemand,&decoder),"custom frame image");
+    ComPtr<IWICBitmapFrameDecode> frame;checked(decoder->GetFrame(0,&frame),"custom frame image frame");
+    UINT iw=0,ih=0;checked(frame->GetSize(&iw,&ih),"custom frame size");
+    if(!iw||!ih||iw>16384||ih>16384)throw std::runtime_error("custom frame image must be 1 to 16384 pixels per side");
+    const double s=std::min(double(tv.width)/iw,double(tv.height)/ih);
+    const UINT sw=std::max(1u,UINT(std::lround(iw*s))),sh=std::max(1u,UINT(std::lround(ih*s)));
+    ComPtr<IWICFormatConverter> convert;checked(factory->CreateFormatConverter(&convert),"WIC converter");
+    checked(convert->Initialize(frame.Get(),GUID_WICPixelFormat32bppPBGRA,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom),"custom frame BGRA");
+    ComPtr<IWICBitmapScaler> scaler;checked(factory->CreateBitmapScaler(&scaler),"WIC scaler");
+    checked(scaler->Initialize(convert.Get(),sw,sh,WICBitmapInterpolationModeFant),"custom frame scale");
+    std::vector<uint32_t> art(size_t(sw)*sh);checked(scaler->CopyPixels(nullptr,sw*4,UINT(art.size()*4),reinterpret_cast<BYTE*>(art.data())),"custom frame pixels");
+    std::vector<uint32_t> pixels(size_t(tv.width)*size_t(tv.height),0xff000000u);
+    const int ox=(tv.width-int(sw))/2,oy=(tv.height-int(sh))/2;int l=tv.width,t=tv.height,r=0,b=0;
+    for(UINT y=0;y<sh;++y)for(UINT x=0;x<sw;++x){
+        const uint32_t p=art[size_t(y)*sw+x];auto& out=pixels[size_t(oy+int(y))*size_t(tv.width)+size_t(ox+int(x))];
+        if((p>>24)<128){out=0;l=std::min(l,ox+int(x));t=std::min(t,oy+int(y));r=std::max(r,ox+int(x)+1);b=std::max(b,oy+int(y)+1);}
+        else out=0xff000000u|(p&0xffffff); // premultiplied: the frame over black
+    }
+    if(r<=l||b<=t)throw std::runtime_error("custom frame image has no transparent screen area");
+    const int h=std::min(b-t,(r-l)*3/4),w=h*4/3;
+    tv.left=l+(r-l-w)/2;tv.right=tv.left+w;tv.top=t+(b-t-h)/2;tv.bottom=tv.top+h;tv.radius=0;
     return pixels;
 }
 }
@@ -188,7 +177,7 @@ struct Mk5Window::Impl {
     std::array<ComPtr<ID3D12Resource>,2> prefiltered;
     ComPtr<ID3D12Resource> bezel_texture,bezel_upload;
     D3D12_PLACED_SUBRESOURCE_FOOTPRINT bezel_upload_layout{};
-    std::vector<uint32_t> bezel_pixels;
+    std::vector<uint32_t> bezel_pixels;mk5bezel::Tv tv;bool bezel_dirty=false;std::wstring bezel_image;
     ComPtr<ID3D12CommandAllocator> allocator;ComPtr<ID3D12GraphicsCommandList> commands;
     ComPtr<ID3D12RootSignature> root;ComPtr<ID3D12PipelineState> pipeline;
     ComPtr<ID3D12PipelineState> bezel_pipeline,prefilter_pipeline;
@@ -257,6 +246,8 @@ struct Mk5Window::Impl {
         const auto validation=read("MK1_GRAPHICS_VALIDATE");
         if(!validation.empty() && validation!="0" && validation!="1")throw std::runtime_error("MK1_GRAPHICS_VALIDATE must be 0 or 1");
         validate_graphics=validation=="1";
+        std::wstring image(32768,L'\0');image.resize(GetEnvironmentVariableW(L"MK1_BEZEL_IMAGE",image.data(),DWORD(image.size())));
+        bezel_image=image.size()<32768?image:std::wstring();
         const auto mode=option("MK1_HDR","off");
         if(mode!="off"&&mode!="auto"&&mode!="force")throw std::runtime_error("MK1_HDR must be off, auto or force");
         hdr_mode=mode=="off"?0:(mode=="auto"?1:2);
@@ -440,7 +431,6 @@ struct Mk5Window::Impl {
             compile_pixel(bezel_shader,sizeof(bezel_shader),"ps");
             state.PS={ps->GetBufferPointer(),ps->GetBufferSize()};
             checked(device->CreateGraphicsPipelineState(&state,IID_PPV_ARGS(&bezel_pipeline)),"D3D12 bezel pipeline");
-            prepare_bezel();
         }
         if(prefilter_passes()){
             compile_pixel(mk5crt::shader,sizeof(mk5crt::shader),"psPrefilter");
@@ -512,9 +502,11 @@ struct Mk5Window::Impl {
         handle.ptr+=size_t(slot)*rtv_stride;
         return handle;
     }
+    // Called for each back-buffer size: the frame is drawn 1:1 with the output.
     void prepare_bezel(){
-        auto pixels=load_bezel();
-        const UINT w=artwork_x.back(),h=artwork_y.back();
+        tv=mk5bezel::tv_layout(int(target_width),int(target_height));
+        auto pixels=bezel_image.empty()?load_bezel(tv):load_user_bezel(bezel_image,tv);
+        const UINT w=target_width,h=target_height;
         D3D12_RESOURCE_DESC desc{};desc.Dimension=D3D12_RESOURCE_DIMENSION_TEXTURE2D;desc.Width=w;desc.Height=h;
         desc.DepthOrArraySize=1;desc.MipLevels=1;desc.Format=DXGI_FORMAT_B8G8R8A8_UNORM;desc.SampleDesc.Count=1;
         bezel_texture=make_resource(D3D12_HEAP_TYPE_DEFAULT,desc,D3D12_RESOURCE_STATE_COPY_DEST);
@@ -525,26 +517,22 @@ struct Mk5Window::Impl {
         checked(bezel_upload->Map(0,&none,&mapped),"D3D12 bezel upload map");
         for(UINT y=0;y<h;++y)std::memcpy(static_cast<BYTE*>(mapped)+bezel_upload_layout.Offset+size_t(y)*bezel_upload_layout.Footprint.RowPitch,pixels.data()+size_t(y)*w,size_t(w)*4);
         bezel_upload->Unmap(0,nullptr);
-        set_srv(kBezelSrv,bezel_texture.Get(),desc.Format);
+        set_srv(kBezelSrv,bezel_texture.Get(),desc.Format);bezel_dirty=true;
         if(validate_graphics)bezel_pixels=std::move(pixels);
     }
-    void draw_bezel(const BezelLayout& frame){
-        if(bezel_upload){
+    void draw_bezel(){
+        if(bezel_dirty){
             D3D12_TEXTURE_COPY_LOCATION dest{};dest.pResource=bezel_texture.Get();dest.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
             D3D12_TEXTURE_COPY_LOCATION source{};source.pResource=bezel_upload.Get();source.Type=D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;source.PlacedFootprint=bezel_upload_layout;
             commands->CopyTextureRegion(&dest,0,0,0,&source,nullptr);
-            barrier(bezel_texture.Get(),D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+            barrier(bezel_texture.Get(),D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);bezel_dirty=false;
         }
         const D3D12_VIEWPORT viewport{0,0,float(target_width),float(target_height),0,1};
-        const D3D12_RECT clip{frame.x.front(),frame.y.front(),frame.x.back(),frame.y.back()};
+        const D3D12_RECT clip{0,0,LONG(target_width),LONG(target_height)};
         commands->RSSetViewports(1,&viewport);commands->RSSetScissorRects(1,&clip);
         commands->SetPipelineState(bezel_pipeline.Get());
         auto* heap=srv_heap.Get();commands->SetDescriptorHeaps(1,&heap);
         commands->SetGraphicsRootDescriptorTable(0,srv_at(kBezelSrv));
-        commands->SetGraphicsRoot32BitConstants(1,4,frame.x.data(),0);
-        commands->SetGraphicsRoot32BitConstants(1,4,frame.y.data(),4);
-        commands->SetGraphicsRoot32BitConstants(1,4,artwork_x.data(),8);
-        commands->SetGraphicsRoot32BitConstants(1,4,artwork_y.data(),12);
         commands->DrawInstanced(3,1,0,0);
         commands->SetPipelineState(pipeline.Get());
     }
@@ -577,6 +565,7 @@ struct Mk5Window::Impl {
             scene=make_resource(D3D12_HEAP_TYPE_DEFAULT,d,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
             device->CreateRenderTargetView(scene.Get(),nullptr,rtv_at(scene_rtv()));set_srv(kSceneSrv,scene.Get(),d.Format);
         }
+        if(bezel)prepare_bezel();
         if(compose_wake)SetEvent(compose_wake);
     }
     void change_mode(bool want){
@@ -789,7 +778,7 @@ struct Mk5Window::Impl {
         hdr_validation_mismatches=mismatches;++hdr_validation_frames;
         if(mismatches)throw std::runtime_error("D3D12 HDR10 validation mismatches="+std::to_string(mismatches)+details.str());
     }
-    void validate_pixels(const D3D12_VIEWPORT& viewport,const BezelLayout& frame){
+    void validate_pixels(const D3D12_VIEWPORT& viewport){
         void* mapped=nullptr;D3D12_RANGE range{0,size_t(readback->GetDesc().Width)};
         checked(readback->Map(0,&range,&mapped),"D3D12 readback map");
         uint64_t mismatches=0,visible_bezel=0,subtexel_pixels=0,hash=14695981039346656037ull;unsigned max_error=0;std::ostringstream details;
@@ -880,13 +869,11 @@ struct Mk5Window::Impl {
                 const float u=(float(x)+0.5f-viewport.TopLeftX)/viewport.Width,v=(float(y)+0.5f-viewport.TopLeftY)/viewport.Height;
                 // Direct3D implicit viewport scissor floors each fractional extent.
                 const bool inside=u>=0 && v>=0 && float(x)<std::floor(viewport.TopLeftX+viewport.Width) && float(y)<std::floor(viewport.TopLeftY+viewport.Height);bool wrong=(row[x]>>24)!=255;
-                if(!inside){
-                    uint32_t expected=0xff000000;
-                    if(frame.draws(x,y)){
-                        const int sx=artwork_pixel(x,frame.x,artwork_x),sy=artwork_pixel(y,frame.y,artwork_y);
-                        expected=bezel_pixels[size_t(sy)*artwork_x.back()+sx];
-                        if((expected&0xffffff)&&row[x]==expected)++visible_bezel;
-                    }
+                // The frame covers everything but the glass, the game's corners included.
+                const uint32_t framed=bezel&&bezel_pixels.size()==size_t(target_width)*target_height?bezel_pixels[size_t(y)*target_width+x]:0;
+                if(!inside||framed>>24){
+                    const uint32_t expected=framed>>24?framed:0xff000000;
+                    if((framed>>24)&&row[x]==expected)++visible_bezel;
                     if(row[x]!=expected){
                         if(mismatches<16)details<<" ["<<x<<","<<y<<" frame="<<std::hex<<row[x]<<" expected="<<expected<<std::dec<<"]";
                         ++mismatches;
@@ -932,7 +919,12 @@ struct Mk5Window::Impl {
                         return out;
                     };
                     const auto us=nudges(u,{sample_width,image_width*mk5stage::scale});
-                    const auto vs=nudges(v,{sample_height,image_height*mk5stage::scale});
+                    auto vs=nudges(v,{sample_height,image_height*mk5stage::scale});
+                    // The scanline row is shader arithmetic, and GPU division is within 2.5 ulp: a row edge closer than 1e-4
+                    // (a viewport height near a whole multiple of the source) may round to either row.
+                    const float row_at=v*float(image_height)+1.f/512,row_edge=std::round(row_at);
+                    if(scanlines>0&&std::abs(row_at-row_edge)<1e-4f)
+                        for(const float side:{-2e-4f,2e-4f})vs.push_back((row_edge-1.f/512+side)/float(image_height));
                     for(size_t i=0;i<us.size()&&!ok;++i)for(size_t j=0;j<vs.size()&&!ok;++j){
                         if(!i&&!j)continue;
                         unsigned e=0;if(compare(expected_at(us[i],vs[j]),e)){ok=true;error=e;++subtexel_pixels;}
@@ -974,7 +966,7 @@ struct Mk5Window::Impl {
     void draw(bool repeat){
         if(!targets[0] || !texture)return;
         wait_gpu();
-        if(fence_value)bezel_upload.Reset();
+        if(!bezel_dirty)bezel_upload.Reset();
         checked(allocator->Reset(),"D3D12 allocator reset");checked(commands->Reset(allocator.Get(),pipeline.Get()),"D3D12 command reset");
         const bool source_changed=upload_pending;
         if(upload_pending){
@@ -1002,14 +994,10 @@ struct Mk5Window::Impl {
         const float black[4]={0,0,0,1};commands->OMSetRenderTargets(1,&rtv,FALSE,nullptr);commands->ClearRenderTargetView(rtv,black,0,nullptr);
         auto area=crt.phosphor()?mk5crt::phosphor_viewport(target_width,target_height,image_height):mk5crt::viewport(target_width,target_height,image_height,crt.enabled());
         mk5crt::Viewport bounds{0,0,float(target_width),float(target_height)};
-        BezelLayout frame;
         commands->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         commands->SetGraphicsRootSignature(root.Get());
         if(bezel){
-            frame=bezel_layout(target_width,target_height,image_height,crt);
-            area={float(frame.x[1]),float(frame.y[1]),float(frame.x[2]-frame.x[1]),float(frame.y[2]-frame.y[1])};
-            bounds=area;
-            draw_bezel(frame);
+            area=bezel_area(tv,image_height,crt);bounds=area;
         }
         area=mk5video::scaled_viewport(bounds,area,image_width,image_height,scale_mode);
         viewport_width=unsigned(area.width);viewport_height=unsigned(area.height);
@@ -1025,6 +1013,7 @@ struct Mk5Window::Impl {
              crt.gamma_out,crt.gain,crt.curvature,viewport.Height/image_height,crt.horizontal_sharpness,float(color_mode),float(brightness)/100,scalefx?3.f:0.f,
              viewport.TopLeftX,viewport.TopLeftY,viewport.Width,viewport.Height,float(decode_phosphor()),0,0,float(stage_scaled),float(fighters_scaled)};
         commands->SetGraphicsRoot32BitConstants(1,kShaderConstants,settings,0);commands->DrawInstanced(3,1,0,0);
+        if(bezel)draw_bezel(); // after the game: the rounded glass corners cover the image corners
         if(validation)readback=copy_back(drawn,rest,readback_layout);
         else barrier(drawn,D3D12_RESOURCE_STATE_RENDER_TARGET,rest);
         if(hdr){
@@ -1048,7 +1037,7 @@ struct Mk5Window::Impl {
         }
         if(validation){
             if(hdr)validate_hdr();
-            validate_pixels(viewport,frame);
+            validate_pixels(viewport);
             if(scenery_scaled)++stage_validation_frames;
             if(fighters_scaled)++fighter_validation_frames;
             if(!stage_scaled)plain_validated=true;

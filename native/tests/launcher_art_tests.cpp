@@ -12,7 +12,9 @@ int wmain(int argc,wchar_t** argv){try{
     const fs::path project=fs::absolute(argv[1]),scratch=fs::absolute(argv[2]);
     // Static contract over the launcher sources.
     for(const auto& entry:fs::directory_iterator(project/L"native/launcher")){
-        const auto name=entry.path().filename().wstring();const auto text=upper(slurp(entry.path()));
+        const auto name=entry.path().filename().wstring();auto text=upper(slurp(entry.path()));
+        // custom_bezel/<game>/bezel.png is the user's own file (like custom_audio/), never shipped artwork.
+        for(auto at=text.find("\"BEZEL.PNG\"");at!=std::string::npos;at=text.find("\"BEZEL.PNG\""))text.erase(at,11);
         // renderer_contract.cpp round-trips its own capture through a temporary file; it loads no artwork.
         if(name!=L"renderer_contract.cpp")for(const char* image:{".PNG\"",".JPG\"",".JPEG\"",".BMP\"",".DDS\"","LAUNCHER/ASSETS"})
             need(text.find(image)==std::string::npos,"launcher source references an image file");

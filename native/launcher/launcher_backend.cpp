@@ -217,7 +217,13 @@ NativeSpec nativeSpec(const fs::path& root,const fs::path& manifest,bool verifyP
 }
 struct EnvironmentLess {bool operator()(const std::wstring& a,const std::wstring& b)const{return _wcsicmp(a.c_str(),b.c_str())<0;}};
 // Native MK2 and MK3: the presenter (Mk5Window) and the Windows PCM sink (GameVolume, AudioLatency) read these MK1_* values.
-std::vector<wchar_t> nativeEnvironment(const mklauncher::Config& c,const VideoConfig& v,const fs::path& music,bool modernVideo,bool validateGraphics){
+// The user's own game frame (custom_bezel/<game>/bezel.png, local and ignored by Git); empty when absent.
+fs::path customBezel(const fs::path& root,size_t game){
+ std::error_code error;const auto image=root/L"custom_bezel"/mklauncher::compatibleGames.at(game).setupId/L"bezel.png";
+ return fs::is_regular_file(image,error)?image:fs::path{};
+}
+std::vector<wchar_t> nativeEnvironment(const mklauncher::Config& c,const VideoConfig& v,const fs::path& music,bool modernVideo,bool validateGraphics,
+                                      const fs::path& bezelImage={}){
  std::map<std::wstring,std::wstring,EnvironmentLess> values;auto* original=GetEnvironmentStringsW();if(!original)throw std::runtime_error("native process environment");
  for(const auto* cursor=original;*cursor;cursor+=wcslen(cursor)+1){
   const std::wstring row=cursor;const auto eq=row.find(L'=',row[0]==L'='?1:0);
@@ -237,6 +243,7 @@ std::vector<wchar_t> nativeEnvironment(const mklauncher::Config& c,const VideoCo
  values[L"MK1_BRIGHTNESS"]=std::to_wstring(v.brightness);values[L"MK1_BEZEL"]=v.bezel?L"1":L"0";values[L"MK1_HIGH_REFRESH"]=v.highRefresh?L"1":L"0";values[L"MK1_FULLSCREEN"]=v.fullscreen?L"1":L"0";
  values[L"MK1_HDR"]=v.hdr?L"auto":L"off";values[L"MK1_HDR_PAPER_WHITE"]=v.hdrPaper?std::to_wstring(v.hdrPaper):L"auto";
  values[L"MK1_HDR_PEAK"]=v.hdrPeak?std::to_wstring(v.hdrPeak):L"auto";values[L"MK1_HDR_HIGHLIGHTS"]=std::to_wstring(v.hdrHighlights);
+ if(!bezelImage.empty())values[L"MK1_BEZEL_IMAGE"]=bezelImage.wstring();
  values[L"MK1_AUDIO_LATENCY"]=c.audioLatency==2?L"safe":L"balanced";values[L"MK1_MUSIC_MODE"]=c.remastered?L"remastered":L"original";values[L"MK1_GRAPHICS_VALIDATE"]=validateGraphics?L"1":L"0";
  if(c.remastered)values[L"MK1_MUSIC_DIRECTORY"]=music.wstring();
  std::vector<wchar_t> block;for(const auto& value:values){const auto row=value.first+L"="+value.second;block.insert(block.end(),row.begin(),row.end());block.push_back(0);}block.push_back(0);return block;
@@ -690,7 +697,7 @@ bool Backend::launchMk3(){
  try{
   const auto spec=mk3Spec(root_,true);const bool remastered=mk3Engine_==2;auto selected=config;validate(selected,2);
   // The edition's video profile (presentation only: the canonical state is the same in both), game volume and audio queue.
-  auto environment=nativeEnvironment(selected,selected.video(remastered),{},true,false);auto expectedPath=spec.executable;expectedPath.make_preferred();
+  auto environment=nativeEnvironment(selected,selected.video(remastered),{},true,false,customBezel(root_,2));auto expectedPath=spec.executable;expectedPath.make_preferred();
   fs::create_directories(spec.profile);unlinked(spec.profile);
   const auto log=root_/coreLogs(2)/L"launcher-latest.log";unlinked(log);fs::create_directories(log.parent_path());unlinked(log);
   SECURITY_ATTRIBUTES security{sizeof(security),nullptr,TRUE};Handle output,input;
@@ -731,7 +738,7 @@ bool Backend::launchNative(const fs::path& manifest,const fs::path& settings,boo
   if(!spec.modernVideo&&needsModernVideo(selected.video()))throw std::runtime_error("Atualize o pacote nativo do MK2 para usar os novos filtros e modos de escala.");
   const auto music=customAudio(root_,L"mk2");
   if(selected.remastered&&!spec.playable)throw std::runtime_error("native experiment supports original audio only");
-  auto environment=nativeEnvironment(selected,selected.video(),music,spec.modernVideo,diagnostics||!spec.liveWithoutPixelCheck);auto expectedPath=spec.executable;expectedPath.make_preferred();
+  auto environment=nativeEnvironment(selected,selected.video(),music,spec.modernVideo,diagnostics||!spec.liveWithoutPixelCheck,customBezel(root_,1));auto expectedPath=spec.executable;expectedPath.make_preferred();
   std::wstring started=std::wstring(compatibleGames[1].name)+L" nativo iniciado.";
   mk2::PrepareCmosProfile(spec.profile,spec.seed);
   const auto log=spec.root/L"logs/native-experiment-latest.log";unlinked(log);fs::create_directories(log.parent_path());unlinked(log);
@@ -795,8 +802,8 @@ bool Backend::launch(unsigned frames){
   if(output.h==INVALID_HANDLE_VALUE||input.h==INVALID_HANDLE_VALUE)throw std::runtime_error("startup log");
   STARTUPINFOW si{};si.cb=sizeof(si);si.dwFlags=STARTF_USESHOWWINDOW|STARTF_USESTDHANDLES;si.wShowWindow=SW_HIDE;si.hStdInput=input.h;si.hStdOutput=output.h;si.hStdError=output.h;
   PROCESS_INFORMATION pi{};
-  // MK1: session.ps1 sets the other MK1_* values itself; HDR reaches the game only through this environment.
-  auto environment=gameIndex_==0?nativeEnvironment(config,v,{},modernVideo,false):std::vector<wchar_t>{};
+  // MK1: session.ps1 sets the other MK1_* values itself; HDR and the custom frame reach the game only through this environment.
+  auto environment=gameIndex_==0?nativeEnvironment(config,v,{},modernVideo,false,customBezel(root_,0)):std::vector<wchar_t>{};
   if(!CreateProcessW(powershell.c_str(),command.data(),nullptr,nullptr,TRUE,CREATE_NO_WINDOW|(environment.empty()?0:CREATE_UNICODE_ENVIRONMENT),
                      environment.empty()?nullptr:environment.data(),root_.c_str(),&si,&pi))throw std::runtime_error("start session");
   CloseHandle(pi.hThread);process_=pi.hProcess;processId_=pi.dwProcessId;exitCode_=STILL_ACTIVE;stopping_=false;gameWindow_=nullptr;gamePid_=0;nextDiscovery_=0;

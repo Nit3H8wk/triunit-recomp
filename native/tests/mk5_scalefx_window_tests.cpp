@@ -6,19 +6,52 @@
 #include "mk5_fighter_bicubic.hpp"
 #include "mk5_crt.hpp"
 #include "mk5_hdr.hpp"
+#include <wincodec.h>
+#include <wrl/client.h>
 #include <cmath>
+#include <filesystem>
 #include <iostream>
 #include <stdexcept>
 int main(int argc,char** argv){try{
  const std::string group=argc==2?argv[1]:"";
- if(group!="effects"&&group!="crt"&&group!="stage"&&group!="fighter"&&group!="hdr")
-  throw std::runtime_error("Choose the effects, crt, stage, fighter or hdr test group");
+ if(group!="effects"&&group!="crt"&&group!="stage"&&group!="fighter"&&group!="hdr"&&group!="frame")
+  throw std::runtime_error("Choose the effects, crt, stage, fighter, hdr or frame test group");
  mk5audio::detail::hooks.output_clock=true;
  SetEnvironmentVariableA("MK1_GRAPHICS_VALIDATE","1");SetEnvironmentVariableA("MK1_FULLSCREEN","0");SetEnvironmentVariableA("MK1_BEZEL","1");
  SetEnvironmentVariableA("MK1_FILTER","nearest");SetEnvironmentVariableA("MK1_COLOR","warm");SetEnvironmentVariableA("MK1_BRIGHTNESS","110");
  std::vector<uint32_t> image(400*254);for(unsigned y=0;y<254;++y)for(unsigned x=0;x<400;++x)
   image[y*400+x]=(((x/13+(y+x/5)/11)&1)?0x00c04080:0x00205090)+(x%7)*0x00020101;
  const auto original=image;
+ if(group=="frame"){
+  // The user's own frame: a PNG, opaque gray with a transparent 4:3 screen, written here with WIC.
+  using Microsoft::WRL::ComPtr;
+  const auto ok=[](HRESULT hr,const char* what){if(FAILED(hr))throw std::runtime_error(what);};
+  ok(CoInitializeEx(nullptr,COINIT_MULTITHREADED),"COM");
+  const auto path=std::filesystem::temp_directory_path()/("mk5-frame-"+std::to_string(GetCurrentProcessId())+".png");
+  {
+   ComPtr<IWICImagingFactory> wic;ok(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&wic)),"WIC");
+   ComPtr<IWICStream> stream;ok(wic->CreateStream(&stream),"WIC stream");ok(stream->InitializeFromFilename(path.c_str(),GENERIC_WRITE),"frame file");
+   ComPtr<IWICBitmapEncoder> encoder;ok(wic->CreateEncoder(GUID_ContainerFormatPng,nullptr,&encoder),"PNG encoder");ok(encoder->Initialize(stream.Get(),WICBitmapEncoderNoCache),"PNG init");
+   ComPtr<IWICBitmapFrameEncode> frame;ok(encoder->CreateNewFrame(&frame,nullptr),"PNG frame");ok(frame->Initialize(nullptr),"PNG frame init");
+   ok(frame->SetSize(160,90),"PNG size");WICPixelFormatGUID format=GUID_WICPixelFormat32bppBGRA;ok(frame->SetPixelFormat(&format),"PNG format");
+   std::vector<uint32_t> art(160*90);
+   for(unsigned y=0;y<90;++y)for(unsigned x=0;x<160;++x)art[y*160+x]=x>=40&&x<120&&y>=15&&y<75?0:0xff808080u-((x+y)%9)*0x10101;
+   ok(frame->WritePixels(90,160*4,UINT(art.size()*4),reinterpret_cast<BYTE*>(art.data())),"PNG pixels");ok(frame->Commit(),"PNG commit");ok(encoder->Commit(),"PNG file");
+  }
+  SetEnvironmentVariableW(L"MK1_BEZEL_IMAGE",path.c_str());
+  std::string report;
+  {
+   Mk5Window window;window.Present(image,400,254);const auto deadline=GetTickCount64()+5000;
+   do{window.Pump();report=window.presentation_json();Sleep(5);}while(report.find("\"gpu_validation_frames\":1")==std::string::npos&&GetTickCount64()<deadline);
+  }
+  std::filesystem::remove(path);
+  const auto number=[&](const char* key){const auto at=report.find(key);return at==std::string::npos?-1ll:std::stoll(report.substr(at+std::string(key).size()));};
+  const auto w=number("\"viewport_width\":"),h=number("\"viewport_height\":");
+  if(number("\"gpu_validation_frames\":")!=1||number("\"gpu_validation_mismatches\":")!=0||number("\"gpu_validation_bezel_pixels\":")<=0||w<390||w*3!=h*4)
+   throw std::runtime_error("custom frame presentation differs: "+report);
+  std::cout<<"PASS DX12 user frame PNG: transparent screen holds the 4:3 game ("<<w<<"x"<<h<<")\n";
+  return 0;
+ }
  if(group=="hdr"){
   // CPU reference: ST 2084 anchors, SDR white at paper white, full highlights put SDR white at the peak.
   const auto close=[](float a,float b){return std::fabs(a-b)<2e-4f;};

@@ -43,6 +43,9 @@ custom_audio/**
 !custom_audio/**/.gitkeep
 !custom_audio/**/README_AUDIO.txt
 
+# The user's own game frame image stays local.
+custom_bezel/
+
 # Regenerable local knowledge graph (not source or test evidence).
 /graphify-out/
 

@@ -783,7 +783,7 @@ struct App {
         const float col=(modes.w-60)/2;
         const std::array<std::pair<const wchar_t*,const wchar_t*>,2> mode{{
             {L"Arcade Original",L"The board's audio and image exactly as the arcade produces them. Video filters stay optional."},
-            {L"Remastered",L"Scaling, CRT presets, ScaleFX, CAS, SMAA, bilateral filter, a bezel drawn in code and your own music (T-Unit games)."}}};
+            {L"Remastered",L"Scaling, CRT presets, ScaleFX, CAS, SMAA, bilateral filter, a CRT TV frame drawn in code and your own music (T-Unit games)."}}};
         for(size_t k=0;k<2;++k){const float mx0=modes.x+24+float(k)*(col+20);g.fill({mx0,modes.y+68,3,30},red);g.text(mode[k].first,mx0+16,modes.y+68,20,white,.3f);paragraph(mode[k].second,mx0+16,modes.y+102,14,col-20,muted);}
         panel(audio);icon(9,audio.x+20,audio.y+18,white);g.text(L"Custom Audio & Tests",audio.x+58,audio.y+16,22,white,.4f);
         float ay=audio.y+62;
@@ -1032,7 +1032,7 @@ struct App {
             }else{
                 row(250,470,L"GAME SYNC",L"VRR needs G-Sync / FreeSync on in the monitor and the driver.",std::array<std::wstring,3>{L"V-SYNC",L"VRR / ADAPTIVE",L"IMMEDIATE"}[size_t(v.sync)]);
                 row(251,530,L"HIGH REFRESH",L"Shows the original frames again at the desktop refresh rate.",nativeVideo()?(v.highRefresh?L"ON":L"OFF"):L"UNAVAILABLE",nativeVideo());
-                row(209,590,L"ARCADE BEZEL",L"Red neon frame around the game image.",v.bezel?L"ON":L"OFF");
+                row(209,590,L"TV FRAME",L"CRT television around the game. Your own: custom_bezel/<game>/bezel.png.",v.bezel?L"ON":L"OFF");
                 row(videoFullscreen,650,L"GAME FULLSCREEN",L"Window mode when this version starts.",v.fullscreen?L"ON":L"WINDOW",nativeVideo());
             }
             g.text(L"XInput: "+std::to_wstring(pads.count())+L" connected. Arcade: 54.7069 frames per second.",306+shift,723,13,muted,.2f);

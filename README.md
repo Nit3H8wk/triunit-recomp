@@ -30,12 +30,16 @@ your ROM.
   CRT and scanline presets (light, medium and strong scanlines, BVM 1080p,
   BVM 4K, BVM soft, CRT energy, PVM soft, CRT phosphor); ScaleFX edge
   reconstruction with adjustable strength; CAS adaptive sharpening; SMAA 1x;
-  bilateral filter; color modes (original, vivid, warm) and brightness; a red
-  neon bezel drawn in code.
+  bilateral filter; color modes (original, vivid, warm) and brightness; a CRT
+  television frame drawn in code, or your own PNG in
+  `custom_bezel/<mk1|mk2|mk3>/bezel.png` (transparent where the screen is; the
+  game fills the largest 4:3 area inside it).
 - **Display.** V-Sync, **VRR** (G-Sync / FreeSync) or immediate presentation;
   high-refresh mode that shows the original frames at the desktop refresh rate
-  (no frame interpolation); fullscreen or window per edition. The arcade runs
-  at its own 54.7069 frames per second.
+  (no frame interpolation); fullscreen or window per edition; **HDR10** when
+  Windows HDR is on (paper white and peak from Windows or set by hand; highlight
+  expansion in Remastered only). The arcade runs at its own 54.7069 frames per
+  second.
 - **Audio.** The board's own sound program, recompiled like the game. Adjustable
   audio queue (balanced or safe) and per-game software volume. In Mortal Kombat
   and Mortal Kombat II, Remastered can play your own music
@@ -176,7 +180,7 @@ executable only by the SHA-256 that record holds. Each game has two modes:
   `custom_audio/`.
 - **Remastered**: presentation options on top of the same game: video filters
   (scaling, CRT presets, ScaleFX, CAS sharpening, SMAA, bilateral filter), a
-  bezel drawn in code, floor blood that stays for the whole fight (Mortal
+  CRT television frame drawn in code, floor blood that stays for the whole fight (Mortal
   Kombat and Mortal Kombat II), and optional music supplied by you (the
   Mortal Kombat 3 Remastered edition changes the video only and keeps the
   arcade audio).
