@@ -112,6 +112,7 @@ enum ButtonStyle {styleNormal,stylePrimary,styleField,styleHidden,styleCheck};
 struct Button{int id;Rect box;std::wstring label;bool enabled;ButtonStyle style;};
 enum VideoControl {videoProfile=274,videoPage,videoScale,videoCas,videoSmaa,videoBilateral,videoFullscreen};
 enum MenuAudioControl {menuVolume=281,menuMute};
+enum DisplayControl {displayPage=290,hdrMode,hdrPaper,hdrPeak,hdrHighlights};
 constexpr int launcherTab=3;
 constexpr Rect menuVolumeBox{969,700,166,54},menuMuteBox{1145,700,84,54};
 struct App {
@@ -125,7 +126,7 @@ struct App {
     mk5pad::Devices pads;ULONGLONG nextPadRepeat=0;WORD padDirections=0;
     Config draft{};GameAdjustments draftAdjustments{};
     LauncherPreferences launcher{},draftLauncher{};
-    bool editingGame=false,resetScoresPending=false,videoRemastered=false;
+    bool editingGame=false,resetScoresPending=false,videoRemastered=false,displayHdr=false;
     RECT placement{};std::wstring notice;
     std::array<float,4> glows{};float mx=-1,my=-1;const uint64_t started=frameTicks();bool receivedInput=false;
     WORD gamepadButtons=0;ULONGLONG nextPad=0,nextPoll=0,availabilityDue=0;
@@ -210,9 +211,15 @@ struct App {
         return draft.videoEffects?std::array<int,7>{videoProfile,videoPage,255,256,videoCas,videoSmaa,videoBilateral}
                            :std::array<int,7>{videoProfile,videoPage,videoScale,201,200,207,208};
     }
-    std::array<int,5> displayControls()const{return {videoProfile,250,251,209,videoFullscreen};}
+    std::array<int,6> displayControls()const{
+        return displayHdr?std::array<int,6>{videoProfile,displayPage,hdrMode,hdrPaper,hdrPeak,hdrHighlights}
+                         :std::array<int,6>{videoProfile,displayPage,250,251,209,videoFullscreen};
+    }
     bool videoControlEnabled(int id)const{
         if(id==256)return scaleFxActive();
+        if(id==hdrHighlights)return nativeVideo()&&video().hdr&&videoRemastered;
+        if(id==hdrPaper||id==hdrPeak)return nativeVideo()&&video().hdr;
+        if(id==displayPage||id==hdrMode)return nativeVideo();
         if(id==videoProfile||id==videoPage||id==videoScale||id==255||id==videoCas||
            id==videoSmaa||id==videoBilateral||id==251||id==videoFullscreen)return nativeVideo();
         return true;
@@ -342,7 +349,7 @@ struct App {
             for(int i=0;i<6;++i)controls.push_back({220+i,{300+float(i)*156,294,156,40},tabEnabled(i)});
             if(category==0){float y=350;for(int id:videoControls()){controls.push_back({id,{969,y,260,54},videoControlEnabled(id)});y+=60;}}
             if(category==1){controls.push_back({245,{969,350,260,54},musicAvailable||draft.remastered});controls.push_back({205,{969,420,260,54},true});controls.push_back({243,{969,490,260,54},false});controls.push_back({244,{969,560,260,54},false});}
-            if(category==2){float y=350;for(int id:displayControls()){controls.push_back({id,{969,y,260,54},videoControlEnabled(id)});y+=70;}}
+            if(category==2){float y=350;for(int id:displayControls()){controls.push_back({id,{969,y,260,54},videoControlEnabled(id)});y+=60;}}
             if(category==4){for(int i=0;i<5;++i)controls.push_back({260+i,{969,350+float(i)*70,260,54},backend.adjustmentsAvailable()});}
             if(category==5){controls.push_back({270,{969,350,260,54},gameVolumeEnabled()});controls.push_back({271,{969,420,260,54},backend.adjustmentsAvailable()});if(resetScoresPending){controls.push_back({272,{969,520,125,54},true});controls.push_back({273,{1104,520,125,54},true});}}
             if(category==launcherTab){
@@ -461,6 +468,11 @@ struct App {
         if(id==250)video().sync=nativeVideo()?(video().sync+1)%3:(video().sync==0?2:0);
         if(id==251&&nativeVideo())video().highRefresh=!video().highRefresh;
         if(id==videoFullscreen&&nativeVideo())video().fullscreen=!video().fullscreen;
+        if(id==displayPage&&nativeVideo())displayHdr=!displayHdr;
+        if(id==hdrMode&&nativeVideo())video().hdr=!video().hdr;
+        if(id==hdrPaper&&videoControlEnabled(hdrPaper)){auto& n=video().hdrPaper;n=n==0?80:n>=480?0:n<320?n+40:n+80;}
+        if(id==hdrPeak&&videoControlEnabled(hdrPeak)){auto& n=video().hdrPeak;n=n==0?400:n<1000?n+200:n<2000?n+500:n<4000?4000:0;}
+        if(id==hdrHighlights&&videoControlEnabled(hdrHighlights))video().hdrHighlights=video().hdrHighlights>=100?0:video().hdrHighlights+25;
         if(id==203)draftLauncher.vsync=!draftLauncher.vsync;
         if(id==204)draftLauncher.reducedMotion=!draftLauncher.reducedMotion;
         if(id==206)draftLauncher.fullscreen=!draftLauncher.fullscreen;
@@ -549,7 +561,7 @@ struct App {
             if(settings&&a[size_t(focus)]==menuVolume&&(key==VK_LEFT||key==VK_RIGHT)){draftLauncher.musicVolume=std::clamp(draftLauncher.musicVolume+(key==VK_LEFT?-5:5),0,100);return;}
             if(settings&&category==4&&(key==VK_LEFT||key==VK_RIGHT)&&a[size_t(focus)]>=260&&a[size_t(focus)]<=264){changeAdjustment(a[size_t(focus)],key==VK_LEFT?-1:1);return;}
             if(details&&(key==VK_LEFT||key==VK_RIGHT)){focus=(focus+1)%int(a.size());}
-            const int id=a[size_t(focus)];const bool editable=(id>=200&&id<=209)||id==245||id==250||id==251||id==255||(id>=videoProfile&&id<=videoFullscreen);
+            const int id=a[size_t(focus)];const bool editable=(id>=200&&id<=209)||id==245||id==250||id==251||id==255||(id>=videoProfile&&id<=videoFullscreen)||(id>=displayPage&&id<=hdrHighlights);
             if(key==VK_RETURN||key==VK_SPACE||((key==VK_LEFT||key==VK_RIGHT)&&editable))act(id);
             if(key>='1'&&key<='6')selectTab(int(key-'1'));
         }
@@ -1013,10 +1025,20 @@ struct App {
         }else if(category==2){
             const auto& v=video();
             row(videoProfile,350,L"VIDEO PROFILE",L"Choose which display profile to edit.",videoEdition,nativeVideo());
-            row(250,420,L"GAME SYNC",L"VRR needs G-Sync / FreeSync on in the monitor and the driver.",std::array<std::wstring,3>{L"V-SYNC",L"VRR / ADAPTIVE",L"IMMEDIATE"}[size_t(v.sync)]);
-            row(251,490,L"HIGH REFRESH",L"Shows the original frames again at the desktop refresh rate.",nativeVideo()?(v.highRefresh?L"ON":L"OFF"):L"UNAVAILABLE",nativeVideo());
-            row(209,560,L"ARCADE BEZEL",L"Red neon frame around the game image.",v.bezel?L"ON":L"OFF");
-            row(videoFullscreen,630,L"GAME FULLSCREEN",L"Window mode when this version starts.",v.fullscreen?L"ON":L"WINDOW",nativeVideo());
+            row(displayPage,410,L"DISPLAY CONTROLS",L"Switch between sync and window options and HDR.",displayHdr?L"HDR":L"SYNC AND WINDOW",nativeVideo());
+            const auto nits=[](int n){return n?std::to_wstring(n)+L" NITS":std::wstring(L"AUTO");};
+            if(displayHdr){
+                row(hdrMode,470,L"HDR",L"HDR10 when Windows HDR is on for this monitor; SDR otherwise.",v.hdr?L"AUTO":L"OFF",nativeVideo());
+                row(hdrPaper,530,L"PAPER WHITE",L"Brightness of the game's white. Auto follows Windows SDR content brightness.",nits(v.hdrPaper),nativeVideo()&&v.hdr);
+                row(hdrPeak,590,L"PEAK BRIGHTNESS",L"Brightest level of the highlights. Auto reads the monitor.",nits(v.hdrPeak),nativeVideo()&&v.hdr);
+                row(hdrHighlights,650,L"HDR HIGHLIGHTS",videoRemastered?L"Expands bright colors toward the peak; dark and mid tones stay.":L"Remastered profile only. The Original keeps the SDR image.",
+                    v.hdrHighlights?std::to_wstring(v.hdrHighlights)+L"%":L"OFF",nativeVideo()&&v.hdr&&videoRemastered);
+            }else{
+                row(250,470,L"GAME SYNC",L"VRR needs G-Sync / FreeSync on in the monitor and the driver.",std::array<std::wstring,3>{L"V-SYNC",L"VRR / ADAPTIVE",L"IMMEDIATE"}[size_t(v.sync)]);
+                row(251,530,L"HIGH REFRESH",L"Shows the original frames again at the desktop refresh rate.",nativeVideo()?(v.highRefresh?L"ON":L"OFF"):L"UNAVAILABLE",nativeVideo());
+                row(209,590,L"ARCADE BEZEL",L"Red neon frame around the game image.",v.bezel?L"ON":L"OFF");
+                row(videoFullscreen,650,L"GAME FULLSCREEN",L"Window mode when this version starts.",v.fullscreen?L"ON":L"WINDOW",nativeVideo());
+            }
             g.text(L"XInput: "+std::to_wstring(pads.count())+L" connected. Arcade: 54.7069 frames per second.",306+shift,723,13,muted,.2f);
         }else if(category==4){
             const bool ready=backend.adjustmentsAvailable();const auto effective=effectiveAdjustments();auto priced=effective;priced.freePlay=false;

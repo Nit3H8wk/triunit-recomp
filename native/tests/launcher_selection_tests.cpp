@@ -17,7 +17,8 @@ void verifyFrameCadence(){
 }
 auto videoValues(const VideoConfig& v){
  return std::tie(v.scanlines,v.filter,v.sync,v.color,v.brightness,v.scalefxAmount,v.scaleMode,
-                 v.cas,v.bilateral,v.scalefx,v.bezel,v.highRefresh,v.smaa,v.fullscreen);
+                 v.cas,v.bilateral,v.scalefx,v.bezel,v.highRefresh,v.smaa,v.fullscreen,
+                 v.hdr,v.hdrPaper,v.hdrPeak,v.hdrHighlights);
 }
 template<class T>
 void cycleVideo(App& app,int id,T VideoConfig::*field,std::initializer_list<T> values){
@@ -48,6 +49,13 @@ void videoMatrix(App& app,int game){
   cycleVideo(app,251,&VideoConfig::highRefresh,{false,true});
   cycleVideo(app,209,&VideoConfig::bezel,{true,false});
   cycleVideo(app,videoFullscreen,&VideoConfig::fullscreen,{true,false});
+  app.act(displayPage);
+  cycleVideo(app,hdrMode,&VideoConfig::hdr,{1,0});
+  cycleVideo(app,hdrPaper,&VideoConfig::hdrPaper,{0,80,120,160,200,240,280,320,400,480});
+  cycleVideo(app,hdrPeak,&VideoConfig::hdrPeak,{0,400,600,800,1000,1500,2000,4000});
+  if(edition)cycleVideo(app,hdrHighlights,&VideoConfig::hdrHighlights,{0,25,50,75,100});
+  else verify(!app.videoControlEnabled(hdrHighlights),"HDR highlights stay off in the Original profile");
+  app.act(displayPage);
   app.key('1');app.act(videoPage);
   cycleVideo(app,255,&VideoConfig::scalefx,{false,true});
   cycleVideo(app,videoCas,&VideoConfig::cas,{0,25,50,75,100});

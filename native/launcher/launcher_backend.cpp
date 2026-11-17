@@ -59,7 +59,9 @@ constexpr VideoNumber videoNumbers[]={
  {"scanlines",&VideoConfig::scanlines,0,int(mk5video::presets.size())-1},
  {"filter",&VideoConfig::filter,0,3},{"sync",&VideoConfig::sync,0,2},{"color",&VideoConfig::color,0,2},
  {"brightness",&VideoConfig::brightness,80,120},{"scalefxamount",&VideoConfig::scalefxAmount,0,100},
- {"scalemode",&VideoConfig::scaleMode,0,5},{"cas",&VideoConfig::cas,0,100},{"bilateral",&VideoConfig::bilateral,0,100}
+ {"scalemode",&VideoConfig::scaleMode,0,5},{"cas",&VideoConfig::cas,0,100},{"bilateral",&VideoConfig::bilateral,0,100},
+ {"hdr",&VideoConfig::hdr,0,1},{"hdrpaperwhite",&VideoConfig::hdrPaper,0,480},{"hdrpeak",&VideoConfig::hdrPeak,0,10000},
+ {"hdrhighlights",&VideoConfig::hdrHighlights,0,100}
 };
 constexpr VideoToggle videoToggles[]={
  {"scalefx",&VideoConfig::scalefx},{"bezel",&VideoConfig::bezel},{"highrefresh",&VideoConfig::highRefresh},
@@ -69,7 +71,8 @@ constexpr VideoConfig videoDefaults;
 constexpr const wchar_t* filters[]={L"nearest",L"linear",L"sharp-bilinear",L"bicubic"};
 bool needsModernVideo(const VideoConfig& v){return v.filter>1||v.scaleMode||v.cas||v.bilateral||v.smaa;}
 bool validVideoNumber(const VideoNumber& field,int value){
- return value>=field.minimum&&value<=field.maximum&&(field.member!=&VideoConfig::brightness||value%10==0);
+ return value>=field.minimum&&value<=field.maximum&&(field.member!=&VideoConfig::brightness||value%10==0)&&
+  (field.member!=&VideoConfig::hdrPaper||value==0||value>=80)&&(field.member!=&VideoConfig::hdrPeak||value==0||value>=400);
 }
 bool readVideo(VideoConfig& video,const std::string& key,const std::string& value,const VideoConfig& defaults=videoDefaults){
  for(const auto& field:videoNumbers)if(key==field.key){
@@ -91,6 +94,7 @@ mklauncher::Config factory(int game){mklauncher::Config c;if(game==2)c.videos[1]
 void validate(mklauncher::Config& c,int game=0){
  if(c.gameVolume<0||c.gameVolume>100)c.gameVolume=100;
  if(!validFps(c.fps))c.fps=60;
+ c.videos[0].hdrHighlights=0; // the Original edition keeps the SDR image at paper white
  if(c.audioLatency<1||c.audioLatency>2)c.audioLatency=1;
  c.uiVolume=0; // Legacy key; coin feedback follows the Windows output volume.
  // MK2 v1 (authenticated core) has neither the remastered music nor the native presenter options; MK3 has the native
@@ -231,6 +235,8 @@ std::vector<wchar_t> nativeEnvironment(const mklauncher::Config& c,const VideoCo
  values[L"MK1_GAME_VOLUME"]=std::to_wstring(c.gameVolume);
  values[L"MK1_SYNC"]=std::array<const wchar_t*,3>{L"vsync",L"vrr",L"immediate"}[v.sync];values[L"MK1_COLOR"]=std::array<const wchar_t*,3>{L"original",L"vivid",L"warm"}[v.color];
  values[L"MK1_BRIGHTNESS"]=std::to_wstring(v.brightness);values[L"MK1_BEZEL"]=v.bezel?L"1":L"0";values[L"MK1_HIGH_REFRESH"]=v.highRefresh?L"1":L"0";values[L"MK1_FULLSCREEN"]=v.fullscreen?L"1":L"0";
+ values[L"MK1_HDR"]=v.hdr?L"auto":L"off";values[L"MK1_HDR_PAPER_WHITE"]=v.hdrPaper?std::to_wstring(v.hdrPaper):L"auto";
+ values[L"MK1_HDR_PEAK"]=v.hdrPeak?std::to_wstring(v.hdrPeak):L"auto";values[L"MK1_HDR_HIGHLIGHTS"]=std::to_wstring(v.hdrHighlights);
  values[L"MK1_AUDIO_LATENCY"]=c.audioLatency==2?L"safe":L"balanced";values[L"MK1_MUSIC_MODE"]=c.remastered?L"remastered":L"original";values[L"MK1_GRAPHICS_VALIDATE"]=validateGraphics?L"1":L"0";
  if(c.remastered)values[L"MK1_MUSIC_DIRECTORY"]=music.wstring();
  std::vector<wchar_t> block;for(const auto& value:values){const auto row=value.first+L"="+value.second;block.insert(block.end(),row.begin(),row.end());block.push_back(0);}block.push_back(0);return block;
@@ -789,7 +795,10 @@ bool Backend::launch(unsigned frames){
   if(output.h==INVALID_HANDLE_VALUE||input.h==INVALID_HANDLE_VALUE)throw std::runtime_error("startup log");
   STARTUPINFOW si{};si.cb=sizeof(si);si.dwFlags=STARTF_USESHOWWINDOW|STARTF_USESTDHANDLES;si.wShowWindow=SW_HIDE;si.hStdInput=input.h;si.hStdOutput=output.h;si.hStdError=output.h;
   PROCESS_INFORMATION pi{};
-  if(!CreateProcessW(powershell.c_str(),command.data(),nullptr,nullptr,TRUE,CREATE_NO_WINDOW,nullptr,root_.c_str(),&si,&pi))throw std::runtime_error("start session");
+  // MK1: session.ps1 sets the other MK1_* values itself; HDR reaches the game only through this environment.
+  auto environment=gameIndex_==0?nativeEnvironment(config,v,{},modernVideo,false):std::vector<wchar_t>{};
+  if(!CreateProcessW(powershell.c_str(),command.data(),nullptr,nullptr,TRUE,CREATE_NO_WINDOW|(environment.empty()?0:CREATE_UNICODE_ENVIRONMENT),
+                     environment.empty()?nullptr:environment.data(),root_.c_str(),&si,&pi))throw std::runtime_error("start session");
   CloseHandle(pi.hThread);process_=pi.hProcess;processId_=pi.dwProcessId;exitCode_=STILL_ACTIVE;stopping_=false;gameWindow_=nullptr;gamePid_=0;nextDiscovery_=0;
   gameExecutable_=std::move(expectedPath);
   status_=L"Iniciando o jogo; validando arquivos...";return true;

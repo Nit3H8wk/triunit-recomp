@@ -12,6 +12,7 @@
 #include "mk5_timing.hpp"
 #include "mk5_color.hpp"
 #include "mk5_bezel.hpp"
+#include "mk5_hdr.hpp"
 #include "mk5_audio_link.hpp"
 #define WIN32_LEAN_AND_MEAN
 #ifndef NOMINMAX
@@ -20,12 +21,13 @@
 #include <windows.h>
 #include <d3d12.h>
 #include <d3dcompiler.h>
-#include <dxgi1_5.h>
+#include <dxgi1_6.h>
 #include <wincodec.h>
 #include <wrl/client.h>
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>
+#include <unordered_map>
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
@@ -53,7 +55,8 @@ void arm_pace_timer(HANDLE timer,LONGLONG ticks,LONGLONG frequency){
 }
 constexpr UINT kFrontier=WM_APP+2;
 constexpr DWORD kOccludedRetryMs=100;
-constexpr UINT kSourceSrv=0,kBezelSrv=1,kChainSrv=2,kPrefilterSrv=3,kStageSrv=5;
+constexpr UINT kSourceSrv=0,kBezelSrv=1,kChainSrv=2,kPrefilterSrv=3,kStageSrv=5,kSceneSrv=6;
+constexpr auto kHdrSpace=DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
 constexpr UINT kShaderConstants=29;
 using Edges=std::array<int,4>;
 // The black opening in the supplied PNG, in source pixels.
@@ -142,6 +145,15 @@ struct Mk5Window::Impl {
     int sync_mode=1,color_mode=0,brightness=100;
     unsigned scalefx_amount=0,scale_mode=0,cas_amount=0,bilateral_amount=0;
     bool smaa_enabled=false;
+    // HDR: 0 off, 1 when Windows has HDR on for this monitor, 2 always (validation). The frame is drawn to `scene` exactly as
+    // in SDR, then one pass encodes it to HDR10 in the back buffer.
+    // shortcut: decided when the window opens; turning Windows HDR on or off mid-game takes effect on the next start.
+    unsigned hdr_mode=0,paper_setting=0,peak_setting=0,highlight_setting=0;
+    bool hdr=false;mk5hdr::Settings hdr_settings;
+    std::atomic<int> hdr_state{0}; // 0 off, 1 HDR10, 2 Windows SDR, 3 unsupported
+    ComPtr<ID3D12Resource> scene,hdr_readback;ComPtr<ID3D12PipelineState> hdr_pipeline;
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT hdr_readback_layout{};
+    std::atomic<uint64_t> hdr_validation_frames{0},hdr_validation_mismatches{0};
     mk5video::Sampling filter=mk5video::Sampling::nearest;
     std::shared_ptr<mk5sfx::Pipeline> scalefx;
     std::shared_ptr<mk5smaa::Pipeline> smaa;
@@ -245,6 +257,17 @@ struct Mk5Window::Impl {
         const auto validation=read("MK1_GRAPHICS_VALIDATE");
         if(!validation.empty() && validation!="0" && validation!="1")throw std::runtime_error("MK1_GRAPHICS_VALIDATE must be 0 or 1");
         validate_graphics=validation=="1";
+        const auto mode=option("MK1_HDR","off");
+        if(mode!="off"&&mode!="auto"&&mode!="force")throw std::runtime_error("MK1_HDR must be off, auto or force");
+        hdr_mode=mode=="off"?0:(mode=="auto"?1:2);
+        const auto nits=[&](const char* key,unsigned low,unsigned high){
+            const auto v=option(key,"auto");if(v=="auto")return 0u;
+            if(v.size()>5||v.find_first_not_of("0123456789")!=std::string::npos||std::stoul(v)<low||std::stoul(v)>high)
+                throw std::runtime_error(std::string(key)+" must be auto or "+std::to_string(low)+" to "+std::to_string(high));
+            return unsigned(std::stoul(v));
+        };
+        paper_setting=nits("MK1_HDR_PAPER_WHITE",80,480);peak_setting=nits("MK1_HDR_PEAK",400,10000);
+        highlight_setting=percent("MK1_HDR_HIGHLIGHTS");
     }
     unsigned image_width=0,image_height=0;UINT target_width=0,target_height=0;
     bool resize=true,repaint=false,toggle=false,leave_exclusive=false,switching_mode=false,placement_saved=false,close_requested=false;
@@ -376,15 +399,16 @@ struct Mk5Window::Impl {
         ComPtr<IDXGISwapChain1> created;
         checked(factory->CreateSwapChainForHwnd(queue.Get(),hwnd.load(),&desc,nullptr,nullptr,&created),"D3D12 DXGI flip swap chain");
         checked(created.As(&swap),"DXGI swap chain 3");
+        enable_hdr();
         configure_frame_queue();
         frame_ready=swap->GetFrameLatencyWaitableObject();if(!frame_ready)throw std::runtime_error("DXGI frame latency handle missing");
         DEVMODEW desktop{};desktop.dmSize=sizeof(desktop);MONITORINFOEXW monitor{};monitor.cbSize=sizeof(monitor);GetMonitorInfoW(MonitorFromWindow(hwnd.load(),MONITOR_DEFAULTTONEAREST),&monitor);
         const unsigned hz=EnumDisplaySettingsW(monitor.szDevice,ENUM_CURRENT_SETTINGS,&desktop)&&desktop.dmDisplayFrequency>1?desktop.dmDisplayFrequency:60;
         repeat_clock.interval=frequency/std::min(360u,hz); // presentation only; never guest rate
         checked(factory->MakeWindowAssociation(hwnd.load(),DXGI_MWA_NO_ALT_ENTER|DXGI_MWA_NO_WINDOW_CHANGES),"DXGI window association");
-        D3D12_DESCRIPTOR_HEAP_DESC heap{};heap.Type=D3D12_DESCRIPTOR_HEAP_TYPE_RTV;heap.NumDescriptors=UINT(targets.size())+prefilter_passes();
+        D3D12_DESCRIPTOR_HEAP_DESC heap{};heap.Type=D3D12_DESCRIPTOR_HEAP_TYPE_RTV;heap.NumDescriptors=UINT(targets.size())+prefilter_passes()+1;
         checked(device->CreateDescriptorHeap(&heap,IID_PPV_ARGS(&rtv_heap)),"D3D12 RTV heap");rtv_stride=device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-        heap.Type=D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;heap.NumDescriptors=kStageSrv+1;heap.Flags=D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        heap.Type=D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;heap.NumDescriptors=kSceneSrv+1;heap.Flags=D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         checked(device->CreateDescriptorHeap(&heap,IID_PPV_ARGS(&srv_heap)),"D3D12 SRV heap");
         D3D12_DESCRIPTOR_RANGE ranges[2]{};ranges[0].RangeType=D3D12_DESCRIPTOR_RANGE_TYPE_SRV;ranges[0].NumDescriptors=1;
         ranges[1]=ranges[0];ranges[1].BaseShaderRegister=1;
@@ -423,9 +447,48 @@ struct Mk5Window::Impl {
             state.PS={ps->GetBufferPointer(),ps->GetBufferSize()};
             checked(device->CreateGraphicsPipelineState(&state,IID_PPV_ARGS(&prefilter_pipeline)),"D3D12 video prefilter pipeline");
         }
+        if(hdr){
+            compile_pixel(mk5hdr::shader,sizeof(mk5hdr::shader),"ps");
+            state.PS={ps->GetBufferPointer(),ps->GetBufferSize()};state.RTVFormats[0]=DXGI_FORMAT_R10G10B10A2_UNORM;
+            checked(device->CreateGraphicsPipelineState(&state,IID_PPV_ARGS(&hdr_pipeline)),"D3D12 HDR10 pipeline");
+        }
         if(scalefx_amount)scalefx=std::make_shared<mk5sfx::Pipeline>(device.Get());
         if(smaa_enabled)smaa=std::make_shared<mk5smaa::Pipeline>(device.Get());
     }
+    // Windows "SDR content brightness" of the monitor, in nits (1000 = 80 nits).
+    static float sdr_white(HMONITOR monitor){
+        MONITORINFOEXW info{};info.cbSize=sizeof(info);UINT32 paths=0,modes=0;
+        if(!GetMonitorInfoW(monitor,&info)||GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS,&paths,&modes)!=ERROR_SUCCESS)return 203;
+        std::vector<DISPLAYCONFIG_PATH_INFO> path(paths);std::vector<DISPLAYCONFIG_MODE_INFO> mode(modes);
+        if(QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS,&paths,path.data(),&modes,mode.data(),nullptr)!=ERROR_SUCCESS)return 203;
+        for(UINT32 i=0;i<paths;++i){
+            DISPLAYCONFIG_SOURCE_DEVICE_NAME source{};
+            source.header={DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME,sizeof(source),path[i].sourceInfo.adapterId,path[i].sourceInfo.id};
+            if(DisplayConfigGetDeviceInfo(&source.header)!=ERROR_SUCCESS||std::wcscmp(source.viewGdiDeviceName,info.szDevice))continue;
+            DISPLAYCONFIG_SDR_WHITE_LEVEL white{};
+            white.header={DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL,sizeof(white),path[i].targetInfo.adapterId,path[i].targetInfo.id};
+            if(DisplayConfigGetDeviceInfo(&white.header)==ERROR_SUCCESS&&white.SDRWhiteLevel)return float(white.SDRWhiteLevel)*80/1000;
+        }
+        return 203;
+    }
+    void enable_hdr(){
+        if(!hdr_mode)return;
+        ComPtr<IDXGIOutput> output;ComPtr<IDXGIOutput6> output6;DXGI_OUTPUT_DESC1 desc{};
+        const bool display=SUCCEEDED(swap->GetContainingOutput(&output))&&SUCCEEDED(output.As(&output6))&&
+            SUCCEEDED(output6->GetDesc1(&desc))&&desc.ColorSpace==kHdrSpace;
+        if(!display&&hdr_mode==1){hdr_state=2;return;}
+        checked(swap->ResizeBuffers(0,0,0,DXGI_FORMAT_R10G10B10A2_UNORM,swap_flags),"DXGI HDR10 buffers");
+        UINT support=0;
+        if(FAILED(swap->CheckColorSpaceSupport(kHdrSpace,&support))||!(support&DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT)||
+           FAILED(swap->SetColorSpace1(kHdrSpace))){
+            checked(swap->ResizeBuffers(0,0,0,DXGI_FORMAT_B8G8R8A8_UNORM,swap_flags),"DXGI SDR buffers");hdr_state=3;return;
+        }
+        hdr=true;hdr_state=1;
+        hdr_settings.paper=paper_setting?float(paper_setting):sdr_white(display?desc.Monitor:MonitorFromWindow(hwnd.load(),MONITOR_DEFAULTTONEAREST));
+        hdr_settings.peak=peak_setting?float(peak_setting):(display&&desc.MaxLuminance>0?desc.MaxLuminance:1000.f);
+        hdr_settings.highlights=float(highlight_setting)/100;
+    }
+    UINT scene_rtv()const{return UINT(targets.size())+prefilter_passes();}
     bool physical_pixels()const{return crt.phosphor()||scale_mode!=0;}
     unsigned prefilter_passes()const{return unsigned(bilateral_amount!=0)+unsigned(cas_amount!=0);}
     unsigned source_scale()const{return scalefx_amount?3:1;}
@@ -508,6 +571,12 @@ struct Mk5Window::Impl {
         auto handle=rtv_heap->GetCPUDescriptorHandleForHeapStart();
         for(UINT i=0;i<targets.size();++i){checked(swap->GetBuffer(i,IID_PPV_ARGS(&targets[i])),"D3D12 DXGI back buffer");device->CreateRenderTargetView(targets[i].Get(),nullptr,handle);handle.ptr+=rtv_stride;}
         auto d=targets[0]->GetDesc();target_width=UINT(d.Width);target_height=d.Height;resize=false;repaint=true;occluded_retry=0;
+        if(hdr){
+            checked(swap->SetColorSpace1(kHdrSpace),"DXGI HDR10 color space");
+            d.Format=DXGI_FORMAT_B8G8R8A8_UNORM;d.Flags=D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+            scene=make_resource(D3D12_HEAP_TYPE_DEFAULT,d,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+            device->CreateRenderTargetView(scene.Get(),nullptr,rtv_at(scene_rtv()));set_srv(kSceneSrv,scene.Get(),d.Format);
+        }
         if(compose_wake)SetEvent(compose_wake);
     }
     void change_mode(bool want){
@@ -689,6 +758,37 @@ struct Mk5Window::Impl {
         return scanlines>0?1:0;
     }
     bool color_adjusted()const{return color_mode!=0||brightness!=100;}
+    // Copies a render target to a new readback buffer and leaves the target in `after`.
+    ComPtr<ID3D12Resource> copy_back(ID3D12Resource* image,D3D12_RESOURCE_STATES after,D3D12_PLACED_SUBRESOURCE_FOOTPRINT& layout){
+        auto desc=image->GetDesc();UINT64 bytes=0;device->GetCopyableFootprints(&desc,0,1,0,&layout,nullptr,nullptr,&bytes);
+        auto buffer=make_resource(D3D12_HEAP_TYPE_READBACK,buffer_desc(bytes),D3D12_RESOURCE_STATE_COPY_DEST);
+        barrier(image,D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_COPY_SOURCE);
+        D3D12_TEXTURE_COPY_LOCATION source{};source.pResource=image;source.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        D3D12_TEXTURE_COPY_LOCATION dest{};dest.pResource=buffer.Get();dest.Type=D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;dest.PlacedFootprint=layout;
+        commands->CopyTextureRegion(&dest,0,0,0,&source,nullptr);barrier(image,D3D12_RESOURCE_STATE_COPY_SOURCE,after);
+        return buffer;
+    }
+    // Every HDR10 pixel against the CPU encoding of the SDR scene pixel (1 code of 1023 for GPU pow rounding).
+    void validate_hdr(){
+        void* sdr=nullptr;void* wide=nullptr;D3D12_RANGE none{0,0};
+        D3D12_RANGE all{0,size_t(readback->GetDesc().Width)},all_wide{0,size_t(hdr_readback->GetDesc().Width)};
+        checked(readback->Map(0,&all,&sdr),"D3D12 scene readback map");checked(hdr_readback->Map(0,&all_wide,&wide),"D3D12 HDR10 readback map");
+        uint64_t mismatches=0;std::ostringstream details;std::unordered_map<uint32_t,uint32_t> encoded; // a frame repeats colors
+        for(UINT y=0;y<target_height;++y){
+            const auto* in=reinterpret_cast<const uint32_t*>(static_cast<const BYTE*>(sdr)+readback_layout.Offset+size_t(y)*readback_layout.Footprint.RowPitch);
+            const auto* out=reinterpret_cast<const uint32_t*>(static_cast<const BYTE*>(wide)+hdr_readback_layout.Offset+size_t(y)*hdr_readback_layout.Footprint.RowPitch);
+            for(UINT x=0;x<target_width;++x){
+                const auto found=encoded.try_emplace(in[x]&0xffffff,0);
+                if(found.second)found.first->second=mk5hdr::encode(in[x]&0xffffff,hdr_settings);
+                const uint32_t want=found.first->second;bool wrong=false;
+                for(int c=0;c<3;++c)wrong|=std::abs(int((want>>(10*c))&1023)-int((out[x]>>(10*c))&1023))>1;
+                if(wrong&&mismatches++<8)details<<" ["<<x<<","<<y<<" got="<<std::hex<<out[x]<<" expected="<<want<<std::dec<<"]";
+            }
+        }
+        readback->Unmap(0,&none);hdr_readback->Unmap(0,&none);hdr_readback.Reset();
+        hdr_validation_mismatches=mismatches;++hdr_validation_frames;
+        if(mismatches)throw std::runtime_error("D3D12 HDR10 validation mismatches="+std::to_string(mismatches)+details.str());
+    }
     void validate_pixels(const D3D12_VIEWPORT& viewport,const BezelLayout& frame){
         void* mapped=nullptr;D3D12_RANGE range{0,size_t(readback->GetDesc().Width)};
         checked(readback->Map(0,&range,&mapped),"D3D12 readback map");
@@ -896,8 +996,9 @@ struct Mk5Window::Impl {
         }
         commands->SetPipelineState(pipeline.Get());
         const UINT index=swap->GetCurrentBackBufferIndex();auto* target=targets[index].Get();
-        barrier(target,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_RENDER_TARGET);
-        const auto rtv=rtv_at(index);
+        auto* drawn=hdr?scene.Get():target;const auto rest=hdr?D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE:D3D12_RESOURCE_STATE_PRESENT;
+        barrier(drawn,rest,D3D12_RESOURCE_STATE_RENDER_TARGET);
+        const auto rtv=rtv_at(hdr?scene_rtv():index);
         const float black[4]={0,0,0,1};commands->OMSetRenderTargets(1,&rtv,FALSE,nullptr);commands->ClearRenderTargetView(rtv,black,0,nullptr);
         auto area=crt.phosphor()?mk5crt::phosphor_viewport(target_width,target_height,image_height):mk5crt::viewport(target_width,target_height,image_height,crt.enabled());
         mk5crt::Viewport bounds{0,0,float(target_width),float(target_height)};
@@ -924,13 +1025,18 @@ struct Mk5Window::Impl {
              crt.gamma_out,crt.gain,crt.curvature,viewport.Height/image_height,crt.horizontal_sharpness,float(color_mode),float(brightness)/100,scalefx?3.f:0.f,
              viewport.TopLeftX,viewport.TopLeftY,viewport.Width,viewport.Height,float(decode_phosphor()),0,0,float(stage_scaled),float(fighters_scaled)};
         commands->SetGraphicsRoot32BitConstants(1,kShaderConstants,settings,0);commands->DrawInstanced(3,1,0,0);
-        if(validation){auto desc=target->GetDesc();UINT64 bytes=0;device->GetCopyableFootprints(&desc,0,1,0,&readback_layout,nullptr,nullptr,&bytes);
-            readback=make_resource(D3D12_HEAP_TYPE_READBACK,buffer_desc(bytes),D3D12_RESOURCE_STATE_COPY_DEST);
-            barrier(target,D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_COPY_SOURCE);
-            D3D12_TEXTURE_COPY_LOCATION source{};source.pResource=target;source.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-            D3D12_TEXTURE_COPY_LOCATION dest{};dest.pResource=readback.Get();dest.Type=D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;dest.PlacedFootprint=readback_layout;
-            commands->CopyTextureRegion(&dest,0,0,0,&source,nullptr);barrier(target,D3D12_RESOURCE_STATE_COPY_SOURCE,D3D12_RESOURCE_STATE_PRESENT);
-        }else barrier(target,D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_PRESENT);
+        if(validation)readback=copy_back(drawn,rest,readback_layout);
+        else barrier(drawn,D3D12_RESOURCE_STATE_RENDER_TARGET,rest);
+        if(hdr){
+            barrier(target,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_RENDER_TARGET);
+            const auto output=rtv_at(index);commands->OMSetRenderTargets(1,&output,FALSE,nullptr);
+            const D3D12_VIEWPORT full{0,0,float(target_width),float(target_height),0,1};commands->RSSetViewports(1,&full);
+            commands->SetPipelineState(hdr_pipeline.Get());commands->SetGraphicsRootDescriptorTable(0,srv_at(kSceneSrv));
+            const float levels[3]={hdr_settings.paper,hdr_settings.peak,hdr_settings.highlights};
+            commands->SetGraphicsRoot32BitConstants(1,3,levels,0);commands->DrawInstanced(3,1,0,0);
+            if(validation)hdr_readback=copy_back(target,D3D12_RESOURCE_STATE_PRESENT,hdr_readback_layout);
+            else barrier(target,D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_PRESENT);
+        }
         LARGE_INTEGER draw_before{},draw_after{};
         if(validate_graphics)QueryPerformanceCounter(&draw_before);
         checked(commands->Close(),"D3D12 command close");ID3D12CommandList* list=commands.Get();in_flight=true;++fence_value;queue->ExecuteCommandLists(1,&list);checked(queue->Signal(fence.Get(),fence_value),"D3D12 queue fence signal");
@@ -941,6 +1047,7 @@ struct Mk5Window::Impl {
             draw_fence_max_us=std::max(draw_fence_max_us.load(),draw_fence_us.load());
         }
         if(validation){
+            if(hdr)validate_hdr();
             validate_pixels(viewport,frame);
             if(scenery_scaled)++stage_validation_frames;
             if(fighters_scaled)++fighter_validation_frames;
@@ -1101,5 +1208,8 @@ std::string Mk5Window::presentation_json()const{
       <<",\"bicubic_fighter_frames\":"<<impl->fighter_frames
       <<",\"bicubic_fighter_validation_frames\":"<<impl->fighter_validation_frames
       <<",\"gpu_validation_image_hash\":"<<impl->validation_image_hash
+      <<",\"hdr\":\""<<std::array<const char*,4>{"off","hdr10","windows-sdr","unsupported"}[size_t(impl->hdr_state.load())]<<"\""
+      <<",\"hdr_paper_nits\":"<<impl->hdr_settings.paper<<",\"hdr_peak_nits\":"<<impl->hdr_settings.peak<<",\"hdr_highlights\":"<<impl->hdr_settings.highlights
+      <<",\"hdr_validation_frames\":"<<impl->hdr_validation_frames<<",\"hdr_validation_mismatches\":"<<impl->hdr_validation_mismatches
       <<",\"move_size_enter\":"<<impl->move_enter<<",\"move_size_exit\":"<<impl->move_exit<<",\"physical_aspect\":\""<<(impl->source_aspect?"source":"4:3")<<"\"}";return s.str();
 }

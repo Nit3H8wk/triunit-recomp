@@ -22,6 +22,8 @@ struct SetupGame {
 struct SetupRequirements {bool checked=false,ok=false,windows64=false,pythonSupported=false;std::string python,compiler,validated;};
 struct VideoConfig {
  int scanlines=0,filter=0,sync=1,color=0,brightness=100,scalefxAmount=100,scaleMode=0,cas=0,bilateral=0;
+ // HDR: 1 when Windows has HDR on; paper white and peak in nits (0 = from Windows); highlights only in [Video.Remastered].
+ int hdr=1,hdrPaper=0,hdrPeak=0,hdrHighlights=0;
  bool scalefx=false,bezel=true,highRefresh=false,smaa=false,fullscreen=true;
 };
 // MK3 native Remastered defaults ([Video.Remastered] of the MK3 profile): BVM / 1080p (preset 4) and ScaleFX 100. The MK3

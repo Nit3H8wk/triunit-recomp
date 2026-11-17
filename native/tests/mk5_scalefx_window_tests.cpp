@@ -5,18 +5,40 @@
 #include "mk5_stage_bicubic.hpp"
 #include "mk5_fighter_bicubic.hpp"
 #include "mk5_crt.hpp"
+#include "mk5_hdr.hpp"
+#include <cmath>
 #include <iostream>
 #include <stdexcept>
 int main(int argc,char** argv){try{
  const std::string group=argc==2?argv[1]:"";
- if(group!="effects"&&group!="crt"&&group!="stage"&&group!="fighter")
-  throw std::runtime_error("Choose the effects, crt, stage or fighter test group");
+ if(group!="effects"&&group!="crt"&&group!="stage"&&group!="fighter"&&group!="hdr")
+  throw std::runtime_error("Choose the effects, crt, stage, fighter or hdr test group");
  mk5audio::detail::hooks.output_clock=true;
  SetEnvironmentVariableA("MK1_GRAPHICS_VALIDATE","1");SetEnvironmentVariableA("MK1_FULLSCREEN","0");SetEnvironmentVariableA("MK1_BEZEL","1");
  SetEnvironmentVariableA("MK1_FILTER","nearest");SetEnvironmentVariableA("MK1_COLOR","warm");SetEnvironmentVariableA("MK1_BRIGHTNESS","110");
  std::vector<uint32_t> image(400*254);for(unsigned y=0;y<254;++y)for(unsigned x=0;x<400;++x)
   image[y*400+x]=(((x/13+(y+x/5)/11)&1)?0x00c04080:0x00205090)+(x%7)*0x00020101;
  const auto original=image;
+ if(group=="hdr"){
+  // CPU reference: ST 2084 anchors, SDR white at paper white, full highlights put SDR white at the peak.
+  const auto close=[](float a,float b){return std::fabs(a-b)<2e-4f;};
+  if(!close(mk5hdr::pq(100),.508078f)||!close(mk5hdr::pq(1000),.751827f)||!close(mk5hdr::pq(10000),1)||mk5hdr::pq(0)>1e-6f)
+   throw std::runtime_error("PQ curve differs from SMPTE ST 2084");
+  const auto gray=[](float nits){const uint32_t c=uint32_t(std::lround(mk5hdr::pq(nits)*1023));return 3u<<30|c<<20|c<<10|c;};
+  if(mk5hdr::encode(0xffffff,{203,1000,0})!=gray(203)||mk5hdr::encode(0xffffff,{203,1000,1})!=gray(1000)||mk5hdr::encode(0,{203,1000,1})!=3u<<30)
+   throw std::runtime_error("HDR10 paper white or peak mapping differs");
+  SetEnvironmentVariableA("MK1_HDR","force");SetEnvironmentVariableA("MK1_HDR_PAPER_WHITE","203");
+  SetEnvironmentVariableA("MK1_HDR_PEAK","1000");SetEnvironmentVariableA("MK1_HDR_HIGHLIGHTS","60");
+  Mk5Window window;window.Present(image,400,254);
+  const auto deadline=GetTickCount64()+10000;std::string report;
+  do{window.Pump();report=window.presentation_json();Sleep(5);}
+  while(report.find("\"hdr_validation_frames\":1")==std::string::npos&&GetTickCount64()<deadline);
+  for(const auto* field:{"\"hdr\":\"hdr10\"","\"hdr_validation_frames\":1","\"hdr_validation_mismatches\":0",
+                         "\"gpu_validation_mismatches\":0","\"hdr_paper_nits\":203","\"hdr_peak_nits\":1000","\"hdr_highlights\":0.6"})
+   if(report.find(field)==std::string::npos)throw std::runtime_error("HDR10 presentation differs: "+report);
+  std::cout<<"PASS DX12 HDR10 encode matches the CPU reference\n";
+  return 0;
+ }
  if(group=="fighter"){
   using namespace mk5presentation;
   const auto fetch=[](int,int,unsigned){return 0.f;};
