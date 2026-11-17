@@ -32,6 +32,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <cstring>
+#include <cstdio>
 
 namespace fs=std::filesystem;
 using namespace mklauncher;
@@ -1105,6 +1106,55 @@ int diagnostics(const fs::path& root,const std::vector<std::wstring>& args){
     std::wstring line;for(auto& s:command){if(!line.empty())line+=L' ';line+=quote(s);}rejectLinks(log);fs::create_directories(log.parent_path());SECURITY_ATTRIBUTES sa{sizeof(sa),nullptr,TRUE};HANDLE output=CreateFileW(log.c_str(),GENERIC_WRITE,FILE_SHARE_READ,&sa,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);HANDLE input=CreateFileW(L"NUL",GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,&sa,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);if(output==INVALID_HANDLE_VALUE||input==INVALID_HANDLE_VALUE){if(output!=INVALID_HANDLE_VALUE)CloseHandle(output);if(input!=INVALID_HANDLE_VALUE)CloseHandle(input);throw std::runtime_error("diagnostic log");}
     STARTUPINFOW startup{};startup.cb=sizeof(startup);startup.dwFlags=STARTF_USESHOWWINDOW|STARTF_USESTDHANDLES;startup.wShowWindow=SW_HIDE;startup.hStdInput=input;startup.hStdOutput=output;startup.hStdError=output;PROCESS_INFORMATION info{};BOOL ok=CreateProcessW(powershell.c_str(),line.data(),nullptr,nullptr,TRUE,CREATE_NO_WINDOW,nullptr,root.c_str(),&startup,&info);CloseHandle(input);CloseHandle(output);if(!ok)throw std::runtime_error("diagnostic process");CloseHandle(info.hThread);WaitForSingleObject(info.hProcess,INFINITE);DWORD code=4;GetExitCodeProcess(info.hProcess,&code);CloseHandle(info.hProcess);return int(code);
 }
+// --prepare --roms <folder> [--confirm-roms]: the setup without a window, for other launchers (RecompLauncher). The same queue
+// as the ROM Setup and Build pages: every game is verified against the folder, then the games it holds are built. Prints
+// "progress <0..1> <text>" lines on stdout. --confirm-roms is the Legal page confirmation, ticked by the player there.
+// Exit: 0 built, 1 a build failed (logs/setup-<game>.log), 2 no supported ROM set in the folder, 3 ownership not confirmed,
+// 5 Python or the compiler not found, 6 the app is open.
+int prepare(const fs::path& root,const std::vector<std::wstring>& args){
+    fs::path roms;bool confirm=false;
+    for(size_t i=1;i<args.size();++i){if(args[i]==L"--roms"&&i+1<args.size())roms=args[++i];else if(args[i]==L"--confirm-roms")confirm=true;else throw std::runtime_error("unknown prepare argument");}
+    if(roms.empty())throw std::runtime_error("--prepare needs --roms <folder>");
+    const HANDLE out=GetStdHandle(STD_OUTPUT_HANDLE);std::string last;
+    const auto say=[&](double done,const std::wstring& text){
+        char number[16];std::snprintf(number,sizeof(number),"%.3f",std::clamp(done,0.,1.));
+        const int n=WideCharToMultiByte(CP_UTF8,0,text.data(),int(text.size()),nullptr,0,nullptr,nullptr);std::string utf8(size_t(std::max(n,0)),'\0');
+        if(n>0)WideCharToMultiByte(CP_UTF8,0,text.data(),int(text.size()),utf8.data(),n,nullptr,nullptr);
+        const auto line=std::string("progress ")+number+" "+utf8+"\n";if(line==last)return;last=line;
+        DWORD written=0;if(out&&out!=INVALID_HANDLE_VALUE)WriteFile(out,line.data(),DWORD(line.size()),&written,nullptr);};
+    const HANDLE singleton=CreateMutexW(nullptr,TRUE,L"Local\\TriUnitRecompLauncher");if(!singleton)throw std::runtime_error("launcher mutex");
+    const bool open=GetLastError()==ERROR_ALREADY_EXISTS;struct MutexGuard{HANDLE h;bool owned;~MutexGuard(){if(owned)ReleaseMutex(h);CloseHandle(h);}} guard{singleton,!open};
+    if(open){say(0,L"Close the TriUnit Recomp window first.");return 6;}
+    Backend backend(root);
+    if(confirm&&!backend.romsAcknowledged()&&!backend.acknowledgeRoms(true))throw std::runtime_error("ROM ownership confirmation not saved");
+    if(!backend.romsAcknowledged()){say(0,L"Confirm that you own the original ROM files.");return 3;}
+    const auto wait=[&](const auto& report){while(backend.setupRunning()){report();Sleep(250);}report();};
+    say(0,L"Checking Python and the compiler");backend.checkRequirements();wait([]{});
+    const auto& r=backend.setupRequirements();
+    if(r.python.empty()||!r.pythonSupported||r.compiler.empty()){say(0,L"Python 3.12+ and MSYS2 g++ were not found (README, Requirements).");return 5;}
+    std::array<fs::path,3> before;for(int i=0;i<3;++i)before[size_t(i)]=backend.setupGame(i).folder;
+    for(int i=0;i<3;++i){if(!backend.setRomFolder(i,roms)){say(0,L"This ROM folder can't be used.");return 2;}backend.queueSetup(i,true);}
+    wait([&]{say(.02,L"Checking your ROM files");});
+    std::vector<int> found;
+    for(int i=0;i<3;++i){if(backend.setupGame(i).state=="done")found.push_back(i);else if(!before[size_t(i)].empty())backend.setRomFolder(i,before[size_t(i)]);}
+    if(found.empty()){say(.05,L"No supported ROM set in this folder (README, Compatibility).");return 2;}
+    const std::array<std::pair<const char*,const wchar_t*>,8> steps{{{"verify",L"checking the ROM files"},{"stage",L"staging the ROM files"},
+        {"decoder",L"building the decoder"},{"generate",L"generating the C++"},{"accept",L"checking the generated C++"},{"compile",L"compiling"},
+        {"seed",L"making the factory settings"},{"install",L"installing"}}};
+    bool failed=false;
+    for(size_t k=0;k<found.size();++k){
+        const int i=found[k];const std::wstring title=compatibleGames[size_t(i)].title;
+        if(!backend.queueSetup(i,false))throw std::runtime_error("setup not queued");
+        wait([&]{
+            const auto& g=backend.setupGame(i);size_t s=0;while(s<steps.size()&&g.step!=steps[s].first)++s;if(s==steps.size())s=0;
+            const double part=s<5?.04*double(s):s==5?.2+.7*(g.unitsTotal?double(g.unitsDone)/g.unitsTotal:0):.9+.05*double(s-5);
+            auto text=title+L": "+steps[s].second;if(s==5&&g.unitsTotal)text+=L" "+std::to_wstring(g.unitsDone)+L"/"+std::to_wstring(g.unitsTotal);
+            say(.05+.95*(double(k)+part)/double(found.size()),text);});
+        if(backend.setupGame(i).state!="done"){failed=true;say(.05+.95*double(k+1)/double(found.size()),title+L": failed, see logs\\"+backend.setupLog(i).filename().wstring());}
+    }
+    if(failed)return 1;
+    say(1,L"Ready to play");return 0;
+}
 }
 
 int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int){
@@ -1114,7 +1164,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int){
         int count=0;auto raw=CommandLineToArgvW(GetCommandLineW(),&count);if(!raw)throw std::runtime_error("launcher arguments");std::vector<std::wstring> args;for(int i=1;i<count;++i)args.emplace_back(raw[i]);LocalFree(raw);
         fs::path capture;bool captureSettings=false;int capturePage=-1;
         // --ui-capture <png> [overview|roms|build|play|legal]: one deterministic frame of a page (layout checks).
-        if(!args.empty()){unattended=true;if((args[0]==L"--ui-capture"||args[0]==L"--settings-capture")&&(args.size()==2||args.size()==3)){capture=args[1];captureSettings=args[0]==L"--settings-capture";rejectLinks(capture);
+        if(!args.empty()){unattended=true;if(args[0]==L"--prepare")return prepare(root,args);if((args[0]==L"--ui-capture"||args[0]==L"--settings-capture")&&(args.size()==2||args.size()==3)){capture=args[1];captureSettings=args[0]==L"--settings-capture";rejectLinks(capture);
                 if(args.size()==3){const std::array<const wchar_t*,5> names{L"overview",L"roms",L"build",L"play",L"legal"};for(int k=0;k<5;++k)if(args[2]==names[size_t(k)])capturePage=k;if(capturePage<0)throw std::runtime_error("unknown capture page");}}
             else return diagnostics(root,args);}
         HANDLE singleton=nullptr;if(capture.empty()){singleton=CreateMutexW(nullptr,TRUE,L"Local\\TriUnitRecompLauncher");if(!singleton)throw std::runtime_error("launcher mutex");if(GetLastError()==ERROR_ALREADY_EXISTS){CloseHandle(singleton);auto existing=FindWindowW(L"MkArcadeCollection",nullptr);if(existing){ShowWindow(existing,SW_RESTORE);SetForegroundWindow(existing);}return 0;}}
