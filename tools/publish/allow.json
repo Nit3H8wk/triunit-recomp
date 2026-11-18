@@ -405,6 +405,14 @@
   },
   "allow": [
     {
+      "rule": [
+        "forbidden-extension",
+        "binary"
+      ],
+      "path": "docs/assets/brand/*.webp",
+      "reason": "the project's own brand art for the README (TriUnit Recomp logo, icon and generic cabinet banner): original artwork, no game captures, characters or marks"
+    },
+    {
       "rule": "mark-term",
       "path": "README.md",
       "reason": "compatibility list (names the supported games)"

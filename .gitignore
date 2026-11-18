@@ -37,6 +37,9 @@ __pycache__/
 *.gif
 *.bmp
 
+# Exception: the project's own brand art used by the README (allow-listed in tools/publish/allow.json).
+!/docs/assets/brand/*.webp
+
 # The user's own replacement audio stays local; only the folder skeleton is versioned.
 custom_audio/**
 !custom_audio/**/
