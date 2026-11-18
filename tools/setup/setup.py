@@ -214,6 +214,40 @@ def toolchain():
     return dict(compiler=cc.name,version=version,sha256=_sha(cc))
 
 
+def compile_inputs(args,generated):
+    """Digest of everything a game's compile reads: each file under native/, the generated files, the compiler command
+    (flags, sources, libraries), the compiler itself and the warning policy. Equal digest: the previous build is reused."""
+    from tools.quality import run as q
+    files=[(f.relative_to(ROOT).as_posix(),q.sha(f)) for f in sorted((ROOT/'native').rglob('*')) if f.is_file()]
+    files+=[(Path(f).name,q.sha(Path(f))) for f in sorted(generated)]
+    text=json.dumps(dict(files=files,args=[str(a) for a in args],compiler=q.sha(q.DEFAULT_CC),werror=q.WARNINGS_AS_ERRORS))
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def previous(game,key,exe):
+    """The last receipt of this game when its compile read the same inputs and its executable is still that build."""
+    try:old=json.loads((paths.output(game)/'setup.json').read_text('utf-8'))
+    except (OSError,ValueError):return None
+    built=old.get('compile') or {}
+    return old if built.get('inputs')==key and Path(exe).is_file() and _sha(exe)==built.get('sha256') else None
+
+
+def kept_seed(old):
+    """The seed the previous run of the same build wrote, when the file still holds it."""
+    seed=(old or {}).get('seed') or {}
+    file=ROOT/seed.get('file','-')
+    return dict(seed,reused=True) if seed.get('sha256') and file.is_file() and _sha(file)==seed['sha256'] else None
+
+
+def reused_units(units_dir,marker,pinned):
+    """MK3 units already generated for this program when they still hash to the pinned acceptance digest."""
+    try:old=json.loads(marker.read_text('utf-8'))
+    except (OSError,ValueError):return None
+    if not pinned or old.get('units_sha256')!=pinned or not units_dir.is_dir():return None
+    texts={f.name:f.read_text('utf-8') for f in units_dir.iterdir() if f.is_file()}
+    return dict(old,reused=True) if len(texts)==old.get('units') and units_digest(texts)==pinned else None
+
+
 def setup_mk3(roms,compile_exe):
     from tools.mk3 import roms as mk3_roms,generate,preview
     from tools.setup import decoder,mk3
@@ -222,37 +256,46 @@ def setup_mk3(roms,compile_exe):
     progress('verify');receipt['verify']=mk3_roms.verify(roms,manifest)
     progress('stage');receipt['stage']=stage('mk3',roms,[r['path'] for r in manifest['roms']])
     progress('decoder');receipt['decoder']=decoder.tms34010().name
-    progress('generate');out=paths.output('mk3');units_dir=out/'tms'
-    if units_dir.exists():shutil.rmtree(units_dir)
-    units_dir.mkdir(parents=True)
-    if not paths.owned(units_dir):raise RuntimeError('generated/ is linked outside the project')
-    rom=mk3_roms.program_image(ROOT/'roms/mk3',mk3_roms.definition())
-    rows,proof=generate.scan(rom);texts,generation=generate.units(rom,rows)
-    for name,text in texts.items():write_text(units_dir,name,text)
+    progress('generate');out=paths.output('mk3');units_dir=out/'tms';marker=out/'tms.json'
+    pinned=(json.loads(ACCEPTED.read_text('utf-8')).get('mk3',{}) if ACCEPTED.is_file() else {}).get('mk3/tms_units')
+    generated=reused_units(units_dir,marker,pinned)
+    if generated is None:
+        marker.unlink(missing_ok=True)
+        if units_dir.exists():shutil.rmtree(units_dir)
+        units_dir.mkdir(parents=True)
+        if not paths.owned(units_dir):raise RuntimeError('generated/ is linked outside the project')
+        rom=mk3_roms.program_image(ROOT/'roms/mk3',mk3_roms.definition())
+        rows,proof=generate.scan(rom);texts,generation=generate.units(rom,rows)
+        for name,text in texts.items():write_text(units_dir,name,text)
+        generated=dict(units=len(texts),units_sha256=units_digest(texts),cases=generation['cases'],
+                       candidate_pcs=generation['candidate_pcs'],scan={k:proof[k] for k in ('positions','truncated')})
+        write_text(out,marker.name,json.dumps(generated,indent=1)+'\n')
     adsp=mk3.adsp_dir()
-    receipt['generate']=dict(units=len(texts),units_sha256=units_digest(texts),cases=generation['cases'],
-                             candidate_pcs=generation['candidate_pcs'],adsp=sorted(mk3.ADSP_INCS),
-                             scan={k:proof[k] for k in ('positions','truncated')})
+    receipt['generate']=dict(generated,adsp=sorted(mk3.ADSP_INCS))
     files={'mk3/tms_units':receipt['generate']['units_sha256'],**{f'native/mk3/{n}':_sha(adsp/n) for n in mk3.ADSP_INCS}}
     progress('accept');receipt['accept']=accept('mk3',files)
     receipt['generate_seconds']=round(time.perf_counter()-t,1)
     if compile_exe:
         from tools.quality import cpp_build,run as q
         progress('compile');t=time.perf_counter();scratch=out/'build'
-        if scratch.exists():shutil.rmtree(scratch)
-        scratch.mkdir()
-        try:
-            cc=q.DEFAULT_CC;env={'PATH':str(cc.parent)+os.pathsep+os.environ['PATH']}
-            flags=[*generate.FLAGS,'-I'+str(ROOT/'native/include'),'-I'+str(ROOT/'native/mk3'),'-I'+str(ROOT/'native/mk2'),mk3.include()]
-            sources=[ROOT/p for p in preview.SOURCES]+[ROOT/'native/mk3'/n for n in generate.RUNTIME]+sorted(units_dir.glob('*.cpp'))
-            built=cpp_build.build(cc,flags,sources,preview.LIBRARIES,scratch/'mk3.exe',scratch,env=env,timeout=3600,compile_from_scratch=True)
-            if not built['passed']:raise build_failed(built)
-            os.replace(scratch/'mk3.exe',out/'mk3.exe')
-        finally:shutil.rmtree(scratch,ignore_errors=True)
-        receipt['compile']=dict(executable=str((out/'mk3.exe').relative_to(ROOT)).replace('\\','/'),sha256=_sha(out/'mk3.exe'),
-                                seconds=round(time.perf_counter()-t,1))
+        flags=[*generate.FLAGS,'-I'+str(ROOT/'native/include'),'-I'+str(ROOT/'native/mk3'),'-I'+str(ROOT/'native/mk2'),mk3.include()]
+        sources=[ROOT/p for p in preview.SOURCES]+[ROOT/'native/mk3'/n for n in generate.RUNTIME]+sorted(units_dir.glob('*.cpp'))
+        key=compile_inputs([*flags,*sources,*preview.LIBRARIES],[*units_dir.glob('*'),*(adsp/n for n in mk3.ADSP_INCS)])
+        old=previous('mk3',key,out/'mk3.exe')
+        if old:receipt['compile']=dict(old['compile'],reused=True)
+        else:
+            if scratch.exists():shutil.rmtree(scratch)
+            scratch.mkdir()
+            try:
+                cc=q.DEFAULT_CC;env={'PATH':str(cc.parent)+os.pathsep+os.environ['PATH']}
+                built=cpp_build.build(cc,flags,sources,preview.LIBRARIES,scratch/'mk3.exe',scratch,env=env,timeout=3600,compile_from_scratch=True)
+                if not built['passed']:raise build_failed(built)
+                os.replace(scratch/'mk3.exe',out/'mk3.exe')
+            finally:shutil.rmtree(scratch,ignore_errors=True)
+            receipt['compile']=dict(executable=str((out/'mk3.exe').relative_to(ROOT)).replace('\\','/'),sha256=_sha(out/'mk3.exe'),
+                                    seconds=round(time.perf_counter()-t,1),workers=built.get('workers'),inputs=key)
         # The factory CMOS seed: the program's own restore from a cleared CMOS, run by the executable just built.
-        progress('seed');receipt['seed']=mk3.factory_seed(out/'mk3.exe')
+        progress('seed');receipt['seed']=kept_seed(old) or mk3.factory_seed(out/'mk3.exe')
         receipt['accept'].update(accept('mk3',{'native/runtime/mk3-factory-default-cmos.bin':receipt['seed']['sha256']}))
     return receipt
 
@@ -276,18 +319,22 @@ def setup_mk2(roms,compile_exe):
     if compile_exe:
         from tools.quality import run as q
         progress('compile');t=time.perf_counter();scratch=out/'build'
-        if scratch.exists():shutil.rmtree(scratch)
-        scratch.mkdir()
-        try:
-            env={'PATH':str(q.DEFAULT_CC.parent)+os.pathsep+os.environ['PATH'],'TEMP':str(scratch),'TMP':str(scratch)}
-            built=q.command([q.DEFAULT_CC,*package_native.FLAGS,'-static',*[ROOT/p for p in package_native.SOURCES],
-                             *package_native.LIBRARIES,'-Wl,--no-insert-timestamp','-o',scratch/'mk2-native.exe'],
-                            scratch,cwd=ROOT,env=env,timeout=3600)
-            if not built['passed']:raise build_failed(built)
-            os.replace(scratch/'mk2-native.exe',out/'mk2-native.exe')
-        finally:shutil.rmtree(scratch,ignore_errors=True)
-        receipt['compile']=dict(executable=str((out/'mk2-native.exe').relative_to(ROOT)).replace('\\','/'),
-                                sha256=_sha(out/'mk2-native.exe'),seconds=round(time.perf_counter()-t,1))
+        args=[*package_native.FLAGS,'-static',*[ROOT/p for p in package_native.SOURCES],*package_native.LIBRARIES,'-Wl,--no-insert-timestamp']
+        key=compile_inputs(args,[*out.glob('*.inc'),*out.glob('*.cpp')])
+        old=previous('mk2',key,out/'mk2-native.exe')
+        if old:receipt['compile']=dict(old['compile'],reused=True)
+        else:
+            if scratch.exists():shutil.rmtree(scratch)
+            scratch.mkdir()
+            try:
+                env={'PATH':str(q.DEFAULT_CC.parent)+os.pathsep+os.environ['PATH'],'TEMP':str(scratch),'TMP':str(scratch)}
+                built=q.command([q.DEFAULT_CC,*args,'-o',scratch/'mk2-native.exe'],scratch,cwd=ROOT,env=env,timeout=3600)
+                if not built['passed']:raise build_failed(built)
+                os.replace(scratch/'mk2-native.exe',out/'mk2-native.exe')
+            finally:shutil.rmtree(scratch,ignore_errors=True)
+            receipt['compile']=dict(executable=str((out/'mk2-native.exe').relative_to(ROOT)).replace('\\','/'),
+                                    sha256=_sha(out/'mk2-native.exe'),seconds=round(time.perf_counter()-t,1),
+                                    workers=built.get('workers'),inputs=key)
     return receipt
 
 
@@ -306,14 +353,21 @@ def setup_mk1(roms,compile_exe):
     receipt['generate_seconds']=round(time.perf_counter()-t,1)
     if compile_exe:
         from tools.mk1 import build
-        progress('compile');t=time.perf_counter();built=build.engine(out)
-        if not built['passed']:raise build_failed(built)
-        receipt['compile']=dict(executable=str((out/'mk5-native-audio.exe').relative_to(ROOT)).replace('\\','/'),
-                                sha256=_sha(out/'mk5-native-audio.exe'),seconds=round(time.perf_counter()-t,1))
+        progress('compile');t=time.perf_counter();exe=out/'mk5-native-audio.exe'
+        key=compile_inputs([*build.FLAGS,*build.sources(),*build.LIBRARIES],[*out.glob('*.inc'),*out.glob('*.cpp')])
+        old=previous('mk1',key,exe)
+        if old:receipt['compile']=dict(old['compile'],reused=True)
+        else:
+            built=build.engine(out)
+            if not built['passed']:raise build_failed(built)
+            receipt['compile']=dict(executable=str(exe.relative_to(ROOT)).replace('\\','/'),sha256=_sha(exe),
+                                    seconds=round(time.perf_counter()-t,1),workers=built.get('workers'),inputs=key)
         # CMOS seed: the game's factory restore from a blank CMOS, run by the compiled engine (tools/setup/mk1.make_seed).
-        progress('seed');t=time.perf_counter();seed,digest=mk1.make_seed(out/'mk5-native-audio.exe')
-        receipt['seed']=dict(file=str(seed.relative_to(ROOT)).replace('\\','/'),sha256=digest,seconds=round(time.perf_counter()-t,1))
-        receipt['accept'].update(accept('mk1',{'mk1/factory-cmos':digest}))
+        progress('seed');t=time.perf_counter();receipt['seed']=kept_seed(old)
+        if not receipt['seed']:
+            seed,digest=mk1.make_seed(exe)
+            receipt['seed']=dict(file=str(seed.relative_to(ROOT)).replace('\\','/'),sha256=digest,seconds=round(time.perf_counter()-t,1))
+        receipt['accept'].update(accept('mk1',{'mk1/factory-cmos':receipt['seed']['sha256']}))
     return receipt
 
 

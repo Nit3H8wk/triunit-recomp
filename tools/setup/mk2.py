@@ -40,7 +40,9 @@ def texts(roms=ROMS):
     rom=emitter.load_program(Path(roms))
     outputs,report=generate_architectural.generate(rom)
     if report['static_PCs']<=0:raise ValueError('MK2 static closure is empty')
-    out={p.name:text.replace('\n','\r\n').encode() for p,text in outputs.items()}
+    texts={p.name:text for p,text in outputs.items()}
+    texts.update(generate_architectural.layout(texts['mk2_first_fight.inc']))
+    out={name:text.replace('\n','\r\n').encode() for name,text in texts.items()}
     out['mk2_adsp_boot.inc']=generate_adsp.generate((Path(roms)/'su2.l1').read_bytes()).encode()
     crlf=lambda t:t.replace('\n','\r\n').encode()
     out['mk2_first_fight_bounds.inc']=crlf(generate_first_fight.generate_bounds())
@@ -152,10 +154,19 @@ def factory_seed(roms=ROMS):
     return _locked(out/'.lock',work)
 
 
+def units():
+    """native/mk2/<name> of the generated first-fight page units (generate_architectural.layout), for source identities.
+    No freshness check, as source(): builds regenerate through generated_flags; identities only need the names."""
+    data=json.loads((paths.output('mk2')/'includes.json').read_text('utf8'))
+    return ['native/mk2/'+n for n in sorted(data['files']) if n.endswith('.cpp')]
+
+
 def source(relative):
-    """Path of a source-tree name; a former native/mk2/*.inc or the former versioned seed resolves to its generated file."""
+    """Path of a source-tree name; a former native/mk2/*.inc, a generated page unit or the former versioned seed resolves
+    to its generated file."""
     relative=Path(relative).as_posix()
     # No freshness check here (builds run inc_dir() through generated_flags); hashing only needs the location.
-    if relative.startswith('native/mk2/') and relative.endswith('.inc'):return paths.output('mk2')/Path(relative).name
+    generated=relative.endswith('.inc') or (Path(relative).name.startswith('mk2_first_fight_') and relative.endswith('.cpp'))
+    if relative.startswith('native/mk2/') and generated:return paths.output('mk2')/Path(relative).name
     if relative==SEED_LOGICAL:return seed_path()
     return ROOT/relative

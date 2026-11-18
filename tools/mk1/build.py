@@ -18,6 +18,7 @@ LIBRARIES=['-static','-lbcrypt','-luser32','-lgdi32','-lwinmm','-ld3d12','-ldxgi
 
 
 def sources():
+    """The product objects (the main-loop graph shards follow mk5_main_loop.cpp: tools/setup/paths.generated_sources)."""
     return [ROOT/p for p in json.loads(INPUTS.read_text('utf-8'))['objects']]
 
 

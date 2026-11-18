@@ -26,7 +26,9 @@ def identities(scratch,env):
         raise RuntimeError('Incomplete compiler dependencies: '+result['stdout'][-4000:])
     # Every input emits the same target; shlex retains make-escaped spaces.
     tokens=shlex.split(result['stdout'].replace('\\\r\n',' ').replace('\\\n',' '))
-    if tokens.count('mk2-dependencies:')!=len(SOURCES):raise RuntimeError('Missing compiler dependency rule')
+    from tools.setup.paths import generated_sources   # the first-fight pages, compiled as their own units
+    if tokens.count('mk2-dependencies:')!=len(SOURCES)+len(generated_sources([ROOT/p for p in SOURCES])):
+        raise RuntimeError('Missing compiler dependency rule')
     for name in tokens:
         if name=='mk2-dependencies:':continue
         path=(ROOT/name).resolve();relative=path.relative_to(ROOT).as_posix()

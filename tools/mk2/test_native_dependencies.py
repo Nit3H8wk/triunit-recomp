@@ -13,7 +13,8 @@ class NativeDependencyTests(unittest.TestCase):
         observed=native.run(quality.ROOT/'missing-roms')
         self.assertFalse(observed['passed'])
         sealed=observed['sources']
-        sources=[name for name in sealed if name.endswith('.cpp')]
+        from tools.setup import mk2   # generated page units carry their source-tree name in the identity
+        sources=[mk2.source(name).as_posix() for name in sealed if name.endswith('.cpp')]
         result=quality.command([quality.DEFAULT_CC,'-std=c++17','-Inative/include',
             '-MM','-MT','native-dependencies',*sources],quality.ROOT,
             cwd=quality.ROOT,env=native.environment(),timeout=30)

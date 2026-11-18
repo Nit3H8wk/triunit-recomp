@@ -224,6 +224,50 @@ def emit_graph(rows,M,boot=False):
     return '\n'.join(out)+'\n',unsupported
 
 
+MAIN_SHARDS=8   # one 5.5 MB function took 140 s of g++ alone; 8 functions compile in parallel and in less total CPU
+LABEL=re.compile(r'pc_([0-9a-f]{8}): \{')
+
+
+def layout(main,shards=MAIN_SHARDS):
+    """How the main-loop graph text is compiled: `shards` member functions over contiguous PC ranges plus the driver
+    run by execute_main(). Returns {name: text}: mk5_main_loop_driver.inc, mk5_main_loop_shards.inc (declarations) and
+    mk5_main_loop_shard_<k>.cpp. Labels and bodies are the graph's own, in order. A goto to a label of another shard
+    returns to the driver: the step() before every goto already left that PC in s.next_original_pc (emit_graph jump),
+    so the driver's dispatch reaches the same label, as the graph's own `continuation` switch does."""
+    lines=main.rstrip('\n').split('\n');first=next(i for i,l in enumerate(lines) if LABEL.fullmatch(l.split(' //')[0]))
+    head,blocks=lines[:first],[]
+    if head[1:3]!=['continuation:','switch(s.next_original_pc){'] or head[-2:]!=['default: throw TaskBodyStop::Untranslated;','}']:
+        raise ValueError('main-loop graph head has another form')
+    natives=[l for l in head[3:-2] if 'native_block' in l]
+    if any(not re.fullmatch(r'case 0x([0-9a-f]{8}): goto pc_\1;',l) for l in head[3:-2] if l not in natives):
+        raise ValueError('main-loop graph dispatch has another form')
+    for l in lines[first:]:
+        m=LABEL.fullmatch(l.split(' //')[0])
+        if m:blocks.append((int(m.group(1),16),[l]))
+        else:blocks[-1][1].append(l)
+    size=sum(len(l)+1 for _,b in blocks for l in b);groups=[[]];done=0
+    for block in blocks:
+        if done>=size*len(groups)/shards and len(groups)<shards:groups.append([])
+        groups[-1].append(block);done+=sum(len(l)+1 for l in block[1])
+    note='// Generated offline by tools/mk1/generate.py from the main-loop graph (layout). Fixed native code.'
+    out={};driver=[note,'for(;;){','const uint32_t pc=s.next_original_pc;']
+    for k,group in enumerate(groups):
+        own={pc for pc,_ in group}
+        body=[note,'#include "mk5_task_body.hpp"','#include "mk5_audio_link.hpp"','#include <stdexcept>',
+              f'template<> bool Mk5TaskBodyRunner::main_shard<{k}>(){{','const uint32_t entry=s.next_original_pc;',
+              'continuation:','switch(s.next_original_pc){',*[f'case 0x{pc:08x}: goto pc_{pc:08x};' for pc in sorted(own)],
+              'default: return s.next_original_pc!=entry;   // left this shard, or entered at a PC it does not hold','}']
+        for _,block in group:
+            body.append(re.sub(r'goto pc_([0-9a-f]{8});',lambda m:m.group(0) if int(m.group(1),16) in own else 'return true;','\n'.join(block)))
+        out[f'mk5_main_loop_shard_{k}.cpp']='\n'.join(body+['}'])+'\n'
+        driver.append(f'{"else " if k else ""}if(pc>=0x{min(own):08x} && pc<=0x{max(own):08x}){{if(main_shard<{k}>())continue;}}')
+    driver+=['switch(pc){',*[l.replace('goto continuation;','continue;') for l in natives],'default: break;','}',
+             'throw TaskBodyStop::Untranslated;','}']
+    out['mk5_main_loop_driver.inc']='\n'.join(driver)+'\n'
+    out['mk5_main_loop_shards.inc']='\n'.join([note,*[f'template<> bool Mk5TaskBodyRunner::main_shard<{k}>();' for k in range(len(groups))]])+'\n'
+    return out
+
+
 def texts(rom,rows=None):
     """{include name: text} of the main-CPU translation of `rom` (the authenticated rev 5.0 image)."""
     if hashlib.sha256(rom).hexdigest()!=PROGRAM['sha256']:raise ValueError('MK1 program image differs from rev 5.0')

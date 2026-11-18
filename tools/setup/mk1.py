@@ -17,8 +17,10 @@ ROMS=ROOT/'roms/mk1'
 GENERATOR_FILES=('tools/mk1/generate.py','tools/mk1/generate_audio.py','tools/mk1/m6809.py','tools/mk1/roms.py',
                  'tools/mk1/partitions.json','tools/mk1/audio_nodes.json','tools/mk1/roms-l1.json','tools/setup/mk1.py',
                  'tools/mk2/offline_decode.py')
+MAIN_SHARDS=8   # tools/mk1/generate.MAIN_SHARDS: the compiled layout of the main-loop graph
+SHARDS=tuple(f'mk5_main_loop_shard_{k}.cpp' for k in range(MAIN_SHARDS))
 NAMES=('mk5_main_loop_graph.inc','mk5_task_body_graph.inc','mk5_boot_graph.inc',
-       'mk5_audio_graph.inc','mk5_audio_checkpoints.inc')
+       'mk5_audio_graph.inc','mk5_audio_checkpoints.inc','mk5_main_loop_driver.inc','mk5_main_loop_shards.inc',*SHARDS)
 
 
 def stamp():
@@ -39,6 +41,8 @@ def texts(roms=ROMS):
     if any(r['unsupported']>1 for r in report.values()) or boot['unsupported']>6 or set(boot['forms'])-{'PIXT','CVXYL','DRAV','EXGF'}:
         raise ValueError('MK1 TMS graph lost translated forms: '+json.dumps(dict(report,boot=boot)))
     out.update(generate_audio.texts(mk1_roms.u3(roms)))
+    if generate.MAIN_SHARDS!=MAIN_SHARDS:raise ValueError('MK1 shard count differs between generator and setup')
+    out.update(generate.layout(out['mk5_main_loop_graph.inc']))
     if set(out)!=set(NAMES):raise ValueError('MK1 generator produced an unexpected include set')
     return {n:t.encode() for n,t in out.items()}
 

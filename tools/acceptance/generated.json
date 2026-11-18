@@ -1,5 +1,5 @@
 {
- "note": "SHA-256 of setup output that is not a single versioned file (plan 2026-11-15-conformidade-legal.md). mk3/tms_units: the units digest of tools/mk3/generate.py --check (name, length and text of every unit) at the tree of 15/11/2026, equal to build/native/mk3-m2/j1-tms.json. Re-pinned on 16/11/2026 when the reset lots 1-2 (20 measured PCs from the reset vector to the CALLA of the CMOS routine) became a generated slice and native/mk3/mk3_reset.cpp was deleted: full CPU, bus and Ops state equal to the hand path at every lot boundary, 108/108 route digests equal. mk2/native/mk2/mk2_first_fight.inc: re-pinned in phase 3 part 2 (15/11/2026) when the emitter started to emit the bitmap-text PIXBLT B,XY at ffa592b0 in the whole closure (o.DrawBitmapText, the shared hardware semantic); the other 22 MK2 includes keep the manifest.json digests. mk2 *_bounds.inc (first_fight, first_fight_high_punch, prestart_wait, selection): re-pinned in phase 3 part 3 (16/11/2026) when each boundary row stopped carrying the raw Original CPU34 and carries its SHA-256 instead (tools/mk2/oracle_digest.py; compared by mk2_task_batch.cpp with Cpu34Is); end cycles and instruction counts are unchanged. mk1: the includes written by tools/setup/mk1.py with LF line ends. The main-loop, task-body and audio includes have the same text as the manifest.json entry of the same name (manifest digests were taken over CRLF checkouts), proven by byte comparison in the Fase 4 entry of the plan; mk5_boot_graph.inc (power-on graph, Fase 4 parte 2) was accepted by full-state equality with the retired hand chain at every boundary. mk1/factory-cmos: the CMOS seed of tools/setup/mk1.make_seed (the game's factory restore from a blank CMOS, DSW FEFFh), equal byte for byte to the nvram MAME 0.280 saves from its default NVRAM with the same DSW (tools/oracle/mk1_oracle.py seed, 16/11/2026).",
+ "note": "SHA-256 of setup output that is not a single versioned file (plan 2026-11-15-conformidade-legal.md). mk3/tms_units: the units digest of tools/mk3/generate.py --check (name, length and text of every unit) at the tree of 15/11/2026, equal to build/native/mk3-m2/j1-tms.json. Re-pinned on 16/11/2026 when the reset lots 1-2 (20 measured PCs from the reset vector to the CALLA of the CMOS routine) became a generated slice and native/mk3/mk3_reset.cpp was deleted: full CPU, bus and Ops state equal to the hand path at every lot boundary, 108/108 route digests equal. mk2/native/mk2/mk2_first_fight.inc: re-pinned in phase 3 part 2 (15/11/2026) when the emitter started to emit the bitmap-text PIXBLT B,XY at ffa592b0 in the whole closure (o.DrawBitmapText, the shared hardware semantic); the other 22 MK2 includes keep the manifest.json digests. mk2 *_bounds.inc (first_fight, first_fight_high_punch, prestart_wait, selection): re-pinned in phase 3 part 3 (16/11/2026) when each boundary row stopped carrying the raw Original CPU34 and carries its SHA-256 instead (tools/mk2/oracle_digest.py; compared by mk2_task_batch.cpp with Cpu34Is); end cycles and instruction counts are unchanged. mk1: the includes written by tools/setup/mk1.py with LF line ends. The main-loop, task-body and audio includes have the same text as the manifest.json entry of the same name (manifest digests were taken over CRLF checkouts), proven by byte comparison in the Fase 4 entry of the plan; mk5_boot_graph.inc (power-on graph, Fase 4 parte 2) was accepted by full-state equality with the retired hand chain at every boundary. mk1/factory-cmos: the CMOS seed of tools/setup/mk1.make_seed (the game's factory restore from a blank CMOS, DSW FEFFh), equal byte for byte to the nvram MAME 0.280 saves from its default NVRAM with the same DSW (tools/oracle/mk1_oracle.py seed, 16/11/2026). mk1 main-loop layout (18/11/2026): the driver, the declarations and the 8 shards that tools/mk1/generate.layout derives from the pinned main-loop graph, so the 5.5 MB graph compiles as 8 parallel units; the graph itself is unchanged. mk2 first-fight layout (18/11/2026): mk2_first_fight_main.inc and the page units that tools/mk2/generate_architectural.layout derives from the pinned graph (partition shards=, as the static-batch candidates), so the 8 MB graph compiles as parallel units; the graph itself is unchanged.",
  "mk3": {
   "mk3/tms_units": "e99e6833edf2e382e30c4aafb7671a9c16e7e67666b6c76ca2ea60a4f006034b"
  },
@@ -8,7 +8,24 @@
   "native/mk2/mk2_first_fight_bounds.inc": "46e35cb4c059add3a5eb2d0c27ad59f47e1eec21c3437243e81eb674610c6779",
   "native/mk2/mk2_first_fight_high_punch_bounds.inc": "967f643ba7bacad9a72c6bd0c456194d5b1c457b01c9a1e41ce234a800fa7328",
   "native/mk2/mk2_prestart_wait_bounds.inc": "a2bae4b6e714e177a7ef6fd12f0b29fef0737688c623eeec2c29aba3bf35667e",
-  "native/mk2/mk2_selection_bounds.inc": "8d6df01f1afc8c4b90e5fe167666dbf91633055f3bf4dfec5350295ba087bd3c"
+  "native/mk2/mk2_selection_bounds.inc": "8d6df01f1afc8c4b90e5fe167666dbf91633055f3bf4dfec5350295ba087bd3c",
+  "native/mk2/mk2_first_fight_ff800000.cpp": "87064b2bf1ec593bb86064fe8e77826edbba46a155c3b58d936af4659f077c12",
+  "native/mk2/mk2_first_fight_ff880000.cpp": "225a8c2ae376254ee47c7868bc5ad14b5087805223740cbbe33d3d406b7891aa",
+  "native/mk2/mk2_first_fight_ff900000.cpp": "72e3d4bd2e9daa450758558d2c35abb97a7faf78debb0f7c284f175be3846d89",
+  "native/mk2/mk2_first_fight_ff980000.cpp": "c44b197986dc15b8045fca3e4973c41cb802eb9a873e58f802d87dcd16d155b0",
+  "native/mk2/mk2_first_fight_ffa00000.cpp": "f0586be43ca3f6a0891c360e851ca7a99baa44e7ea04a60d42ebfcd6c6d73aab",
+  "native/mk2/mk2_first_fight_ffa80000.cpp": "d740fc59995060b4ebf7a0a15c9014578b016cb5b03269d1866a6ce0e30b2024",
+  "native/mk2/mk2_first_fight_ffb00000.cpp": "cfb37e458244f5322ada1281a81caaf1f8afa4dcd989a3d70a3e4900f23f5776",
+  "native/mk2/mk2_first_fight_ffb80000.cpp": "baed7bb116909a0634e1658fdc2a1cdb6d33585a949b8bcef55e0ad7b036d3e7",
+  "native/mk2/mk2_first_fight_ffc00000.cpp": "0057f16455e4f7a951f8110adaeff5e97576726d1e1f8c686b83b2ff4030214a",
+  "native/mk2/mk2_first_fight_ffc80000.cpp": "54472e7a54c8fc75d5925bf0eb24e41c2163e3a59026fb2003896cee1cc252ab",
+  "native/mk2/mk2_first_fight_ffd00000.cpp": "5c739f116ff309d6f433839f27b46cca39bed4be683366252a22c18ce22fbad5",
+  "native/mk2/mk2_first_fight_ffd80000.cpp": "5d2fa317cbb1fea7d283064faf821bb50d441e346c6df46c0c0737ba47771c48",
+  "native/mk2/mk2_first_fight_ffe00000.cpp": "39a9b2a8f7933c56dbb201e37cf218e53df8146af7f85890c9bb1c77cf26e789",
+  "native/mk2/mk2_first_fight_ffe80000.cpp": "acf1a4d9e656c434115ea0b87b2787734b1bbe51ed59e8f7139f1b60e8fa8563",
+  "native/mk2/mk2_first_fight_fff00000.cpp": "dd2f2cf0c7767d2fa71dbee0e9b265de04e3a3c84b26d45c0c268605549087e6",
+  "native/mk2/mk2_first_fight_fff80000.cpp": "a2fc8b2d89516eb2c999d45f11206a9c2b0f9138e5bc18d7a1a0eae5d8068a8c",
+  "native/mk2/mk2_first_fight_main.inc": "780826f3d84fb621ee0ff79fa957af6c817616c9bfbe11d9fdbc09ae7e627a3b"
  },
  "mk1": {
   "mk1/factory-cmos": "870c32440552a1ae4aeb7d2949052530065665585c68c80d2b9a500fa00ce0a1",
@@ -16,6 +33,16 @@
   "native/src/mk5_audio_graph.inc": "7f60880e7065c3e8ac1564804a53c2a9b14a96dc6c4d3996edba77a17da1ae62",
   "native/src/mk5_boot_graph.inc": "be4a20666aa08146277d6d41489e02281cf9cef58d8ef06a7ec6c7164d2c87e6",
   "native/src/mk5_main_loop_graph.inc": "4afcd9fa86fc659efc4d82312d23e706fcfadf95a4640fb4b746ce66c4b4dbda",
-  "native/src/mk5_task_body_graph.inc": "294a9d33f73fbe0a340c1c33a39ea39370fdd18c94b1c69f5f6b913fa76c7ad4"
+  "native/src/mk5_task_body_graph.inc": "294a9d33f73fbe0a340c1c33a39ea39370fdd18c94b1c69f5f6b913fa76c7ad4",
+  "native/src/mk5_main_loop_driver.inc": "12e95deaf7eb50ee7fcb0da642f38b9a481fbba2e10f78e2b9a9d0f21e940a7e",
+  "native/src/mk5_main_loop_shard_0.cpp": "e606d4296b24d0cd3757dc6e617ac227d31f47c53e8b7da93e7cc2cbf64ae7f3",
+  "native/src/mk5_main_loop_shard_1.cpp": "d4c69f7edb83f43208d488932c931ea535a254d6a257f94ef62711766b34c0ad",
+  "native/src/mk5_main_loop_shard_2.cpp": "1eb05d69d57d2c7281726a98efde24cd62d65460d060d48ca387647987977acd",
+  "native/src/mk5_main_loop_shard_3.cpp": "69abc3f37cec29f793204292f150ec09cd4a76628217e72464a2020e2f59bc64",
+  "native/src/mk5_main_loop_shard_4.cpp": "075a66d53ac45aa3a5aa4107892d50ce33379b2cc5bf19fa428ba8d96219478a",
+  "native/src/mk5_main_loop_shard_5.cpp": "ebaa7f69144e2168eec1ec3c9280e6ae12d4ba20209026dcae604e672624080c",
+  "native/src/mk5_main_loop_shard_6.cpp": "3232744139ec3a2f9fe226b4eeb041df317ebf2be066c006fd53d11eeeee083e",
+  "native/src/mk5_main_loop_shard_7.cpp": "fe2a48ff55ef21f3db19f2ca08cfc7bba4df9d0f17d79c0f9dc857937ffcafb0",
+  "native/src/mk5_main_loop_shards.inc": "c053d6c79956a275e8bafaafbdd7ecfbe17e445c668ca7d7d383854871a65944"
  }
 }

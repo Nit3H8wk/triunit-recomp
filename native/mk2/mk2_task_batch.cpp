@@ -67,7 +67,7 @@ static constexpr std::array<PreStartWaitStage,kFirstFightWindowCount> first_figh
 static constexpr std::array<PreStartWaitStage,1> first_fight_high_punch_stage{{
 #include "mk2_first_fight_high_punch_bounds.inc"
 }};
-#include "mk2_first_fight.inc"
+#include "mk2_first_fight_main.inc"   // pages: generated units (tools/setup/paths.generated_sources)
 bool ExecuteGeneratedInstruction(BootOps& o) { return ExecuteFirstFightStatic(o); }
 static bool ExecuteFirstFightExtras(BootOps& o) {
     return ExecuteFirstFightStatic(o) || ExecuteSelectionExtras(o);

@@ -86,9 +86,14 @@ hardware (**ADSP-2105 DCS**, **6809** sound board, **YM2151**, **OKI ADPCM**).
 | GPU | DirectX 12 |
 | Compiler | MSYS2 MinGW-w64 g++ at `C:/msys64/mingw64/bin/g++.exe` (validated: **16.1.0**; another version is reported as not validated, and the setup builds without `-Werror` so newer compiler warnings do not stop it) |
 | Python | 3.12 or later on `PATH` (`python` or the `py` launcher; validated: **3.13.2**). The setup uses only the standard library. |
+| Compiler cache (optional) | `pacman -S mingw-w64-x86_64-ccache` in MSYS2. With it, building again after an update recompiles only what changed (cache in `build/native/compiler-cache`, at most 2 GB). |
 
 The toolchain and Python are not bundled; the setup uses the ones installed on
 your machine. The app shows what it found on its Overview page.
+
+Build time: the setup compiles on every core it has memory for, heaviest units
+first, and a game whose inputs did not change is not compiled again (its last
+build is reused).
 
 ## Compatibility
 

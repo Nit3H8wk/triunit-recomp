@@ -117,6 +117,62 @@ class FailureTests(unittest.TestCase):
         self.assertEqual(ran['stdout'].strip(),"['-O2']")
 
 
+class ReuseTests(unittest.TestCase):
+    """A second Build with nothing changed reuses the generated units, the executable and the seed."""
+    def test_previous_build_is_reused_only_with_the_same_inputs_and_executable(self):
+        with tempfile.TemporaryDirectory() as temp:
+            temp=Path(temp);exe=temp/'game.exe';exe.write_bytes(b'build');seed=temp/'seed.bin';seed.write_bytes(b'cmos')
+            receipt=dict(compile=dict(inputs='k',sha256=hashlib.sha256(b'build').hexdigest()),
+                         seed=dict(file=str(seed),sha256=hashlib.sha256(b'cmos').hexdigest()))
+            (temp/'setup.json').write_text(json.dumps(receipt))
+            with mock.patch.object(paths,'output',return_value=temp),mock.patch.object(setup,'ROOT',temp):
+                self.assertEqual(setup.previous('mk1','k',exe),receipt)
+                self.assertTrue(setup.kept_seed(receipt)['reused'])
+                self.assertIsNone(setup.previous('mk1','other inputs',exe))
+                exe.write_bytes(b'changed');self.assertIsNone(setup.previous('mk1','k',exe))
+                seed.write_bytes(b'other');self.assertIsNone(setup.kept_seed(receipt))
+
+    def test_compile_inputs_follow_flags_generated_files_and_warning_policy(self):
+        from tools.quality import run as q
+        with tempfile.TemporaryDirectory() as temp:
+            unit=Path(temp)/'unit.inc';unit.write_text('a')
+            base=setup.compile_inputs(['-O2'],[unit])
+            self.assertEqual(base,setup.compile_inputs(['-O2'],[unit]))
+            self.assertNotEqual(base,setup.compile_inputs(['-O1'],[unit]))
+            with mock.patch.object(q,'WARNINGS_AS_ERRORS',not q.WARNINGS_AS_ERRORS):
+                self.assertNotEqual(base,setup.compile_inputs(['-O2'],[unit]))
+            unit.write_text('b');self.assertNotEqual(base,setup.compile_inputs(['-O2'],[unit]))
+
+    def test_mk3_units_are_reused_only_when_they_hash_to_the_pinned_digest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            units=Path(temp)/'tms';units.mkdir();(units/'u.cpp').write_text('int x;\n',newline='\n')
+            digest=setup.units_digest({'u.cpp':'int x;\n'});marker=Path(temp)/'tms.json'
+            marker.write_text(json.dumps(dict(units=1,units_sha256=digest,cases=3)))
+            self.assertEqual(setup.reused_units(units,marker,digest)['cases'],3)
+            self.assertIsNone(setup.reused_units(units,marker,'another pinned digest'))
+            (units/'u.cpp').write_text('int y;\n');self.assertIsNone(setup.reused_units(units,marker,digest))
+
+
+class ShardTests(unittest.TestCase):
+    """A source that includes a generated driver gets that game's generated units, before the libraries."""
+    def test_driver_include_brings_the_generated_units(self):
+        from tools.setup import mk2
+        with tempfile.TemporaryDirectory() as temp:
+            temp=Path(temp);gen=temp/'gen';gen.mkdir()
+            (gen/'includes.json').write_text(json.dumps(dict(files={'mk2_first_fight_main.inc':'x','mk2_first_fight_ff800000.cpp':'y',
+                                                                     'mk2_first_fight_ff880000.cpp':'z'})))
+            runtime=temp/'mk2_task_batch.cpp';runtime.write_text('#include "mk2_first_fight_main.inc"   // note\n')
+            copy=temp/'mk2_first_fight_ff880000.cpp';copy.write_text('')
+            with mock.patch.object(mk2,'inc_dir',return_value=gen),mock.patch.object(paths,'generated_flags',return_value=[]):
+                args=paths.with_generated(['g++','-Ia',runtime,'-lbcrypt','-o','x.exe'])
+                kept=paths.generated_sources([runtime,copy])
+                single=paths.with_generated(['g++','-c',runtime,'-o','x.o'])   # one unit compile: never the others
+        self.assertEqual(single,['g++','-c',runtime,'-o','x.o'])
+        self.assertEqual(args,['g++','-Ia',runtime,(gen/'mk2_first_fight_ff800000.cpp').as_posix(),
+                               (gen/'mk2_first_fight_ff880000.cpp').as_posix(),'-lbcrypt','-o','x.exe'])
+        self.assertEqual(kept,[gen/'mk2_first_fight_ff800000.cpp'])   # a scratch copy stands for its generated unit
+
+
 class InstallTests(unittest.TestCase):
     def test_mk3_reinstall_swaps_the_package_and_keeps_the_player_profile(self):
         import shutil

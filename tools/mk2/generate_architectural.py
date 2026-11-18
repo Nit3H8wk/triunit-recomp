@@ -142,6 +142,19 @@ def partition(source, *, shards=None):
     return ''.join(output)
 
 
+def layout(graph):
+    """How mk2_first_fight.inc is compiled: its pages as separate units, one per 512K-address range (partition shards=,
+    as the static-batch candidates are built), plus mk2_first_fight_main.inc (membership bits, page declarations and the
+    page dispatcher) for mk2_task_batch.cpp. The page bodies are the graph's own; only their linkage changes."""
+    header,_,_=graph.partition('static bool IsFirstFightStaticPC')
+    source=''.join(re.findall(r'^case 0x[0-9a-f]{8}u: \{ // [^\n]*\n.*?^\}\n',graph,re.M|re.S))
+    if header+partition(source)!=graph:raise ValueError('mk2_first_fight.inc is not the partition of its own blocks')
+    shards={};out={'mk2_first_fight_main.inc':header+partition(source,shards=shards)}
+    for base,body in sorted(shards.items()):
+        out[f'mk2_first_fight_{base:08x}.cpp']=header+'#include "mk2_boot_ops.hpp"\nnamespace mk2 {\n'+body+'}\n'
+    return out
+
+
 def generate(rom):
     if hashlib.sha256(rom).hexdigest()!=emitter.PROGRAM_SHA256:
         raise ValueError('Architectural closure requires authenticated ROM')

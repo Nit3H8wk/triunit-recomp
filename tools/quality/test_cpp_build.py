@@ -171,8 +171,36 @@ class CppBuildTests(unittest.TestCase):
                 self.assertGreater(result['compiler_cache']['bytes'], 0)
                 self.assertLessEqual(result['compiler_cache']['bytes'], 64000000)
 
+    def test_memory_gate_bounds_reservations_and_always_runs_one_unit(self):
+        import threading
+        gate = builder.MemoryGate(10)
+        with gate(50):   # alone and above the budget: still runs
+            pass
+        lock, now, peak = threading.Lock(), [0], [0]
+
+        def unit():
+            with gate(4):
+                with lock:
+                    now[0] += 1
+                    peak[0] = max(peak[0], now[0])
+                time.sleep(0.05)
+                with lock:
+                    now[0] -= 1
+        threads = [threading.Thread(target=unit) for _ in range(6)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(10)
+        self.assertEqual((peak[0], gate.free, gate.running), (2, 10, 0))
+
+    def test_heavier_units_weigh_their_generated_includes(self):
+        (self.scratch / 'graph.inc').write_text('x' * 5000)
+        unit = self.scratch / 'unit.cpp'
+        unit.write_text('#include "graph.inc"\n')
+        self.assertEqual(builder.weight(unit, []), unit.stat().st_size + 5000)
+
     def test_invalid_worker_counts_and_empty_sources_are_rejected(self):
-        for count in (0, 3, True):
+        for count in (0, builder.MAX_WORKERS + 1, True):
             with self.subTest(workers=count), self.assertRaises(ValueError):
                 self.build(workers=count)
         with self.assertRaises(ValueError):

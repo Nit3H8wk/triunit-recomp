@@ -156,6 +156,20 @@ def head_graphs():
     """The graphs of the reference generation (no longer versioned since Fase 4): the generated files of this tree."""
     return {g:p.read_text('utf-8') for g,p in GRAPHS.items()}
 
+def graph_units(d,graphs,sources):
+    """`sources` with scratch copies in `d` of the units of `graphs` ({'main'|'task': text}); the main graph also gets its
+    compiled layout (driver, declarations and shards, tools/mk1/generate.layout) in place of the generated shards."""
+    from tools.mk1 import generate
+    for g,text in graphs.items():
+        unit=UNITS[g];text=text.replace('\r\n','\n');(d/f'{unit}_graph.inc').write_text(text,encoding='utf-8')
+        (d/f'{unit}.cpp').write_text((ROOT/f'native/src/{unit}.cpp').read_text('utf-8'),encoding='utf-8')
+        sources=[d/f'{unit}.cpp' if x==ROOT/f'native/src/{unit}.cpp' else x for x in sources]
+        if g=='main':
+            for n,t in generate.layout(text).items():
+                (d/n).write_text(t,encoding='utf-8')
+                if n.endswith('.cpp'):sources.append(d/n)   # stands for the generated shard of the same name
+    return sources
+
 def build(scratch,graphs=None,name='current'):
     """Harness executable in `scratch`. graphs={'main'|'task': text}: that graph and its including unit are copied into
     scratch/<name> and compiled instead of the product's (negative control, pre-fix baseline); native/ is never touched."""
@@ -163,11 +177,7 @@ def build(scratch,graphs=None,name='current'):
     sources=[ROOT/x for x in json.loads((ROOT/'tools/mk1/runtime-inputs.json').read_text())['objects'] if not x.endswith('probe_audio_main.cpp')]
     (scratch/'mk1_oracle_harness.cpp').write_text(HARNESS,encoding='utf-8');sources.append(scratch/'mk1_oracle_harness.cpp')
     if graphs:
-        d=scratch/name;d.mkdir()
-        for g,text in graphs.items():
-            unit=UNITS[g];(d/f'{unit}_graph.inc').write_text(text.replace('\r\n','\n'),encoding='utf-8')
-            (d/f'{unit}.cpp').write_text((ROOT/f'native/src/{unit}.cpp').read_text('utf-8'),encoding='utf-8')
-            sources=[d/f'{unit}.cpp' if x==ROOT/f'native/src/{unit}.cpp' else x for x in sources]
+        d=scratch/name;d.mkdir();sources=graph_units(d,graphs,sources)
     exe=scratch/f'mk1_oracle_{name}.exe'
     result=cpp_build.build(q.DEFAULT_CC,FLAGS,sources,LIBS,exe,scratch,env=dict(PATH=str(q.DEFAULT_CC.parent)),timeout=3600,compile_from_scratch=True)
     if not result['passed']:raise RuntimeError('harness build failed: '+result.get('stdout','')[-3000:])
@@ -598,11 +608,7 @@ def variant_sources(scratch,name,graphs,exclude=('probe_audio_main',)):
     objects=json.loads((ROOT/'tools/mk1/runtime-inputs.json').read_text())['objects']
     sources=[ROOT/p for p in objects if Path(p).stem not in exclude]
     if graphs:
-        d=scratch/name;d.mkdir()
-        for g,text in graphs.items():
-            unit=UNITS[g];(d/f'{unit}_graph.inc').write_text(text.replace('\r\n','\n'),encoding='utf-8')
-            (d/f'{unit}.cpp').write_text((ROOT/f'native/src/{unit}.cpp').read_text('utf-8'),encoding='utf-8')
-            sources=[d/f'{unit}.cpp' if x==ROOT/f'native/src/{unit}.cpp' else x for x in sources]
+        d=scratch/name;d.mkdir();sources=graph_units(d,graphs,sources)
     return sources
 
 def mixed_graphs(forms):

@@ -1,4 +1,4 @@
-"""Two-worker C++ build with an optional pinned, bounded local ccache."""
+"""Parallel C++ build (workers sized by cores and free memory) with an optional pinned, bounded local ccache."""
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import hashlib
@@ -6,6 +6,8 @@ import io
 import itertools
 import json
 import os
+import re
+import threading
 import shutil
 import sys
 import time
@@ -20,8 +22,73 @@ CCACHE_SHA256 = '4dd46cbc8efe3d6f6b34bd49fd2474fd83b3fcf48784dd38fc4ea48dd896727
 ARCHIVE_SHA256 = '6993ce645e53192cec592ee23186200b574ac4c59097ecde8d9cfd681b47ae84'
 URL = f'https://github.com/ccache/ccache/releases/download/v{VERSION}/ccache-{VERSION}-windows-x86_64.zip'
 CACHE_DIRECTORY = q.ROOT / 'build/native/compiler-cache'
-MAX_CACHE_BYTES = 64000000
+# Bounded so a rebuild after an update recompiles only what changed (decision of 18/11/2026; was 64 MB).
+MAX_CACHE_BYTES = 2000000000
+CACHE_SIZE = '1900MB'   # ccache max_size, below MAX_CACHE_BYTES to leave room for its metadata
+MSYS_CCACHE = q.DEFAULT_CC.parent / 'ccache.exe'   # the user's own toolchain: pacman -S mingw-w64-x86_64-ccache
+
+
+def ccache_tool():
+    """The pinned project ccache (--setup), else the one installed with the user's MSYS2 g++, else None (nothing is
+    downloaded by a build)."""
+    return CCACHE if CCACHE.is_file() else MSYS_CCACHE if MSYS_CCACHE.is_file() else None
 on_unit = None   # optional callable(done, total) after each unit compiles (setup --progress)
+MAX_WORKERS = 32
+# Memory one compiler process reserves before it starts: at least UNIT_MEMORY, or BYTES_MEMORY per byte it reads (measured
+# 18/11/2026: a 5.5 MB graph unit peaked at 1.7 GB in cc1plus, a 0.7 MB shard near 0.5 GB). Units wait while the
+# reservations of the running ones would pass 80% of the free memory; one unit always runs.
+UNIT_MEMORY = 600 << 20
+BYTES_MEMORY = 0.3
+
+
+def available_memory():
+    import ctypes
+    class Status(ctypes.Structure):
+        _fields_ = [('length', ctypes.c_uint32), ('load', ctypes.c_uint32), ('total', ctypes.c_uint64),
+                    ('available', ctypes.c_uint64), ('page_total', ctypes.c_uint64), ('page_available', ctypes.c_uint64),
+                    ('virtual_total', ctypes.c_uint64), ('virtual_available', ctypes.c_uint64), ('extended', ctypes.c_uint64)]
+    status = Status(length=ctypes.sizeof(Status))
+    if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+        return UNIT_MEMORY * 4
+    return int(status.available)
+
+
+def auto_workers(units):
+    """Compiler processes at once: one per core, never more than units (memory is gated per unit, see UNIT_MEMORY)."""
+    return max(1, min(os.cpu_count() or 1, units, MAX_WORKERS))
+
+
+class MemoryGate:
+    """Reservations of the running compiler processes against a share of the free memory."""
+    def __init__(self, total):
+        self.free, self.running, self.lock = total, 0, threading.Condition()
+
+    def __call__(self, need):
+        gate = self
+
+        class Hold:
+            def __enter__(self):
+                with gate.lock:
+                    gate.lock.wait_for(lambda: gate.running == 0 or gate.free >= need)
+                    gate.free -= need
+                    gate.running += 1
+
+            def __exit__(self, *_):
+                with gate.lock:
+                    gate.free += need
+                    gate.running -= 1
+                    gate.lock.notify_all()
+        return Hold()
+
+
+def weight(source, flags):
+    """Bytes the compiler reads for `source`: its text plus the generated .inc graphs it includes (the slow units)."""
+    total = source.stat().st_size
+    folders = [source.parent, *(Path(str(f)[2:]) for f in flags if str(f).startswith('-I'))]
+    for name in re.findall(r'#include\s+"([^"]+\.inc)"', source.read_text(encoding='utf-8', errors='replace')):
+        found = next((d / name for d in folders if (d / name).is_file()), None)
+        total += found.stat().st_size if found else 0
+    return total
 
 
 def route(args):
@@ -116,14 +183,17 @@ def failed(message, timed_out=False):
 
 
 def build(compiler, flags, sources, link_flags, executable, scratch, *, env=None,
-          timeout=240, workers=2, use_cache=None, cache_directory=CACHE_DIRECTORY,
+          timeout=240, workers=None, use_cache=None, cache_directory=CACHE_DIRECTORY,
           compile_from_scratch=False):
     """Compile separately, preserve source/link order, and always remove test objects."""
     # includes generated on this machine (generated/<game>/<sha>/), when a source names one
-    from tools.setup.paths import generated_flags
+    from tools.setup.paths import generated_flags, generated_sources
     flags = [*flags, *generated_flags([*flags, *sources])]
-    if type(workers) is not int or not 1 <= workers <= 2 or not sources or timeout <= 0:
-        raise ValueError('Build requires sources, positive timeout and1..2 workers')
+    sources = [*sources, *generated_sources(sources)]
+    if workers is None and sources:
+        workers = auto_workers(len(sources))
+    if type(workers) is not int or not 1 <= workers <= MAX_WORKERS or not sources or timeout <= 0:
+        raise ValueError(f'Build requires sources, positive timeout and 1..{MAX_WORKERS} workers')
     compiler, scratch, executable = Path(compiler), Path(scratch).absolute(), Path(executable).absolute()
     unlinked(scratch)
     unlinked(executable)
@@ -133,10 +203,11 @@ def build(compiler, flags, sources, link_flags, executable, scratch, *, env=None
     sources = [Path(p).absolute() for p in sources]
     if len(set(sources)) != len(sources):
         raise ValueError('Duplicate compilation source')
-    enabled = CCACHE.is_file() and compiler.resolve() == q.DEFAULT_CC.resolve() if use_cache is None else use_cache
+    tool = ccache_tool() or CCACHE
+    enabled = tool.is_file() and compiler.resolve() == q.DEFAULT_CC.resolve() if use_cache is None else use_cache
     if enabled:
-        unlinked(CCACHE)
-        if q.sha(CCACHE) != CCACHE_SHA256:
+        unlinked(tool)
+        if tool == CCACHE and q.sha(CCACHE) != CCACHE_SHA256:
             raise ValueError('ccache executable identity mismatch')
         if any(str(value).startswith(('-B', '-specs', '--specs', '-wrapper', '@')) for value in flags):
             raise ValueError('Tool-selection flags require legacy compilation')
@@ -172,8 +243,11 @@ def build(compiler, flags, sources, link_flags, executable, scratch, *, env=None
                 marker = cache / 'mk-arcade-cache.json'
                 identity = {'format': 1, 'kind': 'ccache-object-cache', 'limit_bytes': MAX_CACHE_BYTES}
                 if marker.exists():
-                    if json.loads(marker.read_text()) != identity:
+                    owned = json.loads(marker.read_text())
+                    if {k: owned.get(k) for k in ('format', 'kind')} != {k: identity[k] for k in ('format', 'kind')}:
                         raise ValueError('Compiler cache ownership mismatch')
+                    if owned != identity:   # our cache under an older size limit
+                        marker.write_text(json.dumps(identity, sort_keys=True))
                 elif any(cache.iterdir()):
                     raise ValueError('Preserve existing unowned cache directory')
                 else:
@@ -200,39 +274,53 @@ def build(compiler, flags, sources, link_flags, executable, scratch, *, env=None
                 configuration = objects / 'ccache.conf'
                 configuration.write_text('\n'.join([
                     'cache_dir = ' + cache.as_posix(), 'temporary_dir = ' + objects.as_posix(),
-                    'max_size = 60MB', 'compiler_check = content', 'direct_mode = false',
+                    'max_size = ' + CACHE_SIZE, 'compiler_check = content', 'direct_mode = false',
                     'depend_mode = false', 'inode_cache = false',
                     'hard_link = false', 'file_clone = false',
                     'compression = true', 'hash_dir = true', 'debug = false',
                     'namespace = ' + namespace, 'extra_files_to_hash = ' + fingerprint.as_posix(),
                     'stats_log = ' + (objects / 'stats.log').as_posix(), '']), encoding='utf-8')
                 environment['CCACHE_CONFIGPATH'] = str(configuration)
-                cache_report.update(path=str(cache), tool_sha256=CCACHE_SHA256, toolchain=tool_files)
+                cache_report.update(path=str(cache), tool=str(tool), tool_sha256=q.sha(tool), toolchain=tool_files)
+
+            stop = []   # a failed unit: units not started yet are skipped
 
             def compile_one(item):
                 number, source = item
                 output = objects / (str(number) + '.o')
+                if stop:
+                    return {'passed': False, 'skipped': True, 'source': str(source), 'stdout': ''}, output
                 # Relative filenames give regenerated units stable preprocessor paths.
                 local = compile_from_scratch and source.parent == scratch
                 args = [compiler, *flags, '-c', source.name if local else source, '-o', output]
-                execution = command(([CCACHE] if enabled else []) + args, cwd=scratch if local else q.ROOT)
+                with memory(max(UNIT_MEMORY, int(weights[number] * BYTES_MEMORY))):
+                    if stop:
+                        return {'passed': False, 'skipped': True, 'source': str(source), 'stdout': ''}, output
+                    execution = command(([tool] if enabled else []) + args, cwd=scratch if local else q.ROOT)
                 execution['source'] = str(source)
                 execution['object_bytes'] = output.stat().st_size if output.is_file() else 0
+                if not execution['passed']:
+                    stop.append(number)
                 if on_unit:
                     on_unit(next(finished), len(sources))
                 return execution, output
 
-            finished = itertools.count(1)   # next() is atomic under the GIL: safe from both workers
+            finished = itertools.count(1)   # next() is atomic under the GIL: safe from every worker
 
+            # Heaviest units first (longest-processing-time order); objects keep their source index for the link.
+            weights = [weight(source, flags) for source in sources]
+            memory = MemoryGate(int(available_memory() * 0.8))
+            order = sorted(range(len(sources)), key=lambda i: -weights[i])
             with ThreadPoolExecutor(max_workers=workers) as pool:
-                compiled = list(pool.map(compile_one, enumerate(sources)))
+                done = dict(zip(order, pool.map(compile_one, [(i, sources[i]) for i in order])))
+            compiled = [done[i] for i in range(len(sources))]
             units = [q.compact(row) for row, _ in compiled]
-            failures = [row for row, _ in compiled if not row['passed']]
+            failures = [row for row, _ in compiled if not row['passed'] and not row.get('skipped')]
             if failures:
                 result = dict(failures[0])
             else:
                 if enabled and any(q.sha(Path(path)) != sha for path, sha in tool_files.items()):
-                    command([CCACHE, '--evict-namespace', namespace])
+                    command([tool, '--evict-namespace', namespace])
                     raise RuntimeError('Compiler toolchain changed during compilation')
                 result = command([compiler, *flags, *[output for _, output in compiled],
                                   *link_flags, '-o', executable])
@@ -250,12 +338,12 @@ def build(compiler, flags, sources, link_flags, executable, scratch, *, env=None
                 try:
                     if configuration is not None and configuration.is_file():
                         cache_bytes(cache)
-                        trimmed = maintain([CCACHE, '--cleanup'])
+                        trimmed = maintain([tool, '--cleanup'])
                         if not trimmed['passed']:
                             raise RuntimeError(trimmed['stdout'])
                         if (objects / 'stats.log').is_file():
                             try:
-                                stats = maintain([CCACHE, '--print-log-stats', '--format', 'json'])
+                                stats = maintain([tool, '--print-log-stats', '--format', 'json'])
                                 if not stats['passed']:
                                     raise RuntimeError(stats['stdout'])
                                 values = json.loads(stats['stdout'])
@@ -274,7 +362,7 @@ def build(compiler, flags, sources, link_flags, executable, scratch, *, env=None
                         cache_report['bytes'] = cache_bytes(cache)
                         cache_report['quota_verified'] = cache_report['bytes'] <= MAX_CACHE_BYTES
                         if not cache_report['quota_verified']:
-                            raise RuntimeError('Compiler cache exceeded its64 MB budget')
+                            raise RuntimeError('Compiler cache exceeded its size budget')
                     except Exception as error:
                         cache_report.update(quota_verified=False, quota_error=str(error))
                         result.update(passed=False)

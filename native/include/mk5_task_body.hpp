@@ -83,6 +83,9 @@ class Mk5TaskBodyRunner {
     void execute();
     void execute_boot();
     void execute_main();
+    // Main-loop graph compiled as shards over PC ranges (tools/mk1/generate.py layout): true when control left the
+    // shard (next PC in s.next_original_pc), false when entered at a PC it does not hold.
+    template<unsigned K> bool main_shard();
 public:
     // Power-on: CPU at the reset vector, CMOS in `state`, controller unstarted.
     Mk5TaskBodyRunner(const VerifiedMk5Program&,Mk5BoardState& state,Mk5MemoryBuffers&,Mk5IrqController&,BootDiState&);

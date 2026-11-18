@@ -121,6 +121,7 @@ class ProcessJob:
         self.handle = self.kernel.CreateJobObjectW(None, None)
         if not self.handle:
             raise ctypes.WinError(ctypes.get_last_error())
+        self.Extended = Extended
         limits = Extended()
         limits.basic.flags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
         if not self.kernel.SetInformationJobObject(self.handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)):
@@ -179,6 +180,13 @@ class ProcessJob:
                                                      ctypes.sizeof(accounting), None):
             raise ctypes.WinError(ctypes.get_last_error())
         return (ctypes.c_uint32 * 12).from_buffer(accounting)[10]
+
+    def peak(self):
+        """Peak memory of the largest process the job ever held (cc1plus for a g++ driver)."""
+        limits = self.Extended()
+        if not self.kernel.QueryInformationJobObject(self.handle, 9, ctypes.byref(limits), ctypes.sizeof(limits), None):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return int(limits.peak_process_memory)
 
     def close(self):
         try:
@@ -275,6 +283,10 @@ def command(args, scratch, timeout=120, env=None, cwd=None, output_limit=OUTPUT_
         # Always stop descendants before removing scratch, including on metrics,
         # launch, timeout and output-pipe failures. The job survives root exit.
         if job:
+            try:
+                metrics["peak_process_bytes"] = job.peak()
+            except Exception:
+                pass
             try:
                 job.close()
                 result["owned_job_empty"] = True

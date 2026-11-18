@@ -475,7 +475,7 @@ def tms_sources(rom, rows, scratch, pcs, lanes, *, physical_map=None):
     sources = {f'mk2_tms_{base:08x}.cpp': header+'#include "mk2_boot_ops.hpp"\nnamespace mk2 {\n'+body+'}\n'
                for base, body in shards.items()}
     runtime = RUNTIME.read_text(encoding='utf8')
-    include = '#include "mk2_first_fight.inc"'
+    include = '#include "mk2_first_fight_main.inc"'
     if runtime.count(include) != 1:
         raise ValueError('MK2 architectural dispatcher include site changed')
     sources[RUNTIME.name] = runtime.replace(include, '#include "mk2_tms_dispatch.inc"')

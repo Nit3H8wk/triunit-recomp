@@ -4,8 +4,9 @@
 
 void Mk5TaskBodyRunner::AttachVideo(const VerifiedMk5GlyphBank& bank,bool remastered){guard();if(video)throw std::runtime_error("MK5 video already attached");video=std::make_unique<Mk5LiveVideo>(bank,s,m,irq,di,remastered?&p:nullptr);}
 
+#include "mk5_main_loop_shards.inc"
 void Mk5TaskBodyRunner::execute_main(){
-#include "mk5_main_loop_graph.inc"
+#include "mk5_main_loop_driver.inc"
 }
 TaskBodyResult Mk5TaskBodyRunner::ContinueMain(const TaskBodyInputs& in,uint32_t di_limit){
     guard();if(!di_limit || di_limit>64 || !in.instruction_budget || in.instruction_budget>500000)throw std::runtime_error("MK5 main-loop: invalid bounded continuation");

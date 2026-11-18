@@ -67,7 +67,7 @@ VERIFIERS += ["docs/investigation/decoder-research/upstream/" + name for name in
                "debugcmd.cpp", "tms34010.cpp", "tms34010.h", "distate.cpp", "distate.h", "dmadac.h", "dmadac.cpp",
                "sound.cpp", "sound.h", "disound.cpp", "disound.h",
                "screen.cpp", "screen.h", "attotime.cpp", "attotime.h")]
-HEADERS += ['native/mk2/mk2_first_fight.inc','native/mk2/mk2_first_fight_bounds.inc']
+HEADERS += ['native/mk2/mk2_first_fight.inc','native/mk2/mk2_first_fight_main.inc','native/mk2/mk2_first_fight_bounds.inc']
 HEADERS += ['native/mk2/mk2_first_fight_high_punch_bounds.inc']
 HEADERS += ['native/mk2/mk2_cmos_image.hpp']
 HEADERS += ['native/mk2/mk2_valid_cmos_boot.hpp','native/mk2/mk2_operator_boundaries.hpp','native/mk2/mk2_oracle_digest.hpp']

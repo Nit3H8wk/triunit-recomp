@@ -454,7 +454,7 @@ def run(rom_directory,window=False,reference_frames=False,settings=None,audio=Fa
         "native/mk2/mk2_audio.hpp","native/mk2/mk2_music.hpp","native/runtime/mk2_music_manifest.hpp","native/audio/williams_resampler.hpp","native/audio/host_gain.hpp","native/audio/custom_audio.hpp","native/audio/tiny_json.hpp","native/include/mk5_audio_output.hpp","native/include/mk5_audio_volume.hpp",
         "tools/mk2/reference.py","tools/quality/run.py","tools/mk2/roms-l31.json",
         "tools/mk2/first_fight_path.json","tools/mk2/profile.py","tools/mk2/valid_cmos_startup_path.json",
-        "tools/mk2/valid_cmos_draw_path.json"]))
+        "tools/mk2/valid_cmos_draw_path.json"]+__import__('tools.setup.mk2',fromlist=['units']).units()))
     receipt={"scope":"mk2-native-first-draw-check" if through=='first-draw' else 'mk2-native-translated-continuation-check',"passed":False,"window":window,
              "gameplay_complete":False,"reference_frames":reference_frames,"audio_requested":audio,
              'host_controls_requested':host_controls,'through':through}
