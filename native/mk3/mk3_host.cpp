@@ -177,17 +177,20 @@ void CmosProfile::Save(const std::vector<uint16_t>& words) const {
     if (words.size() * 2 != kCmosBytes) throw std::runtime_error("MK3 CMOS save requires 24576 words");
     std::vector<uint8_t> image(kCmosBytes);
     for (size_t i = 0; i < words.size(); ++i) { image[2 * i] = uint8_t(words[i]); image[2 * i + 1] = uint8_t(words[i] >> 8); }
-    const fs::path file = fs::path(dir_) / L"cmos.bin", pending = fs::path(dir_) / (L".cmos-pending-" + std::to_wstring(GetCurrentProcessId()));
+    const fs::path file = fs::path(dir_) / L"cmos.bin";
     Unlinked(file);
-    HANDLE h = CreateFileW(pending.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_FLAG_WRITE_THROUGH, nullptr);
+    if (!ReplaceFileBytes(file, image)) throw std::runtime_error("MK3 CMOS profile save failed");
+}
+bool ReplaceFileBytes(const std::filesystem::path& file, const std::vector<uint8_t>& bytes) {
+    const fs::path pending = file.parent_path() / (L".pending-" + std::to_wstring(GetCurrentProcessId()) + L"-" + file.filename().wstring());
+    HANDLE h = CreateFileW(pending.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_FLAG_WRITE_THROUGH, nullptr);
     DWORD written = 0;
-    const bool ok = h != INVALID_HANDLE_VALUE && WriteFile(h, image.data(), DWORD(image.size()), &written, nullptr) &&
-                    written == image.size() && FlushFileBuffers(h);
+    const bool ok = h != INVALID_HANDLE_VALUE && WriteFile(h, bytes.data(), DWORD(bytes.size()), &written, nullptr) &&
+                    written == bytes.size() && FlushFileBuffers(h);
     if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
-    if (!ok || !MoveFileExW(pending.c_str(), file.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        if (h != INVALID_HANDLE_VALUE) DeleteFileW(pending.c_str());
-        throw std::runtime_error("MK3 CMOS profile save failed");
-    }
+    if (ok && MoveFileExW(pending.c_str(), file.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) return true;
+    if (h != INVALID_HANDLE_VALUE) DeleteFileW(pending.c_str());
+    return false;
 }
 
 void SetTitle(const std::wstring& title) { if (HWND h = Window()) SetWindowTextW(h, title.c_str()); }

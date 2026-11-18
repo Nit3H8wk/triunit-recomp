@@ -145,6 +145,20 @@ private:
     bool timer_ignore_ = false;
     static constexpr uint32_t kTimerPath = 0x21050000;   // DevicePath ids: | 1 enable change, 2 write, 3 read, 4 expiry
 
+    // Save states (mk3_save_state.hpp): value fields only. U2/U3-U5 ROM data, observers, logs and the profile stay with
+    // the live Dcs8k.
+    template<class A> friend void Fields(A& a, Dcs8k& d) {
+        a(d.rows, d.accesses, d.latch_changes, d.core_resets, d.dac_blocks, d.pcm, d.host_reads, d.local_ns, d.totalcycles,
+          d.instructions, d.synchronizations, d.host_next_ns, d.return_at_sync, d.boot, d.suspended, d.pc, d.latch_control,
+          d.input_data, d.sounddata_bank, d.output_data, d.core_, d.alt_, d.i_, d.l_, d.base_, d.lmask_, d.m_, d.pc_stack_,
+          d.cntr_stack_, d.loop_stack_, d.stat_stack_, d.cntr_, d.loop_, d.loop_condition_, d.pc_sp_, d.cntr_sp_, d.loop_sp_,
+          d.stat_sp_, d.ppc_, d.astat_, d.astat_clear_, d.mstat_, d.mstat_prev_, d.sstat_, d.imask_, d.icntl_, d.px_,
+          d.flagout_, d.flagin_, d.fl0_, d.fl1_, d.fl2_, d.irq_state_, d.irq_latch_, d.pm_, d.external_pm_, d.dm_,
+          d.internal_dm_, d.control_, d.sync_, d.reboot_, d.eat_, d.unverified_, d.last_unverified_, d.last_pc_, d.page_,
+          d.dac_next_ns_, d.dac_period_ns_, d.irq1_clear_ns_, d.read_slice_min_ns_, d.read_slice_max_ns_, d.dac_ireg_,
+          d.dac_size_, d.dac_sample_ns_, d.dac_incs_, d.dac_arms_, d.dac_enabled_, d.timer_start_cycles_, d.int_next_ns_,
+          d.timer_start_count_, d.timer_scale_, d.timer_period_, d.timers_fired_, d.timer_enable_, d.timer_ignore_);
+    }
     [[noreturn]] void Reject(const std::string& what) const;
     bool Step();                       // one instruction; true when it synchronized (aborts the ADSP timeslice)
     void CoreReset();                  // device_t::reset(): interface_pre_reset + adsp21xx device_reset

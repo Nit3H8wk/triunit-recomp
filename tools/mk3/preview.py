@@ -58,10 +58,10 @@ class Preview:
         self._tree.__exit__(None,None,None)
         if self.cleanup.get('exists_after'):raise RuntimeError('preview scratch retained')
 
-    def run(self,*options,timeout=900,window_env=None,output_limit=64<<20):
+    def run(self,*options,timeout=900,window_env=None,output_limit=64<<20,cwd=ROOT):
         env=dict(self.env)
         if window_env is not None:env.update(window_env)
-        run=q.command([self.exe,ROOT/'roms/mk3',reference.SEED,self.temp/'gfx.txt',*map(str,options)],self.temp,cwd=ROOT,env=env,
+        run=q.command([self.exe,ROOT/'roms/mk3',reference.SEED,self.temp/'gfx.txt',*map(str,options)],self.temp,cwd=cwd,env=env,
                       timeout=timeout,output_limit=output_limit)
         # mk5_audio_output writes its underrun records (with their CRLF) to std::clog, merged here: one can land inside a
         # stdout line
@@ -74,7 +74,7 @@ class Preview:
         if not run['passed'] or summary is None or run['discarded_output_bytes']:
             raise RuntimeError('preview run failed: '+run['stdout'][-2000:])
         return dict(summary=summary,frames=[l for l in lines if 'frame' in l and 'rgb' in l],dumps=[l for l in lines if 'dump' in l],
-                    census=next((l for l in lines if 'dma_census' in l),None),underrun_records=underruns,
+                    census=next((l for l in lines if 'dma_census' in l),None),states=[l for l in lines if 'save_state' in l],underrun_records=underruns,
                     wall_seconds=run['wall_seconds'],log=[l for l in run['stdout'].splitlines() if not l.startswith('{')][-20:])
 
 

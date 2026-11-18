@@ -33,7 +33,8 @@ public:
     Dcs8k dcs;
     As base = 0;                 // device_scheduler::m_basetime
     std::string dcs_frontier;    // the ADSP's rejection once it stops at its translation frontier
-    struct Applied { HostEvent::Kind kind; uint64_t write_cycle, end_cycle; uint16_t value; uint64_t adsp_ns; };
+    struct Applied { HostEvent::Kind kind; uint64_t write_cycle, end_cycle; uint16_t value; uint64_t adsp_ns;
+        template<class A> friend void Fields(A& a, Applied& e) { a(e.kind, e.write_cycle, e.end_cycle, e.value, e.adsp_ns); } };
     std::vector<Applied> host_events;
     std::function<bool(const Board&)> stop;       // checked before every TMS instruction; Run resumes after it (below)
     std::function<bool(const Dcs8k&)> dcs_stop;   // checked before every ADSP instruction
@@ -81,6 +82,13 @@ public:
         o.vram_observer = nullptr; o.blitter.observer = nullptr; o.video.update_partial = nullptr;
     }
     Board& operator=(const Board&) = delete;
+    // Save states (mk3_save_state.hpp): the machine and scheduler value fields. Observers, stop callbacks, ROM references
+    // and the configuration (profile, logs, negative controls) stay with the live Board.
+    template<class A> friend void Fields(A& a, Board& b) {
+        a(b.s, b.o, b.dcs, b.base, b.dcs_frontier, b.host_events, b.sync_, b.adsp_sync_, b.boost_, b.in_tms_, b.boost_expire_,
+          b.dcs_cut_, b.target_, b.limit_, b.queued_, b.vblank_begin_, b.vblank_end_, b.line0_, b.sound_);
+    }
+    bool StoppedInTimeslice() const { return in_tms_; }   // Run returned from `stop`: the next Run resumes here
     size_t PendingSyncs() const { return sync_.size(); }   // snapshot diagnostics: synchronize() callbacks not yet applied
     bool Boosted() const { return boost_; }                // the 500 ns quantum of a DCS data write is in force
 
@@ -115,7 +123,8 @@ public:
     }
 
 private:
-    struct Sync { As expire; Applied event; bool dcs; };   // dcs false: a TMS input-line change (nothing modeled to apply)
+    struct Sync { As expire; Applied event; bool dcs;
+        template<class A> friend void Fields(A& a, Sync& x) { a(x.expire, x.event, x.dcs); } };   // dcs false: a TMS input-line change (nothing modeled to apply)
     std::deque<Sync> sync_;
     bool adsp_sync_ = false, boost_ = false, in_tms_ = false;   // in_tms_: Run stopped inside a TMS timeslice
     As boost_expire_ = 0, dcs_cut_ = kNever, target_ = 0;   // dcs_cut_: a DCS timer that ended the last timeslice; target_: of this one

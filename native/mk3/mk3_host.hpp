@@ -10,6 +10,7 @@
 //   These are the defaults of mk5controls::Config; the launcher's CONTROLS tab remaps the player actions (MK1_CONTROLS),
 //   adds Raw Input (HID) controllers and SOCD cleaning. Map keeps the defaults; Input::Poll uses the player's controls.
 #pragma once
+#include <filesystem>
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -51,6 +52,8 @@ private:
     void* lock_;
 };
 
+// Writes `bytes` beside `file` (write-through), then replaces `file` atomically; false (and nothing replaced) on failure.
+bool ReplaceFileBytes(const std::filesystem::path& file, const std::vector<uint8_t>& bytes);
 void SetTitle(const std::wstring& title);   // the Mk5Window of this process (class Mk5TemporalScanout)
 std::wstring Widen(const std::string& text);
 std::string Narrow(const std::wstring& text);

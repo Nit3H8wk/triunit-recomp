@@ -1145,7 +1145,7 @@ struct App {
             g.text(L"An arcade lever cannot hold both: neutral is the original.",560+shift,746,11,muted,.2f);
             control(socdControl,{969+shift,738,260,30},draftControls.socd?L"LAST INPUT WINS":L"NEUTRAL",true,false,12);
             g.text(L"SAVE STATES",306+shift,778,13,white,.4f);
-            g.text(L"In the game: F5 saves, F7 loads. MK2, both editions; one slot each, in saves/mk2.",560+shift,780,11,muted,.2f);
+            g.text(L"In the game: F5 saves, F7 loads. MK2 and MK3, both editions; one slot each, in saves.",560+shift,780,11,muted,.2f);
         }else{
             row(202,350,L"LAUNCHER FPS LIMIT",L"Unfocused: 2 FPS (10 while building). Minimized: paused.",std::to_wstring(draftLauncher.fps)+L" FPS");
             row(203,420,L"LAUNCHER V-SYNC",L"Syncs the launcher with the monitor.",draftLauncher.vsync?L"ON":L"OFF");

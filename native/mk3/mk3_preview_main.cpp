@@ -24,11 +24,14 @@
 //                Headless Remastered with --hashes also prints the scenery pixel count, the fighter layer count and
 //                the hash of the 4x frame.
 //   --dma-census per-producer DMA counts (writer/enqueue PC, display list, scroll word, table routine, graphics bank)
+//   --state-test PLAN  test plan of save states, e.g. save@100,hash@200,load@200,hash@200: each item once, in order, at
+//                the first presented frame >= its number, as F5 (save), F7 (load) or a digest of the state (hash)
 //   --cmos-profile DIR  load DIR/cmos.bin (the seed when absent) and save the NVRAM there at exit; without it the
 //                seed is used and nothing is written
 // mk3 --input-map prints the Wolf-Unit ports for each key and pad control alone (tools/mk3/test_preview.py).
 #include <algorithm>   // before the emulation headers, which use it
 #include "mk3_board.hpp"
+#include "mk3_save_state.hpp"
 #include "mk3_dcs.hpp"
 #include "mk3_host.hpp"
 #include "mk2_audio.hpp"
@@ -147,6 +150,9 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
     bool window_on = false, audio_on = false, strict = false, hashes = false, remastered = false, census_on = false;
     int watch_dcs = -1;
     std::wstring tape_file, cmos_dir;
+    enum class StateRequest { Save, Load, Hash };
+    struct PlannedState { StateRequest request; uint64_t frame; };
+    std::vector<PlannedState> state_plan;
     for (int n = 4; n < argc; ++n) {
         const std::string a = mk3host::Narrow(argv[n]);
         if (a == "--frames" && n + 1 < argc) max_frames = std::stoull(mk3host::Narrow(argv[++n]));
@@ -160,6 +166,16 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
         else if (a == "--tape" && n + 1 < argc) tape_file = argv[++n];
         else if (a == "--watch-dcs" && n + 1 < argc) watch_dcs = int(std::stoul(mk3host::Narrow(argv[++n]), nullptr, 0) & 0xffff);
         else if (a == "--cmos-profile" && n + 1 < argc) cmos_dir = argv[++n];
+        else if (a == "--state-test" && n + 1 < argc) {
+            std::stringstream list(mk3host::Narrow(argv[++n]));
+            for (std::string item; std::getline(list, item, ',');) {
+                const auto at = item.find('@');
+                const std::string kind = item.substr(0, at);
+                if (at == std::string::npos || (kind != "save" && kind != "load" && kind != "hash")) { std::fprintf(stderr, "bad --state-test item %s\n", item.c_str()); return 2; }
+                state_plan.push_back({kind == "save" ? StateRequest::Save : kind == "load" ? StateRequest::Load : StateRequest::Hash,
+                                      std::stoull(item.substr(at + 1))});
+            }
+        }
         else if (a == "--edition" && n + 1 < argc && (mk3host::Narrow(argv[n + 1]) == "original" || mk3host::Narrow(argv[n + 1]) == "remastered"))
             remastered = mk3host::Narrow(argv[++n]) == "remastered";
         else { std::fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
@@ -223,9 +239,11 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
         uint64_t output_samples = 0, output_nonzero = 0;
         // D5: host gain on the unity DCS output, then the int16 the sink plays; the canonical DCS PCM is unchanged.
         mk5audio::HostGain host_gain(mk3host::kMasterDb);
+        uint64_t pcm_hash = 0xcbf29ce484222325ull;   // --state-test: the host PCM since the last hashed frame
         mk2::DcsFloatAudio audio([&](const float* f, size_t n) {
             int16_t s[1024];
             for (size_t k = 0; k < n; ++k) s[k] = host_gain.Render<1>({double(f[k]) * 32768.0})[0];
+            for (size_t k = 0; k < n; ++k) pcm_hash = (pcm_hash ^ uint16_t(s[k])) * 0x100000001b3ull;
             output_samples += n;
             for (size_t k = 0; k < n; ++k) output_nonzero += s[k] != 0;
             if (sink) sink->Push(s, n);
@@ -251,6 +269,49 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
         std::vector<uint32_t> view, previous_rgb(previous_pens.size()), shown;
         bool stop = false, closed = false;
         const auto started = std::chrono::steady_clock::now();
+        // F5/F7 (and --state-test): taken at the next TMS instruction boundary, where `stop` ends Run resumably.
+        std::vector<StateRequest> state_requests;
+        size_t state_plan_next = 0;
+        std::vector<uint8_t> slot;
+        const auto slot_path = std::filesystem::path(L"saves/mk3") / program.sha256 / (remastered ? L"slot1-remastered.state" : L"slot1.state");
+        // Host fields of the state: the stream into the sink, its PCM cursor, the hash and tape cursors.
+        const auto host_state = [&](auto&& apply) {
+            return apply(audio, host_gain, consumed, blocks_seen, sample_ns, dcs_high, previous_pens, tape_next);
+        };
+        mk3::DmaLayers* state_layers = layer2 ? layers.get() : nullptr;
+        const auto state_request = [&](StateRequest request) {
+            if (census_on) { std::printf("{\"save_state\":\"refused\",\"error\":\"not with --dma-census\"}\n"); return; }
+            if (request != StateRequest::Load) {
+                auto bytes = host_state([&](auto&... host) { return mk3::SaveLiveState(program, b, scanout, state_layers, host...); });
+                bool written = false;
+                if (request == StateRequest::Save) {
+                    std::error_code error;
+                    std::filesystem::create_directories(slot_path.parent_path(), error);
+                    written = !error && mk3host::ReplaceFileBytes(slot_path, bytes);
+                    slot = bytes;
+                }
+                std::printf("{\"save_state\":\"%s\",\"frame\":%llu,\"bytes\":%zu,\"sha256\":\"%s\",\"file\":%s}\n",
+                            request == StateRequest::Save ? "saved" : "hash", (unsigned long long)scanout.frames, bytes.size(),
+                            Sha256(bytes).c_str(), written ? "true" : "false");
+                return;
+            }
+            auto bytes = slot;
+            const bool from_file = bytes.empty();
+            try {
+                if (from_file) {
+                    std::ifstream file(slot_path, std::ios::binary);
+                    if (!file) throw std::runtime_error("no saved state");
+                    bytes.assign(std::istreambuf_iterator<char>(file), {});
+                }
+                mk3::state::CheckLiveState(program, bytes, mk3::state::Edition(state_layers));
+            } catch (const std::exception& e) {
+                std::printf("{\"save_state\":\"refused\",\"error\":\"%s\"}\n", e.what());
+                return;
+            }
+            host_state([&](auto&... host) { mk3::LoadLiveState(program, bytes, b, scanout, state_layers, host...); return 0; });
+            std::printf("{\"save_state\":\"loaded\",\"frame\":%llu,\"from\":\"%s\"}\n", (unsigned long long)scanout.frames,
+                        from_file ? "file" : "memory");
+        };
 
         scanout.presented = [&](const mk3::Scanout& s) {
             // Audio: every DAC sample delivered so far, through the shared DCS 31250 Hz -> 48 kHz resampler.
@@ -283,6 +344,11 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
                 scenery_pixels += flagged; scenery_frames += flagged != 0;
                 if (s.fighters.serial) { ++fighter_frames; fighter_layers += s.fighters.layers.size(); fighter_mismatched += s.FighterMismatched(); }
             }
+            // A load moves the frame counter: the items after it wait for the frames that follow it.
+            while (state_plan_next < state_plan.size() && frame >= state_plan[state_plan_next].frame) {
+                state_requests.push_back(state_plan[state_plan_next++].request);
+                if (state_requests.back() == StateRequest::Load) break;
+            }
             const bool dump = dump_frames.count(frame) != 0;
             if (hashes || dump) {
                 view.resize(previous_pens.size());
@@ -302,6 +368,7 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
                                 (unsigned long long)frame, sec, atto, (unsigned long long)b.Cycles(),
                                 (unsigned long long)HashRgb(s.frame), (unsigned long long)HashRgb(previous_rgb),
                                 (unsigned long long)HashWords(b.o.palette));
+                    if (!state_plan.empty()) { std::printf(",\"pcm\":\"%016llx\"", (unsigned long long)pcm_hash); pcm_hash = 0xcbf29ce484222325ull; }
                     if (layer2) std::printf(",\"scenery\":%llu,\"fighters\":%zu,\"rm\":\"%016llx\"", (unsigned long long)flagged, s.fighters.serial ? s.fighters.layers.size() : size_t(0),
                                             (unsigned long long)(composed.empty() ? 0 : HashRgb(composed)));
                     std::printf("}\n");
@@ -335,6 +402,8 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
                 fighters_shown.layers.clear();
                 if (s.fighters.serial) fighters_shown = s.fighters;
                 window->Present(shown, mk3::Scanout::kFrameWidth, mk3::Scanout::kFrameHeight, backdrop_shown, fighters_shown);   // paced to the 146234-clock raster
+                for (const auto r : window->TakeStateRequests())
+                    state_requests.push_back(r == Mk5Window::StateRequest::Save ? StateRequest::Save : StateRequest::Load);
                 // Inputs at the frame update, as MAME polls the host once per frame.
                 if (tape.empty()) {
                     const auto p = input.Poll();
@@ -346,6 +415,7 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
             if (max_frames && frame >= max_frames) stop = true;
         };
         b.stop = [&](const mk3::Board& board) {
+            if (!state_requests.empty() && !stop) return true;   // before the observers' Step: Run resumes at this instruction
             if (census_on) census.queue.Step(board.s.pc, board.s.a.data());
             if (layer2) layers->Step(board.s.pc, board.s.a.data());
             if (tape_next < tape.size()) {
@@ -357,7 +427,13 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
         };
 
         std::string frontier = "none";
-        try { b.Run(); } catch (const std::runtime_error& e) { frontier = e.what(); }
+        try {
+            for (b.Run(); !stop && !state_requests.empty(); b.Run()) {
+                const auto requests = std::move(state_requests);
+                state_requests.clear();
+                for (const auto r : requests) state_request(r);
+            }
+        } catch (const std::runtime_error& e) { frontier = e.what(); }
         const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
         if (sink) sink->Drain();
         scan_dcs();
