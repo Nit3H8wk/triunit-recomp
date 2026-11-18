@@ -19,7 +19,7 @@ Steps (plan 2026-11-15-conformidade-legal.md, Fase 2):
 The receipt (setup.json in the output folder) keeps only identities, digests, counts and timings.
 """
 from pathlib import Path
-import argparse,hashlib,json,os,shutil,sys,threading,time
+import argparse,hashlib,json,os,shutil,sys,threading,time,traceback
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
 from tools.setup import paths
@@ -52,14 +52,64 @@ def progress(step=None,**fields):
 def units(done,total):progress(units=dict(done=done,total=total))
 
 
+class SetupError(Exception):
+    """A failure the launcher shows as written: `code` (launcher_main.cpp failureLine), one plain sentence and a hint.
+    `detail`: one technical line (first compiler error, failing check) for the log and the launcher's Copy report."""
+    def __init__(self,code,message,hint='',detail=''):
+        super().__init__(message);self.code,self.message,self.hint,self.detail=code,message,hint,detail
+
+
+DOING=dict(verify='checking the ROM files',stage='copying the ROM files',decoder='building the decoder',
+           generate='generating the C++',accept='checking the generated C++',compile='compiling the game',
+           seed='creating the factory settings',install='installing the game')
+REPORT_HINT='Open the log for details, or use Copy report and send it to the project.'
+DISK_HINT='Free some space on the drive of this folder and build again.'
+
+
+def classify(error,step):
+    """Any exception of a setup run as a SetupError (KeyboardInterrupt and the like stay as they are)."""
+    if isinstance(error,SetupError):return error
+    if not isinstance(error,Exception) and not (isinstance(error,SystemExit) and isinstance(error.code,str)):return error
+    text=str(error).strip()
+    if isinstance(error,OSError) and (error.errno==28 or getattr(error,'winerror',None) in (39,112)):
+        return SetupError('disk_full','The disk is full.',DISK_HINT,text)
+    if step=='verify':
+        return SetupError('rom_mismatch','Your ROM files do not match the supported revision.',
+                          'Run Verify on the ROM Setup page to see which file is missing or different.',text)
+    return SetupError('internal',f'Something went wrong while {DOING.get(step,"preparing the game")}.',REPORT_HINT,
+                      text.splitlines()[0][:300] if text else type(error).__name__)
+
+
+def build_failed(built):
+    """SetupError for a failed build result (cpp_build / q.command); the whole compiler output goes to the log."""
+    output=built.get('stdout') or built.get('output_tail') or ''
+    print(output,file=sys.stderr)
+    first=next((line.strip() for line in output.splitlines()
+                if 'error:' in line or 'undefined reference' in line or 'No space left' in line),'')
+    version=compiler_version();tested=f'g++ {version}'+('' if version==VALIDATED_CC else f' (tested: {VALIDATED_CC})')
+    if 'No space left' in output:return SetupError('disk_full','The disk is full.',DISK_HINT,first)
+    if built.get('timed_out'):
+        return SetupError('timed_out',f'The build with {tested} took longer than the time limit.',
+                          'Close other heavy programs and build again.',first)
+    hint=('This compiler is not the tested version. ' if version!=VALIDATED_CC else '')+REPORT_HINT
+    if 'ld returned' in output or 'undefined reference' in output:
+        return SetupError('link_failed',f'The game could not be linked with {tested}.',hint,first)
+    return SetupError('compile_failed',f'The game could not be compiled with {tested}.',hint,first)
+
+
+def compiler_version():
+    import subprocess
+    from tools.quality import run as q
+    if not q.DEFAULT_CC.is_file():return None
+    try:return subprocess.run([str(q.DEFAULT_CC),'-dumpfullversion'],capture_output=True,text=True,timeout=30).stdout.strip() or None
+    except (OSError,subprocess.SubprocessError):return None
+
+
 def requirements():
     """What the setup needs on this machine: 64-bit Windows, this Python and the validated g++."""
-    import platform,subprocess
+    import platform
     from tools.quality import run as q
-    version=None
-    if q.DEFAULT_CC.is_file():
-        try:version=subprocess.run([str(q.DEFAULT_CC),'-dumpfullversion'],capture_output=True,text=True,timeout=30).stdout.strip() or None
-        except (OSError,subprocess.SubprocessError):pass
+    version=compiler_version()
     found=dict(windows_64bit=sys.platform=='win32' and platform.machine().endswith('64'),python=platform.python_version(),
                compiler=dict(path=q.DEFAULT_CC.as_posix(),version=version,validated=VALIDATED_CC))
     found['python_supported']=sys.version_info>=MIN_PYTHON
@@ -123,7 +173,8 @@ def stage(game,source,names):
         src,dst=source/name,target/name
         if dst.exists():
             if dst.stat().st_size==src.stat().st_size and _sha(dst)==_sha(src):continue
-            raise SystemExit(f'roms/{game}/{name} already exists with other contents; move it away and run the setup again')
+            raise SetupError('rom_conflict',f'roms/{game}/{name} already exists with other contents.',
+                             'Move that file out of the roms folder and build again.')
         try:os.link(src,dst)
         except OSError:shutil.copy2(src,dst)
         done+=1
@@ -156,7 +207,9 @@ def toolchain():
     from tools.quality import run as q
     import subprocess
     cc=q.DEFAULT_CC
-    if not cc.is_file():raise SystemExit(f'Compiler not found: {cc} (MSYS2 MinGW-w64 g++ {VALIDATED_CC} is the validated toolchain)')
+    if not cc.is_file():
+        raise SetupError('compiler_missing','The C++ compiler (g++) was not found.',
+                         f'Install MSYS2 and its MinGW-w64 g++ (tested: {VALIDATED_CC}); the README has the steps.',str(cc))
     version=subprocess.run([str(cc),'--version'],capture_output=True,text=True).stdout.splitlines()[0]
     return dict(compiler=cc.name,version=version,sha256=_sha(cc))
 
@@ -193,7 +246,7 @@ def setup_mk3(roms,compile_exe):
             flags=[*generate.FLAGS,'-I'+str(ROOT/'native/include'),'-I'+str(ROOT/'native/mk3'),'-I'+str(ROOT/'native/mk2'),mk3.include()]
             sources=[ROOT/p for p in preview.SOURCES]+[ROOT/'native/mk3'/n for n in generate.RUNTIME]+sorted(units_dir.glob('*.cpp'))
             built=cpp_build.build(cc,flags,sources,preview.LIBRARIES,scratch/'mk3.exe',scratch,env=env,timeout=3600,compile_from_scratch=True)
-            if not built['passed']:raise SystemExit('MK3 build failed: '+json.dumps(q.compact(built))[:3000])
+            if not built['passed']:raise build_failed(built)
             os.replace(scratch/'mk3.exe',out/'mk3.exe')
         finally:shutil.rmtree(scratch,ignore_errors=True)
         receipt['compile']=dict(executable=str((out/'mk3.exe').relative_to(ROOT)).replace('\\','/'),sha256=_sha(out/'mk3.exe'),
@@ -230,7 +283,7 @@ def setup_mk2(roms,compile_exe):
             built=q.command([q.DEFAULT_CC,*package_native.FLAGS,'-static',*[ROOT/p for p in package_native.SOURCES],
                              *package_native.LIBRARIES,'-Wl,--no-insert-timestamp','-o',scratch/'mk2-native.exe'],
                             scratch,cwd=ROOT,env=env,timeout=3600)
-            if not built['passed']:raise SystemExit('MK2 build failed: '+json.dumps(q.compact(built))[:3000])
+            if not built['passed']:raise build_failed(built)
             os.replace(scratch/'mk2-native.exe',out/'mk2-native.exe')
         finally:shutil.rmtree(scratch,ignore_errors=True)
         receipt['compile']=dict(executable=str((out/'mk2-native.exe').relative_to(ROOT)).replace('\\','/'),
@@ -254,7 +307,7 @@ def setup_mk1(roms,compile_exe):
     if compile_exe:
         from tools.mk1 import build
         progress('compile');t=time.perf_counter();built=build.engine(out)
-        if not built['passed']:raise SystemExit('MK1 build failed: '+json.dumps(built)[:3000])
+        if not built['passed']:raise build_failed(built)
         receipt['compile']=dict(executable=str((out/'mk5-native-audio.exe').relative_to(ROOT)).replace('\\','/'),
                                 sha256=_sha(out/'mk5-native-audio.exe'),seconds=round(time.perf_counter()-t,1))
         # CMOS seed: the game's factory restore from a blank CMOS, run by the compiled engine (tools/setup/mk1.make_seed).
@@ -287,12 +340,16 @@ def main(argv=None):
     progress('verify')
     try:
         if sys.version_info<MIN_PYTHON:
-            raise SystemExit(f'Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]} or later is required (found {sys.version.split()[0]})')
+            raise SetupError('python_old',f'Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]} or later is required; this PC has {sys.version.split()[0]}.',
+                             'Install a current Python from python.org and build again.')
         if a.verify_only:
             found=report(a.game,a.roms);print(json.dumps(found,indent=1))
-            progress(state='done' if found['ok'] else 'failed',report=found);return 0 if found['ok'] else 1
-        from tools.quality import cpp_build
+            if found['ok']:progress(state='done',report=found);return 0
+            progress(state='failed',report=found,code='rom_mismatch',message='Some ROM files are missing or different.',
+                     hint='The list on the ROM Setup page shows each file and its result.');return 1
+        from tools.quality import cpp_build,run as q
         cpp_build.on_unit=units
+        q.WARNINGS_AS_ERRORS=False   # a newer g++ adds warnings; the code it generates is the same (CI keeps -Werror)
         receipt=SETUP[a.game](a.roms,not a.no_compile)
         receipt['setup_version']=SETUP_VERSION
         out=paths.output(a.game);out.mkdir(parents=True,exist_ok=True)
@@ -300,8 +357,8 @@ def main(argv=None):
         bad=[k for k,v in receipt.get('accept',{}).items() if v=='DIFFERS']
         if bad:
             print(json.dumps(receipt,indent=1))
-            message='Generated output differs from the acceptance digests: '+', '.join(bad)
-            print(message,file=sys.stderr);progress(state='failed',message=message);return 1
+            raise SetupError('acceptance_differs','The generated C++ does not match the reference digests.',
+                             'Your ROM files passed the check, so this is a problem in this release. '+REPORT_HINT,', '.join(bad))
         if 'compile' in receipt:
             # 8. install: the launcher package from the executable just built (tools/setup/install.py).
             from tools.setup import install
@@ -312,7 +369,13 @@ def main(argv=None):
         print(json.dumps(receipt,indent=1))
         progress(state='done');return 0
     except BaseException as error:
-        progress(state='failed',message=str(error) or type(error).__name__);raise
+        failure=classify(error,PROGRESS['state'].get('step'))
+        if not isinstance(failure,SetupError):progress(state='failed',code='cancelled',message='Cancelled.');raise
+        if failure is not error:traceback.print_exc()
+        # Last lines of logs/setup-<game>.log: the launcher's Copy report takes its tail.
+        print(f'\nSetup failed [{failure.code}] while {DOING.get(PROGRESS["state"].get("step"),"preparing")}: {failure.message}'+
+              (f'\n{failure.detail}' if failure.detail else ''),file=sys.stderr)
+        progress(state='failed',code=failure.code,message=failure.message,hint=failure.hint,detail=failure.detail);return 1
 
 
 if __name__=='__main__':raise SystemExit(main())

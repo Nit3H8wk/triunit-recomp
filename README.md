@@ -67,7 +67,10 @@ hardware (**ADSP-2105 DCS**, **6809** sound board, **YM2151**, **OKI ADPCM**).
    manifest; the report lists each file with its result.
 4. **Build**: press **Build** (or **Build all**). The page shows the current
    step, the compiled units, the elapsed time and the time of the last run, and
-   ends with *Ready to play* or with the step that failed and its log.
+   ends with *Ready to play* or with the step that failed, what went wrong in
+   plain words and what to do next. **Copy report** copies a short summary
+   (versions, step, error and the end of the log, with your user folder hidden)
+   to paste in an issue.
 5. **Play**: choose a cabinet, switch between Arcade Original and Remastered,
    and press **PLAY**.
 
@@ -81,7 +84,7 @@ hardware (**ADSP-2105 DCS**, **6809** sound board, **YM2151**, **OKI ADPCM**).
 |-----------|-------------|
 | OS | Windows 10 or 11, 64-bit |
 | GPU | DirectX 12 |
-| Compiler | MSYS2 MinGW-w64 g++ at `C:/msys64/mingw64/bin/g++.exe` (validated: **16.1.0**; another version is reported as not validated) |
+| Compiler | MSYS2 MinGW-w64 g++ at `C:/msys64/mingw64/bin/g++.exe` (validated: **16.1.0**; another version is reported as not validated, and the setup builds without `-Werror` so newer compiler warnings do not stop it) |
 | Python | 3.12 or later on `PATH` (`python` or the `py` launcher; validated: **3.13.2**). The setup uses only the standard library. |
 
 The toolchain and Python are not bundled; the setup uses the ones installed on
@@ -194,7 +197,7 @@ XInput controller navigation (<kbd>PgUp</kbd> / <kbd>PgDn</kbd> or
 |------|--------------|
 | **Overview** | The six setup steps, one card per game (revision, board, ROM folder, manifest and the digests it pins, Build), requirements found on this machine, output and receipt locations, launcher modes and custom audio. |
 | **ROM Setup** | ROM folder per game, Verify, and the per-file verification report. |
-| **Build** | One game at a time: progress, Cancel (ends the whole build), Open log (`logs/setup-<game>.log`), Open folder, Play. |
+| **Build** | One game at a time: progress, Cancel (ends the whole build), Open log (`logs/setup-<game>.log`), Open folder, Copy report (after a failure), Play. |
 | **Play** | The cabinets, the selected game and edition, PLAY. |
 | **Settings** | Video, Audio, Display, Launcher, Adjustments and Utilities of the selected game and of the app. |
 | **Legal** | The legal notice, the ROM ownership confirmation and links to `DISCLAIMER.md`, `THIRD_PARTY_NOTICES.md` and `LICENSE`. |

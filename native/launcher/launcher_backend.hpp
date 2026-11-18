@@ -16,6 +16,7 @@ struct SetupGame {
  std::filesystem::path folder;                 // ROM folder chosen for this game (build/native/launcher-profile/setup.cfg)
  bool queued=false,active=false,verified=false; // verified: the last --verify-only report or a finished setup was ok
  std::string mode,step,state,message,program;  // last progress file; state: queued, running, done, failed, cancelled
+ std::string code,hint,detail;                 // failed: setup.py SetupError code, plain hint, one technical line
  int unitsDone=0,unitsTotal=0;double elapsed=0,estimate=0; // estimate: seconds of the last finished setup here (0 = none)
  std::vector<std::pair<std::string,std::string>> files; // last --verify-only report: file name, status
  std::vector<std::string> checks;              // digests the manifest pins (size, crc32, sha1, sha256)
@@ -88,6 +89,10 @@ public:
  void checkRequirements();
  void cancelSetup();
  std::filesystem::path setupLog(int index)const;    // logs/setup-<game>.log
+ // A failed setup in words for the player, never the raw error (that stays in the log and in the report).
+ std::wstring failureText(int index)const;
+ std::wstring failureHint(int index)const;
+ std::wstring setupReport(int index)const;         // Copy report: versions, step, code, detail, log tail; %USERPROFILE% hidden
  std::filesystem::path setupOutput(int index)const; // generated/<game>/<sha>/ of the finished record, empty without one
  bool launchNativeExperiment(const std::filesystem::path& manifest,const std::filesystem::path& settings={});
  bool launch(unsigned frames=0);void poll();bool running() const;

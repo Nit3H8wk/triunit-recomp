@@ -27,6 +27,7 @@ PRODUCT = ROOT / "build/native/manual-temporary-8-20261025/product"
 DEFAULT_CC = Path("C:/msys64/mingw64/bin/g++.exe")
 ASAN_CC = Path("C:/msys64/clang64/bin/clang++.exe")
 OUTPUT_LIMIT = 128 * 1024
+WARNINGS_AS_ERRORS = True  # tools/setup/setup.py turns it off: -Werror is dropped from every command
 
 
 def select_compiler(explicit, sanitizer):
@@ -194,6 +195,8 @@ class ProcessJob:
 
 def command(args, scratch, timeout=120, env=None, cwd=None, output_limit=OUTPUT_LIMIT, *, unset_env=(), parallel_cpp=True):
     """Bound output in memory and reap the owned process tree on timeout."""
+    if not WARNINGS_AS_ERRORS:
+        args = [a for a in args if str(a) != "-Werror"]
     if args and Path(str(args[0])).name.lower().startswith(("g++", "clang++", "c++")):
         from tools.setup.paths import with_generated   # includes generated on this machine (generated/<game>/<sha>/)
         args = with_generated(args)

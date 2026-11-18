@@ -7,7 +7,9 @@
 #include <tlhelp32.h>
 #include <atomic>
 #include <array>
+#include <algorithm>
 #include <climits>
+#include <cwctype>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -369,6 +371,44 @@ bool Backend::acknowledgeRoms(bool value){
  acknowledged_=before;status_=L"Could not save the confirmation.";return false;
 }
 fs::path Backend::setupLog(int index)const{return root_/L"logs"/(L"setup-"+std::wstring(compatibleGames.at(size_t(index)).setupId)+L".log");}
+namespace {
+// Text of setup.py shown as is only when it is one short plain sentence (never a JSON dump, traceback or path list).
+bool plain(const std::string& text){return !text.empty()&&text.size()<=200&&text.find_first_of("{}[]\r\n")==std::string::npos;}
+std::wstring hideProfile(std::wstring text){
+ wchar_t profile[MAX_PATH]{};if(!GetEnvironmentVariableW(L"USERPROFILE",profile,MAX_PATH)||!profile[0])return text;
+ const auto lower=[](std::wstring s){for(auto& c:s)c=wchar_t(towlower(c));return s;};
+ std::wstring slash=profile;std::replace(slash.begin(),slash.end(),L'\\',L'/');
+ for(const auto& key:{lower(profile),lower(slash)})
+  for(size_t at;(at=lower(text).find(key))!=std::wstring::npos;)text.replace(at,key.size(),L"%USERPROFILE%");
+ return text;
+}
+std::wstring logTail(const fs::path& log,size_t lines){
+ std::ifstream in(log,std::ios::binary);if(!in)return L"(no log)";
+ in.seekg(0,std::ios::end);const std::streamoff size=in.tellg(),take=std::min<std::streamoff>(size,32768);
+ std::string bytes(size_t(take),'\0');in.seekg(size-take);in.read(bytes.data(),take);
+ size_t at=bytes.size(),n=0;while(at&&n<=lines)if(bytes[--at]=='\n')++n;
+ if(n>lines)bytes.erase(0,at+1);
+ return nativeError(bytes.c_str());
+}
+}
+std::wstring Backend::failureText(int index)const{
+ const auto& g=setupGames_.at(size_t(index));
+ return !g.code.empty()&&plain(g.message)?nativeError(g.message.c_str()):L"Something went wrong at this step.";
+}
+std::wstring Backend::failureHint(int index)const{
+ const auto& hint=setupGames_.at(size_t(index)).hint;
+ return plain(hint)?nativeError(hint.c_str()):L"Open the log for details, or use Copy report and send it to the project.";
+}
+std::wstring Backend::setupReport(int index)const{
+ const auto& g=setupGames_.at(size_t(index));const auto& r=requirements_;const auto& game=compatibleGames.at(size_t(index));
+ const auto w=[](const std::string& s){return s.empty()?std::wstring(L"-"):nativeError(s.c_str());};
+ std::wstring text=L"TriUnit Recomp setup report\nGame: "+std::wstring(game.title)+L" ("+game.setupId+L")\nSetup version: "+w(kSetupVersion)+
+  L"\nPython: "+w(r.python)+L"\ng++: "+w(r.compiler)+L" (tested: "+w(r.validated)+L")\nStep: "+w(g.step)+L"\nResult: "+w(g.state)+
+  L" ["+w(g.code)+L"]\nMessage: "+w(g.message)+L"\nDetail: "+w(g.detail)+L"\n\nLast lines of "+setupLog(index).filename().wstring()+L":\n"+
+  logTail(setupLog(index),40);
+ std::wstring crlf;for(const wchar_t c:text){if(c==L'\n'&&(crlf.empty()||crlf.back()!=L'\r'))crlf+=L'\r';crlf+=c;}
+ return hideProfile(crlf);
+}
 fs::path Backend::setupOutput(int index)const{
  if(index<0||index>2)return {};
  try{return readSetup(root_,compatibleGames[size_t(index)].setupId).directory;}catch(...){return {};}
@@ -439,7 +479,7 @@ void Backend::pollSetup(){
   try{startSetupJob(job);}
   catch(const std::exception& error){
    if(job.game<0){requirements_={};requirements_.checked=true;}
-   else{auto& game=setupGames_[size_t(job.game)];game.queued=game.active=false;game.state="failed";game.message=error.what();}
+   else{auto& game=setupGames_[size_t(job.game)];game.queued=game.active=false;game.state="failed";game.code="launcher";game.message=error.what();game.hint.clear();game.detail.clear();}
    status_=L"Setup refused: "+nativeError(error.what());
   }
  }
@@ -463,7 +503,7 @@ void Backend::startSetupJob(SetupJob job){
                       quote(game.folder.wstring())+L" --progress "+quote(progress.wstring())+(job.verify?L" --verify-only":L"");
  setupProcess_=spawnSetup(root_,command,setupLog(job.game),setupLog(job.game),setupJob_);
  activeSetup_=job;nextSetupRead_=0;
- game.active=true;game.state="running";game.step="verify";game.message.clear();game.unitsDone=game.unitsTotal=0;game.elapsed=0;
+ game.active=true;game.state="running";game.step="verify";game.message.clear();game.code.clear();game.hint.clear();game.detail.clear();game.unitsDone=game.unitsTotal=0;game.elapsed=0;
  status_=job.verify?L"Checking the ROM files...":L"Setup running: checking the ROM files and generating the game on this machine...";
 }
 void Backend::finishSetup(DWORD code){
@@ -487,16 +527,19 @@ void Backend::finishSetup(DWORD code){
  auto& game=setupGames_[size_t(job.game)];game.active=false;
  if(setupCancelled_){game.state="cancelled";game.message="Cancelled";}
  else if(code==0){game.state="done";if(game.mode=="setup")game.verified=true;}
- else if(game.state!="failed"){game.state="failed";if(game.message.empty())game.message="setup.py exited with code "+std::to_string(code);}
+ else if(game.state!="failed"||game.code.empty()){
+  game.state="failed";game.code="internal";game.detail=(game.message.empty()?"":game.message+"; ")+"setup.py exit code "+std::to_string(code);
+  game.message="The setup stopped unexpectedly.";game.hint.clear();}
  refreshSetupEstimate(job.game);
  const std::wstring name=compatibleGames[size_t(job.game)].title;
  status_=game.state=="done"?(game.mode=="verify"?name+L": ROM files verified.":name+L": ready to play."):
-         game.state=="cancelled"?name+L": setup cancelled.":name+L": failed; see "+setupLog(job.game).filename().wstring()+L".";
+         game.state=="cancelled"?name+L": setup cancelled.":name+L": "+failureText(job.game);
 }
 void Backend::readSetupProgress(int index){
  tinyjson::Value value;if(!readObject(setupProgress(root_,size_t(index)),value))return;
  auto& game=setupGames_[size_t(index)];
  game.mode=text(value,"mode");game.step=text(value,"step");game.state=text(value,"state");game.message=text(value,"message");
+ game.code=text(value,"code");game.hint=text(value,"hint");game.detail=text(value,"detail");
  game.elapsed=number(value,"elapsed");game.unitsDone=game.unitsTotal=0;
  if(const auto* units=member(value,"units",tinyjson::Value::Object)){game.unitsDone=int(number(*units,"done"));game.unitsTotal=int(number(*units,"total"));}
  if(const auto* report=member(value,"report",tinyjson::Value::Object)){

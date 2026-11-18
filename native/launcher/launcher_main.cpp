@@ -195,6 +195,16 @@ struct App {
         if(!fs::exists(path)){notice=L"Not found: "+path.filename().wstring();return;}
         if(INT_PTR(ShellExecuteW(window,L"open",path.c_str(),nullptr,nullptr,SW_SHOWNORMAL))<=32)notice=L"Could not open "+path.filename().wstring()+L".";
     }
+    bool copyText(const std::wstring& text){
+        if(!OpenClipboard(window))return false;
+        const HGLOBAL memory=GlobalAlloc(GMEM_MOVEABLE,(text.size()+1)*sizeof(wchar_t));bool copied=false;
+        if(memory){
+            if(void* bytes=GlobalLock(memory)){std::memcpy(bytes,text.c_str(),(text.size()+1)*sizeof(wchar_t));GlobalUnlock(memory);
+                copied=EmptyClipboard()&&SetClipboardData(CF_UNICODETEXT,memory);}
+            if(!copied)GlobalFree(memory);   // on success the clipboard owns it
+        }
+        CloseClipboard();return copied;
+    }
     bool settingsEnabled()const{return !closing&&!backend.running();}
     bool ready(int game)const{return game==0?mk1Available:game==1?mk2Available:game==2&&mk3Available;}
     // MK3 card: the two editions of the native package (Original / Remastered video layer); UMK3 is not integrated.
@@ -363,6 +373,7 @@ struct App {
                 b.push_back({80+i,{x1-190,r.y+66,170,36},L"Cancel",s.queued||s.active,styleNormal});
                 b.push_back({90+i,{r.x+20,r.y+r.h-50,130,34},L"Open log",fs::exists(backend.setupLog(i)),styleNormal});
                 b.push_back({95+i,{r.x+160,r.y+r.h-50,150,34},L"Open folder",done,styleNormal});
+                b.push_back({100+i,{r.x+320,r.y+r.h-50,150,34},L"Copy report",s.state=="failed"&&!s.active,styleNormal});
                 b.push_back({110+i,{x1-190,r.y+r.h-52,170,38},L"Play",ready(i)&&idle(i),stylePrimary});}
         }else if(page==pageLegal){
             b.push_back({120,{contentLeft+30,790,x1-contentLeft-60,44},
@@ -468,6 +479,7 @@ struct App {
         if(id>=80&&id<=82){backend.cancelSetup();notice=backend.status();return;}
         if(id>=90&&id<=92){openPath(backend.setupLog(id-90));return;}
         if(id>=95&&id<=97){openPath(backend.setupOutput(id-95));return;}
+        if(id>=100&&id<=102){notice=copyText(backend.setupReport(id-100))?L"Report copied. Paste it in your message to the project.":L"Could not copy the report.";return;}
         if(id>=110&&id<=112){if(chosen!=id-110)selectMachine(id-110);page=pagePlay;focus=3;return;}
         if(id==120){backend.acknowledgeRoms(!backend.romsAcknowledged());notice=backend.romsAcknowledged()?L"Confirmation saved. You can verify and build your games.":L"Confirmation withdrawn.";return;}
         if(id>=121&&id<=123){openPath(backend.root()/std::array<const wchar_t*,3>{L"DISCLAIMER.md",L"THIRD_PARTY_NOTICES.md",L"LICENSE"}[size_t(id-121)]);return;}
@@ -938,7 +950,7 @@ struct App {
                 line+=L"  /  elapsed "+clockText(s.elapsed);if(s.estimate>0)line+=L"  /  last run "+clockText(s.estimate);lineColor=white;
             }else if(s.active){sweep=true;line=L"Checking the ROM files...  /  elapsed "+clockText(s.elapsed);lineColor=white;}
             else if(s.queued)line=L"Queued: starts after the current game.";
-            else if(s.state=="failed"){fraction=float(step-1)/4;line=L"Failed at "+std::wstring(stepLabels[size_t(step)])+L": "+widen(s.message);lineColor=gold;}
+            else if(s.state=="failed"){fraction=float(step-1)/4;line=L"Failed at "+std::wstring(stepLabels[size_t(step)])+L": "+backend.failureText(i);lineColor=gold;}
             else if(s.state=="cancelled")line=L"Cancelled. Build again to restart from the first step.";
             else if(rec.finished){fraction=1;line=std::wstring(ready(i)?L"Ready to play":L"Built; the launcher package for this build is not installed")+L"  /  executable SHA-256 "+widen(rec.executableSha256.substr(0,16))+L"...  /  setup time "+clockText(rec.seconds);}
             else if(rec.outdated)line=L"Built by an older version of TriUnit Recomp: build it again to update this game.";
@@ -953,6 +965,7 @@ struct App {
                 const std::wstring name=stepLabels[size_t(k)];g.text(name,sx,r.y+116,13,reached?white:muted,.1f);sx+=g.textWidth(name,13,.1f)+12;
                 if(k<5){g.text(L">",sx,r.y+116,13,muted);sx+=18;}
             }
+            if(s.state=="failed"&&!s.active&&!s.queued)g.text(fit(backend.failureHint(i),14,r.w-240),r.x+20,r.y+138,14,white,.1f);
         }
     }
     void drawLegal(){
@@ -1248,7 +1261,7 @@ int prepare(const fs::path& root,const std::vector<std::wstring>& args){
     const std::array<std::pair<const char*,const wchar_t*>,8> steps{{{"verify",L"checking the ROM files"},{"stage",L"staging the ROM files"},
         {"decoder",L"building the decoder"},{"generate",L"generating the C++"},{"accept",L"checking the generated C++"},{"compile",L"compiling"},
         {"seed",L"making the factory settings"},{"install",L"installing"}}};
-    bool failed=false;
+    std::wstring failed;   // the first game that did not build, in words
     for(size_t k=0;k<found.size();++k){
         const int i=found[k];const std::wstring title=compatibleGames[size_t(i)].title;
         if(!backend.queueSetup(i,false))throw std::runtime_error("setup not queued");
@@ -1257,9 +1270,9 @@ int prepare(const fs::path& root,const std::vector<std::wstring>& args){
             const double part=s<5?.04*double(s):s==5?.2+.7*(g.unitsTotal?double(g.unitsDone)/g.unitsTotal:0):.9+.05*double(s-5);
             auto text=title+L": "+steps[s].second;if(s==5&&g.unitsTotal)text+=L" "+std::to_wstring(g.unitsDone)+L"/"+std::to_wstring(g.unitsTotal);
             say(.05+.95*(double(k)+part)/double(found.size()),text);});
-        if(backend.setupGame(i).state!="done"){failed=true;say(.05+.95*double(k+1)/double(found.size()),title+L": failed, see logs\\"+backend.setupLog(i).filename().wstring());}
+        if(backend.setupGame(i).state!="done"){const auto why=title+L": "+backend.failureText(i);if(failed.empty())failed=why+L" "+backend.failureHint(i);say(.05+.95*double(k+1)/double(found.size()),why);}
     }
-    if(failed)return fail(1,1,L"A game didn't build; its log is in the logs folder (Logs button).");
+    if(!failed.empty())return fail(1,1,failed);
     say(1,L"Ready to play");return 0;
 }
 }

@@ -17,8 +17,12 @@ def put(**s):
     open(progress+'.partial','w').write(json.dumps(s));os.replace(progress+'.partial',progress)
 if game=='mk1':
     put(step='verify',state='done',report=dict(ok=True,program='ok',checks=['size','sha256'],files=[dict(name='a.rom',status='ok'),dict(name='b.rom',status='ok')]))
+elif game=='mk2' and os.path.exists(os.path.join(os.path.dirname(progress),'raw')):
+    put(step='accept',state='failed',message='MK2 build failed: {"passed": false, "exit_code": 1}');sys.exit(1)
 elif game=='mk2':
-    put(step='accept',state='failed',message='stub failure');sys.exit(1)
+    print('g++ -c '+os.environ['USERPROFILE']+'\\Games\\a.cpp',file=sys.stderr)
+    put(step='compile',state='failed',code='compile_failed',message='The game could not be compiled with g++ 16.2.0 (tested: 16.1.0).',
+        hint='Open the log for details.',detail='a.cpp:1: error: x');sys.exit(1)
 else:
     put(step='compile',state='running',units=dict(done=3,total=28))
     child=__import__('subprocess').Popen([sys.executable,'-c','import time;time.sleep(120)'])
@@ -56,8 +60,18 @@ int wmain(int argc,wchar_t** argv){
   const auto& verified=b.setupGame(0);
   check(verified.state=="done"&&verified.mode=="verify"&&verified.verified&&verified.program=="ok","verify report done");
   check(verified.files.size()==2&&verified.files[1].first=="b.rom"&&verified.files[1].second=="ok"&&verified.checks.size()==2,"per-file report");
+  {std::ofstream raw(root/L"logs/raw");}
   check(b.queueSetup(1,false)&&waitFor([&]{return !b.setupRunning();},60),"failing setup finishes");
-  check(b.setupGame(1).state=="failed"&&b.setupGame(1).message=="stub failure"&&b.setupGame(1).step=="accept"&&!b.setupGame(1).verified,"failure keeps step and message");
+  check(b.setupGame(1).state=="failed"&&b.setupGame(1).step=="accept"&&!b.setupGame(1).verified,"failure keeps its step");
+  check(b.failureText(1)==L"The setup stopped unexpectedly."&&b.setupGame(1).code=="internal","a raw error is never shown");
+  check(b.setupGame(1).detail.find("MK2 build failed")==0,"the raw error stays in the detail for the report");
+  fs::remove(root/L"logs/raw");
+  check(b.queueSetup(1,false)&&waitFor([&]{return !b.setupRunning();},60),"coded failure finishes");
+  check(b.failureText(1)==L"The game could not be compiled with g++ 16.2.0 (tested: 16.1.0)."&&b.failureHint(1)==L"Open the log for details.",
+        "setup.py sentence and hint shown");
+  {const auto report=b.setupReport(1);wchar_t profile[MAX_PATH]{};GetEnvironmentVariableW(L"USERPROFILE",profile,MAX_PATH);
+   check(report.find(L"[compile_failed]")!=std::wstring::npos&&report.find(L"a.cpp:1: error: x")!=std::wstring::npos,"report has code and detail");
+   check(report.find(L"%USERPROFILE%\\Games\\a.cpp")!=std::wstring::npos&&report.find(profile)==std::wstring::npos,"report hides the user folder");}
   check(b.queueSetup(2,false),"long setup queued");
   check(b.queueSetup(0,false),"second job queued behind the first");
   const auto pidFile=root/L"logs/child.pid";
