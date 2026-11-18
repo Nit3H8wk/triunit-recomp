@@ -53,16 +53,18 @@ public:
  Backend(const Backend&)=delete;
  Backend& operator=(const Backend&)=delete;
  Config config;
- bool load();bool save();void reset();
+ // adjustments=false skips the operator adjustments (they read and verify the program ROM): the startup and a card
+ // selection need only the preferences; Settings loads them again.
+ bool load(bool adjustments=true);bool save();void reset();
  LauncherPreferences loadLauncherPreferences(const Config& legacy)const;
  bool saveLauncherPreferences(const LauncherPreferences&)const;
  // Player controls of every game (build/native/launcher-profile/controls.cfg); absent or invalid: the original layout.
  mk5controls::Config loadControls()const;bool saveControls(const mk5controls::Config&)const;
  GameAdjustments adjustments;
- bool refreshAdjustments();bool adjustmentsAvailable()const;
+ bool refreshAdjustments(bool read=true);bool adjustmentsAvailable()const;
  std::wstring coinageLabel(const GameAdjustments&)const;
  bool saveAll(const Config&,const GameAdjustments&);bool resetHighScores();
- bool selectGame(int index);
+ bool selectGame(int index,bool adjustments=true);
  bool available(int index) const;
  bool nativeMk2Installed() const;
  // MK3 edition of the native package (D1, 14/11/2026: no temporary core): 1 native Original, 2 native Remastered (video layers

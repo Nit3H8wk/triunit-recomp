@@ -13,6 +13,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <mutex>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -143,13 +144,23 @@ struct NativeRom {const char* path;uintmax_t size;const char* sha;};
 const NativeRom nativeRoms[]={
 #include "native_roms.inc"
 };
+// SHA-256 of package files already read, kept while size and write time are unchanged: the launcher's periodic
+// availability check reads tens of MB otherwise. Starting a game forgets them (forgetFileHashes), so a launch always
+// hashes what it runs.
+struct HashedFile {uintmax_t size;fs::file_time_type written;std::string sha;};
+std::mutex hashedLock;std::map<fs::path,HashedFile> hashed;
 std::string fileHash(const fs::path& path,uintmax_t maximum,uintmax_t exact=0){
  if(!ordinary(path))throw std::runtime_error("native package file is not ordinary");
  const auto size=fs::file_size(path);if(size>maximum||(exact&&size!=exact))throw std::runtime_error("native package file size differs");
+ const auto written=fs::last_write_time(path);const auto key=fs::absolute(path).lexically_normal();
+ {std::lock_guard<std::mutex> hold(hashedLock);const auto it=hashed.find(key);
+  if(it!=hashed.end()&&it->second.size==size&&it->second.written==written)return it->second.sha;}
  std::vector<uint8_t> data(size);std::ifstream input(path,std::ios::binary);
  if(!input.read(reinterpret_cast<char*>(data.data()),std::streamsize(size))||input.peek()!=EOF)throw std::runtime_error("native package file read differs");
- return Sha256(data);
+ auto sha=Sha256(data);
+ std::lock_guard<std::mutex> hold(hashedLock);hashed[key]={size,written,sha};return sha;
 }
+void forgetFileHashes(){std::lock_guard<std::mutex> hold(hashedLock);hashed.clear();}
 struct NativeSpec {fs::path root,executable,roms,profile,seed;bool live=false,playable=false,modernVideo=false,liveWithoutPixelCheck=false;};
 // Remastered music is the user's own (custom_audio/<game>/, optional per slot); the Arcade Original never receives it.
 fs::path customAudio(const fs::path& root,const wchar_t* game){return root/L"custom_audio"/game;}
@@ -253,7 +264,7 @@ std::vector<wchar_t> nativeEnvironment(const mklauncher::Config& c,const VideoCo
  std::vector<wchar_t> block;for(const auto& value:values){const auto row=value.first+L"="+value.second;block.insert(block.end(),row.begin(),row.end());block.push_back(0);}block.push_back(0);return block;
 }
 std::wstring nativeError(const char* error){
- const int size=MultiByteToWideChar(CP_UTF8,0,error,-1,nullptr,0);if(size<=1)return L"Falha nativa.";
+ const int size=MultiByteToWideChar(CP_UTF8,0,error,-1,nullptr,0);if(size<=1)return L"Native error.";
  std::wstring text(size,0);MultiByteToWideChar(CP_UTF8,0,error,-1,text.data(),size);text.pop_back();return text;
 }
 // MK3 native package (tools/mk3/preview_install.py): Profile::Game build, fidelity claimed only on compared routes.
@@ -551,10 +562,10 @@ void Backend::readSetupProgress(int index){
   const auto* ok=member(*report,"ok",tinyjson::Value::Bool);game.verified=ok&&ok->boolean;
  }
 }
-bool Backend::selectGame(int index){
+bool Backend::selectGame(int index,bool adjustments){
  if(running()||index<0||index>2)return false;
  if(index==gameIndex_)return true;
- gameIndex_=index;return load();
+ gameIndex_=index;return load(adjustments);
 }
 fs::path Backend::operatorPath(bool verifyPayload)const{
  if(gameIndex_==0)return root_/stage/L"profile/cmos.bin";
@@ -565,9 +576,9 @@ fs::path Backend::operatorRoms()const{
  if(gameIndex_==0)return root_/L"roms/mk";
  return nativeSpec(root_,publicNativeManifest(root_),false).roms;
 }
-bool Backend::load(){const bool native=gameIndex_==1&&publicNativePresent(root_);selectedNative_=native;
+bool Backend::load(bool adjustments){const bool native=gameIndex_==1&&publicNativePresent(root_);selectedNative_=native;
  auto profile=root_/(native?mk2NativeStage:gameIndex_?coreStage(gameIndex_):stage)/L"profile/launcher.ini";
- const bool valid=readSettings(profile,std::array<const char*,3>{"mk1","mk2","mk3"}[size_t(gameIndex_)],native?0:gameIndex_);refreshAdjustments();
+ const bool valid=readSettings(profile,std::array<const char*,3>{"mk1","mk2","mk3"}[size_t(gameIndex_)],native?0:gameIndex_);refreshAdjustments(adjustments);
  if(gameIndex_==2&&!running())mk3Engine_=config.mk3Engine;
  return valid;}
 LauncherPreferences Backend::loadLauncherPreferences(const Config& legacy)const{
@@ -625,7 +636,7 @@ bool Backend::readSettings(const fs::path& path,const std::string& gameSection,i
  config=factory(capabilities);validate(config,capabilities);
  try{
   unlinked(path);
-  if(!fs::exists(path)){status_=L"Preferencias padrao carregadas.";return true;}
+  if(!fs::exists(path)){status_=L"Default preferences loaded.";return true;}
   auto text=smallFile(path,8192);if(text.find('\0')!=std::string::npos)throw std::runtime_error("binary config");
   if(text.compare(0,3,"\xef\xbb\xbf")==0)text.erase(0,3);
   auto parsed=factory(capabilities);VideoConfig legacy;
@@ -682,11 +693,11 @@ bool Backend::readSettings(const fs::path& path,const std::string& gameSection,i
   for(size_t i=0;i<overrides.size();++i)for(const auto& [key,value]:overrides[i])
    if(!readVideo(parsed.videos[i],key,value,defaults[i])){if(mk3)mk3Defaults=true;else valid=false;}
   validate(parsed,capabilities);config=parsed;
-  status_=!valid?L"Valores invalidos substituidos pelos padroes.":mk3Defaults?L"Preferencias carregadas; valores invalidos do MK3 nativo substituidos pelos padroes.":L"Preferencias carregadas.";return valid;
- }catch(...){config=factory(capabilities);validate(config,capabilities);status_=L"Configuracao invalida ou inacessivel; usando padroes seguros.";return false;}
+  status_=!valid?L"Invalid values were replaced by the defaults.":mk3Defaults?L"Preferences loaded; invalid MK3 values were replaced by the defaults.":L"Preferences loaded.";return valid;
+ }catch(...){config=factory(capabilities);validate(config,capabilities);status_=L"The settings file is invalid or unreadable; using safe defaults.";return false;}
 }
 bool Backend::save(){
- if(running()){status_=L"Encerre o jogo antes de salvar preferencias.";return false;}
+ if(running()){status_=L"Close the game before saving preferences.";return false;}
  try{
   const bool native=gameIndex_==1&&publicNativePresent(root_);
   if(native!=selectedNative_)throw std::runtime_error("selected installation changed; reload Settings");
@@ -699,10 +710,10 @@ bool Backend::save(){
   text<<"AudioLatency="<<config.audioLatency<<"\r\n\r\n[Video.Original]\r\n";writeVideo(text,config.video(false));
   text<<"\r\n[Video.Remastered]\r\n";writeVideo(text,config.video(true));
   writePreferences(path,text.str());
-  status_=L"Preferencias salvas.";return true;
+  status_=L"Preferences saved.";return true;
  }catch(const std::exception& error){
   std::clog<<"preferences save failed: "<<error.what()<<'\n';
-  status_=L"Falha ao salvar preferencias; verifique o acesso ao perfil.";return false;
+  status_=L"Could not save the preferences; check access to the profile folder.";return false;
  }
 }
 void Backend::reset(){config=factory(gameIndex_);save();}
@@ -748,12 +759,13 @@ bool Backend::setMk3Engine(int engine){
 bool Backend::chooseMk3Engine(int engine){
  if(gameIndex_!=2||running())return false;
  const int effective=mk3Engine_;
- if(!setMk3Engine(engine)){status_=L"MK3 nativo indisponivel: verifique o pacote instalado.";return false;}
+ if(!setMk3Engine(engine)){status_=L"MK3 is unavailable: build it again on the Build page.";return false;}
  const auto before=config;config.mk3Engine=engine;
  if(save())return true;
  config=before;mk3Engine_=effective;return false;
 }
 bool Backend::launchMk3(){
+ forgetFileHashes();
  try{
   const auto spec=mk3Spec(root_,true);const bool remastered=mk3Engine_==2;auto selected=config;validate(selected,2);
   // The edition's video profile (presentation only: the canonical state is the same in both), game volume and audio queue.
@@ -772,8 +784,8 @@ bool Backend::launchMk3(){
   if(!CreateProcessW(spec.executable.c_str(),command.data(),nullptr,nullptr,TRUE,CREATE_NO_WINDOW|CREATE_UNICODE_ENVIRONMENT,environment.data(),spec.root.c_str(),&si,&pi))throw std::runtime_error("MK3 native CreateProcess failed: "+std::to_string(GetLastError()));
   CloseHandle(pi.hThread);process_=pi.hProcess;processId_=pi.dwProcessId;gameExecutable_=std::move(expectedPath);
   nativeExperiment_=true;mk3Native_=true;exitCode_=STILL_ACTIVE;stopping_=false;gameWindow_=nullptr;gamePid_=0;nextDiscovery_=0;
-  status_=remastered?L"MK3 nativo iniciado: Remasterizada.":L"MK3 nativo iniciado: Original.";return true;
- }catch(const std::exception& error){exitCode_=ERROR_INVALID_DATA;status_=L"MK3 nativo recusado: "+nativeError(error.what())+L". MK3 indisponivel; verifique o pacote instalado.";return false;}
+  status_=remastered?L"MK3 started: Remastered.":L"MK3 started: Original.";return true;
+ }catch(const std::exception& error){exitCode_=ERROR_INVALID_DATA;status_=L"MK3 refused: "+nativeError(error.what())+L". Build MK3 again on the Build page.";return false;}
 }
 bool Backend::remasteredAvailable()const{
  // D7: the MK3 Remastered edition is video only. MK1 and MK2 always offer Remastered: a missing or unreadable
@@ -788,7 +800,8 @@ bool Backend::launchNativeExperiment(const fs::path& manifest,const fs::path& se
  return launchNative(manifest,settings,true);
 }
 bool Backend::launchNative(const fs::path& manifest,const fs::path& settings,bool diagnostics){
- poll();if(process_){status_=L"A sessao atual ainda esta em execucao.";return false;}
+ forgetFileHashes();
+ poll();if(process_){status_=L"A game is still running.";return false;}
  const auto collectionConfig=config;gameExecutable_.clear();nativeExperiment_=false;nativeLiveExperiment_=false;nativePlayable_=false;mk3Native_=false;
  try{
   const auto spec=nativeSpec(root_,manifest);auto selected=config;
@@ -816,24 +829,25 @@ bool Backend::launchNative(const fs::path& manifest,const fs::path& settings,boo
   CloseHandle(pi.hThread);process_=pi.hProcess;processId_=pi.dwProcessId;gameExecutable_=std::move(expectedPath);
   nativeExperiment_=true;nativeLiveExperiment_=spec.live;nativePlayable_=spec.playable;exitCode_=STILL_ACTIVE;stopping_=false;gameWindow_=nullptr;gamePid_=0;nextDiscovery_=0;
   status_=std::move(started);return true;
- }catch(const std::exception& error){config=collectionConfig;exitCode_=ERROR_INVALID_DATA;status_=L"Ensaio nativo recusado: "+nativeError(error.what());return false;}
+ }catch(const std::exception& error){config=collectionConfig;exitCode_=ERROR_INVALID_DATA;status_=L"Native test refused: "+nativeError(error.what());return false;}
 }
 bool Backend::launch(unsigned frames){
- poll();if(process_){status_=L"A sessao atual ainda esta em execucao.";return false;}
- if(setupRunning()){status_=L"Aguarde o termino do setup antes de jogar.";return false;}
- if(gameIndex_==1&&publicNativePresent(root_)!=selectedNative_){status_=L"A instalacao mudou. Reabra Settings antes de jogar.";return false;}
+ forgetFileHashes();
+ poll();if(process_){status_=L"A game is still running.";return false;}
+ if(setupRunning()){status_=L"Wait for the build to finish before playing.";return false;}
+ if(gameIndex_==1&&publicNativePresent(root_)!=selectedNative_){status_=L"The installation changed. Reopen Settings before playing.";return false;}
  gameExecutable_.clear();nativeExperiment_=false;nativeLiveExperiment_=false;nativePlayable_=false;mk3Native_=false;
- if(frames>500000){status_=L"Limite de quadros de diagnostico invalido.";return false;}
+ if(frames>500000){status_=L"Invalid diagnostic frame limit.";return false;}
  if(gameIndex_==2){
-  if(frames){status_=L"O MK3 nativo usa encerramento pela janela.";return false;}
+  if(frames){status_=L"Close MK3 from its own window.";return false;}
   return launchMk3();
  }
  if(gameIndex_==1&&publicNativePresent(root_)){
-  if(frames){status_=L"O jogo nativo usa encerramento pela janela.";return false;}
+  if(frames){status_=L"Close the game from its own window.";return false;}
   return launchNative(publicNativeManifest(root_),{},false);
  }
- if(!available(gameIndex_)){status_=L"Jogo indisponivel: verifique o produto, o nucleo e as ROMs instalados.";exitCode_=ERROR_FILE_NOT_FOUND;return false;}
- if(config.remastered&&!remasteredAvailable()){status_=L"Versao remasterizada indisponivel para este jogo.";exitCode_=ERROR_FILE_NOT_FOUND;return false;}
+ if(!available(gameIndex_)){status_=L"Game unavailable: build it again on the Build page.";exitCode_=ERROR_FILE_NOT_FOUND;return false;}
+ if(config.remastered&&!remasteredAvailable()){status_=L"The Remastered edition is not available for this game.";exitCode_=ERROR_FILE_NOT_FOUND;return false;}
  try{
   validate(config,gameIndex_);unlinked(root_);const auto script=root_/(gameIndex_?coreStage(gameIndex_):stage)/L"product/session.ps1";unlinked(script);
   auto expectedPath=(gameIndex_?fs::u8path(trim(smallFile(root_/coreStage(gameIndex_)/L"product/engine-path.txt",4096))):root_/stage/L"product/mk5-native-audio.exe").lexically_normal();
@@ -845,7 +859,7 @@ bool Backend::launch(unsigned frames){
   static const std::regex videoProfiles("\"video_profiles\"\\s*:\\s*1\\s*[,}]");
   const bool modernVideo=gameIndex_==0&&std::regex_search(smallFile(script.parent_path()/L"manifest.json",65536),videoProfiles);
   if(gameIndex_==0&&!modernVideo&&(needsModernVideo(v)||!v.fullscreen)){
-   status_=L"Atualize o pacote do MK1 para usar este perfil de video.";exitCode_=ERROR_INVALID_DATA;return false;
+   status_=L"Build MK1 again to use this video profile.";exitCode_=ERROR_INVALID_DATA;return false;
   }
   const bool presentation=v.scanlines!=0||v.filter!=0||(v.scalefx&&v.scalefxAmount)||needsModernVideo(v);
   std::vector<std::wstring> args={powershell.wstring(),L"-NoLogo",L"-NoProfile",L"-NonInteractive",L"-ExecutionPolicy",L"Bypass",L"-WindowStyle",L"Hidden",L"-File",script.wstring(),L"-ProjectRoot",root_.wstring(),L"-WindowFrames",std::to_wstring(frames),L"-GameMode",config.remastered?L"remastered":L"original",L"-VisualMode",presentation?L"presentation":L"original",L"-Scanlines",preset.scanlines,L"-Filter",filters[v.filter],L"-CrtPreset",preset.crt,L"-SyncMode",std::array<const wchar_t*,3>{L"vsync",L"vrr",L"immediate"}[v.sync],L"-ColorMode",std::array<const wchar_t*,3>{L"original",L"vivid",L"warm"}[v.color],L"-Brightness",std::to_wstring(v.brightness),L"-Bezel",v.bezel?L"1":L"0",L"-HighRefresh",v.highRefresh?L"1":L"0",L"-AudioLatency",std::array<const wchar_t*,3>{L"low",L"balanced",L"safe"}[config.audioLatency]};
@@ -868,8 +882,8 @@ bool Backend::launch(unsigned frames){
                      environment.empty()?nullptr:environment.data(),root_.c_str(),&si,&pi))throw std::runtime_error("start session");
   CloseHandle(pi.hThread);process_=pi.hProcess;processId_=pi.dwProcessId;exitCode_=STILL_ACTIVE;stopping_=false;gameWindow_=nullptr;gamePid_=0;nextDiscovery_=0;
   gameExecutable_=std::move(expectedPath);
-  status_=L"Iniciando o jogo; validando arquivos...";return true;
- }catch(...){exitCode_=GetLastError();if(!exitCode_)exitCode_=ERROR_GEN_FAILURE;status_=gameIndex_?L"Falha ao iniciar. Consulte "+std::wstring(coreLogs(gameIndex_))+L"/launcher-latest.log.":std::wstring(L"Nao foi possivel iniciar a sessao. Consulte logs/temporaria-8/launcher-latest.log.");return false;}
+  status_=L"Starting the game; checking its files...";return true;
+ }catch(...){exitCode_=GetLastError();if(!exitCode_)exitCode_=ERROR_GEN_FAILURE;status_=gameIndex_?L"The game could not start; details in "+std::wstring(coreLogs(gameIndex_))+L"/launcher-latest.log.":std::wstring(L"The game could not start; the Logs button opens its log.");return false;}
 }
 void Backend::inspectGame(){
  if(!process_)return;
@@ -896,11 +910,11 @@ void Backend::poll(){
  if(!process_)return;
  const DWORD wait=WaitForSingleObject(process_,0);
  if(wait==WAIT_OBJECT_0){DWORD code=ERROR_GEN_FAILURE;if(!GetExitCodeProcess(process_,&code))code=ERROR_GEN_FAILURE;CloseHandle(process_);process_=nullptr;processId_=0;gameWindow_=nullptr;gameExecutable_.clear();stopping_=false;exitCode_=code;
-  status_=mk3Native_?(code==0?L"MK3 nativo encerrado; retorno a colecao.":L"MK3 nativo terminou com erro; consulte logs/mk3-native/launcher-latest.log."):nativePlayable_?(code==0?L"Sessao nativa encerrada; retorno a colecao.":L"Sessao nativa terminou com erro; consulte logs/native-experiment-latest.log."):nativeExperiment_?(code==0?(nativeLiveExperiment_?L"Ensaio nativo live experimental encerrado; V1 nao qualificada.":L"Ensaio nativo finito encerrado; V1 nao qualificada."):L"Ensaio nativo terminou com erro; consulte logs/native-experiment-latest.log."):code==0?L"Sessao encerrada; retorno a colecao.":gameIndex_?L"A sessao terminou com erro. Consulte "+std::wstring(coreLogs(gameIndex_))+L"/launcher-latest.log e latest.json.":std::wstring(L"A sessao terminou com erro. Consulte logs/temporaria-8/launcher-latest.log e summary.json.");return;}
- inspectGame();if(stopping_)status_=L"Encerrando o jogo e finalizando os registros/CMOS...";else if(gameWindow_)status_=mk3Native_?(mk3Engine_==2?L"MK3 nativo (Remasterizada) em execucao.":L"MK3 nativo (Original) em execucao."):nativePlayable_?std::wstring(compatibleGames[1].name)+L" nativo em execucao.":nativeExperiment_?(nativeLiveExperiment_?L"Ensaio nativo live experimental em execucao; V1 nao qualificada.":L"Ensaio nativo finito em execucao; V1 nao qualificada."):std::wstring(compatibleGames[size_t(gameIndex_)].name)+L" em execucao.";
+  status_=mk3Native_?(code==0?L"MK3 closed.":L"MK3 closed with an error; the Logs button opens its log."):nativePlayable_?(code==0?L"Game closed.":L"The game closed with an error; the Logs button opens its log."):nativeExperiment_?(code==0?(nativeLiveExperiment_?L"Native live test closed.":L"Native test closed."):L"Native test closed with an error; see logs/native-experiment-latest.log."):code==0?L"Game closed.":gameIndex_?L"The game closed with an error; details in "+std::wstring(coreLogs(gameIndex_))+L"/launcher-latest.log.":std::wstring(L"The game closed with an error; the Logs button opens its log.");return;}
+ inspectGame();if(stopping_)status_=L"Closing the game and saving its records and CMOS...";else if(gameWindow_)status_=mk3Native_?(mk3Engine_==2?L"MK3 (Remastered) running.":L"MK3 (Original) running."):nativePlayable_?std::wstring(compatibleGames[1].name)+L" running.":nativeExperiment_?(nativeLiveExperiment_?L"Native live test running.":L"Native test running."):std::wstring(compatibleGames[size_t(gameIndex_)].name)+L" running.";
 }
 bool Backend::running()const{return process_!=nullptr;}
-void Backend::requestStop(){if(!process_)return;stopping_=true;inspectGame();status_=L"Encerrando o jogo e finalizando os registros/CMOS...";}
+void Backend::requestStop(){if(!process_)return;stopping_=true;inspectGame();status_=L"Closing the game and saving its records and CMOS...";}
 const std::wstring& Backend::status()const{return status_;}
 const fs::path& Backend::root()const{return root_;}
 DWORD Backend::exitCode()const{return exitCode_;}

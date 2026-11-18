@@ -19,8 +19,9 @@ std::vector<uint8_t> lane(const fs::path& path){
 }
 namespace mklauncher {
 bool Backend::adjustmentsAvailable()const{return adjustmentsAvailable_;}
-bool Backend::refreshAdjustments(){
+bool Backend::refreshAdjustments(bool read){
  adjustmentsAvailable_=false;adjustments={};adjustmentsImage_.clear();adjustmentsProgram_.clear();coinageLabels_.clear();adjustmentsSha_.clear();
+ if(!read)return false;
  try{
   adjustmentsPath_=operatorPath(false);if(adjustmentsPath_.empty()||!fs::exists(adjustmentsPath_))return false;
   auto profile=mk2::LoadCmosFile(adjustmentsPath_);
@@ -37,17 +38,17 @@ bool Backend::refreshAdjustments(){
    coinageLabels_.push_back(std::move(label));
   }
   adjustments=current;adjustmentsImage_=std::move(profile.image);adjustmentsSha_=std::move(profile.sha256);adjustmentsProgram_=std::move(program);adjustmentsAvailable_=true;return true;
- }catch(...){status_=L"Ajustes de jogo indisponiveis: verifique CMOS e ROMs do perfil.";return false;}
+ }catch(...){status_=L"Game adjustments unavailable: check the profile's CMOS and ROM files.";return false;}
 }
 std::wstring Backend::coinageLabel(const GameAdjustments& value)const{
  if(value.freePlay)return L"FREE PLAY";
- if(value.customCoinage)return L"PERSONALIZADO / CMOS";
+ if(value.customCoinage)return L"CUSTOM / CMOS";
  if(value.coinage>=1&&size_t(value.coinage)<=coinageLabels_.size())return coinageLabels_[size_t(value.coinage-1)];
  return L"PRESET "+std::to_wstring(value.coinage);
 }
 bool Backend::saveAll(const Config& requested,const GameAdjustments& wanted){
- if(running()){status_=L"Encerre o jogo antes de salvar ajustes.";return false;}
- if(wanted.difficulty<1||wanted.difficulty>5||wanted.coinage<1||wanted.coinage>58){status_=L"Ajustes fora dos valores do arcade.";return false;}
+ if(running()){status_=L"Close the game before saving adjustments.";return false;}
+ if(wanted.difficulty<1||wanted.difficulty>5||wanted.coinage<1||wanted.coinage>58){status_=L"Adjustments outside the arcade's values.";return false;}
  const auto before=config;const bool changed=!same(wanted,adjustments);auto image=adjustmentsImage_;
  try{
   if(operatorPath()!=adjustmentsPath_)throw std::runtime_error("selected operator profile changed; reopen Settings");
@@ -67,20 +68,20 @@ bool Backend::saveAll(const Config& requested,const GameAdjustments& wanted){
    const auto sha=mk2::CompareAndSwapCmosFile(adjustmentsPath_,image,adjustmentsSha_,gameIndex_==0?mk2::CmosLock::Mk1Session:mk2::CmosLock::Mk2Profile,commit);
    adjustments=wanted;adjustmentsImage_=std::move(image);adjustmentsSha_=sha;
   }else commit();
-  status_=L"Preferencias e ajustes salvos por jogo.";return true;
+  status_=L"Preferences and adjustments saved for this game.";return true;
  }catch(const std::exception& error){
   std::clog<<"operator save failed: "<<error.what()<<'\n';
-  config=before;status_=L"Falha ao salvar; confira o acesso e se o perfil mudou. Reabra os ajustes.";return false;
+  config=before;status_=L"Could not save; check access and whether the profile changed, then reopen the adjustments.";return false;
  }
 }
 
 bool Backend::resetHighScores(){
- if(running()||!adjustmentsAvailable_){status_=L"Ranking indisponivel: encerre o jogo e abra os ajustes.";return false;}
+ if(running()||!adjustmentsAvailable_){status_=L"Ranking unavailable: close the game and open the adjustments.";return false;}
  try{
   if(operatorPath()!=adjustmentsPath_)throw std::runtime_error("selected ranking profile changed; reopen Settings");
   auto image=adjustmentsImage_;mkoperator::ResetHighScores(image,adjustmentsProgram_,gameIndex_==0?mkoperator::Game::Mk1:mkoperator::Game::Mk2);
   adjustmentsSha_=mk2::CompareAndSwapCmosFile(adjustmentsPath_,image,adjustmentsSha_,gameIndex_==0?mk2::CmosLock::Mk1Session:mk2::CmosLock::Mk2Profile);
-  adjustmentsImage_=std::move(image);status_=L"Ranking redefinido pela rotina original do arcade.";return true;
- }catch(...){status_=L"Falha ao redefinir ranking; o perfil nao foi substituido.";return false;}
+  adjustmentsImage_=std::move(image);status_=L"Ranking reset by the arcade's own routine.";return true;
+ }catch(...){status_=L"Could not reset the ranking; the profile was not replaced.";return false;}
 }
 }

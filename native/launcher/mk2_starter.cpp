@@ -9,6 +9,6 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
   MessageBoxW(nullptr,backend.status().c_str(),mklauncher::productName,MB_OK|MB_ICONERROR);return 1;
  }
  while(backend.running()){backend.poll();Sleep(20);}
- if(backend.exitCode())MessageBoxW(nullptr,L"O jogo encerrou com erro. Consulte logs/mk2-v1/launcher-latest.log.",mklauncher::productName,MB_OK|MB_ICONERROR);
+ if(backend.exitCode())MessageBoxW(nullptr,L"The game closed with an error; see logs/mk2-v1/launcher-latest.log.",mklauncher::productName,MB_OK|MB_ICONERROR);
  return int(backend.exitCode());
 }

@@ -138,7 +138,7 @@ struct App {
     std::future<std::array<bool,3>> availability;
     int drawnFocus=-1;
     explicit App(fs::path root):backend(root){
-        backend.load();draft=backend.config;launcher=draftLauncher=backend.loadLauncherPreferences(backend.config);notice=backend.status();mk1Available=backend.available(0);mk2Available=backend.available(1);mk3Available=backend.available(2);musicAvailable=backend.remasteredAvailable();mk1Remastered=backend.config.remastered;Backend mk2(root);mk2.selectGame(1);mk2Remastered=mk2.config.remastered;Backend mk3(root);mk3.selectGame(2);backend.setMk3Engine(mk3.mk3Engine());availabilityDue=GetTickCount64()+10000;
+        backend.load(false);draft=backend.config;launcher=draftLauncher=backend.loadLauncherPreferences(backend.config);notice=backend.status();mk1Available=backend.setupFinished(0);mk2Available=backend.setupFinished(1);mk3Available=backend.setupFinished(2);musicAvailable=backend.remasteredAvailable();mk1Remastered=backend.config.remastered;Backend mk2(root);mk2.selectGame(1,false);mk2Remastered=mk2.config.remastered;Backend mk3(root);mk3.selectGame(2,false);backend.setMk3Engine(mk3.mk3Engine());availabilityDue=0;   // the hashed check runs right after the first frame (poll)
         refreshRecords();readManifests();seenStatus=backend.status();
         page=std::any_of(records.begin(),records.end(),[](const SetupRecord& r){return r.finished;})?pagePlay:
              std::any_of(records.begin(),records.end(),[](const SetupRecord& r){return r.outdated;})?pageBuild:pageOverview;
@@ -266,7 +266,7 @@ struct App {
         }
         if(index<3){
             const auto before=backend.config;const int previous=chosen>=0?chosen:0;
-            if(!backend.selectGame(index)){notice=backend.status();backend.selectGame(previous);backend.config=before;return;}
+            if(!backend.selectGame(index,false)){notice=backend.status();backend.selectGame(previous,false);backend.config=before;return;}
             draft=backend.config;musicAvailable=backend.remasteredAvailable();rememberEdition(index);
         }
         selected=chosen=index;details=false;focus=index;page=pagePlay;
@@ -1278,6 +1278,7 @@ int prepare(const fs::path& root,const std::vector<std::wstring>& args){
 }
 
 int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int){
+    const uint64_t launched=frameTicks();   // start-to-first-frame in the UI log (launcher-ready)
     fs::path root;bool unattended=false;
     try{
         std::vector<wchar_t> filename(32768);DWORD n=GetModuleFileNameW(nullptr,filename.data(),DWORD(filename.size()));if(!n||n>=filename.size())throw std::runtime_error("launcher executable path");root=fs::path(filename.data()).parent_path();
@@ -1294,9 +1295,9 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int){
         RECT work{};SystemParametersInfoW(SPI_GETWORKAREA,0,&work,0);int w=capture.empty()?std::min(1382,int(work.right-work.left-60)):1536,h=capture.empty()?std::min(922,int(work.bottom-work.top-60)):1024;
         HWND window=CreateWindowExW(WS_EX_APPWINDOW,cls.lpszClassName,productName,WS_POPUP|WS_THICKFRAME|WS_MINIMIZEBOX|WS_MAXIMIZEBOX|WS_SYSMENU,(work.right-w)/2,(work.bottom-h)/2,w,h,nullptr,nullptr,instance,&app);if(!window)throw std::runtime_error("launcher window");mk5hid::shared().listen(window);
         struct WindowGuard{HWND h;~WindowGuard(){if(IsWindow(h))DestroyWindow(h);}} windowGuard{window};
-        app.graphics=std::make_unique<Renderer>(window);// Art is drawn in code; the launcher reads no image file.
+        const uint64_t built=frameTicks();app.graphics=std::make_unique<Renderer>(window);const uint64_t rendered=frameTicks();// Art is drawn in code; the launcher reads no image file.
         if(!capture.empty()){
-            SetWindowPos(window,nullptr,0,0,1536,1024,SWP_NOZORDER|SWP_NOACTIVATE);app.launcher.reducedMotion=true;app.settings=captureSettings;app.category=captureTab;app.notice.clear();if(capturePage>=0)app.page=capturePage;app.draw(1,true);app.graphics->saveCapture(capture);return 0;
+            SetWindowPos(window,nullptr,0,0,1536,1024,SWP_NOZORDER|SWP_NOACTIVATE);app.launcher.reducedMotion=true;app.settings=captureSettings;app.category=captureTab;app.notice.clear();if(capturePage>=0)app.page=capturePage;app.draw(1,true);eventLog(root,"capture-ready ms="+std::to_string((frameTicks()-launched)/10000)+" app+window="+std::to_string((built-launched)/10000)+" renderer="+std::to_string((rendered-built)/10000));app.graphics->saveCapture(capture);return 0;
         }
         eventLog(root,"launcher-start DX12");app.borderless(app.launcher.fullscreen);ShowWindow(window,SW_SHOW);UpdateWindow(window);
         try{
@@ -1305,7 +1306,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int){
         }catch(const std::exception& e){eventLog(root,"menu-music unavailable: "+std::string(e.what()));}
         FrameTimer frameTimer;
         mk5timing::Cadence cadence;
-        bool quit=false;uint64_t last=frameTicks();
+        bool quit=false,ready=false;uint64_t last=frameTicks();
         while(!quit){
             MSG msg{};while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){if(msg.message==WM_QUIT){quit=true;break;}TranslateMessage(&msg);DispatchMessageW(&msg);}if(quit)break;
             app.poll();if(!IsWindow(window))break;app.pad();
@@ -1314,8 +1315,9 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int){
             const bool fadingMusic=app.menuMusic&&app.menuMusic->update(inLauncher?app.menuMusicLevel():0);
             const auto now=frameTicks();
             if(minimized)cadence.next=0;
-            else if(frameDue(cadence,now,app.active?app.launcher.fps:10)){
+            else if(frameDue(cadence,now,app.active?app.launcher.fps:app.setupBusy?10:2)){   // behind other windows: 10 fps while a build shows progress, else 2
                 app.draw(std::min(.1f,float(now-last)/ticksPerSecond));
+                if(!ready){ready=true;eventLog(root,"launcher-ready ms="+std::to_string((frameTicks()-launched)/10000)+" app+window="+std::to_string((built-launched)/10000)+" renderer="+std::to_string((rendered-built)/10000));}
                 last=now;
             }
             // Input may wake this wait without forcing another GPU frame.
