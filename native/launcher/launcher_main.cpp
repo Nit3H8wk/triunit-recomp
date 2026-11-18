@@ -1223,22 +1223,28 @@ int prepare(const fs::path& root,const std::vector<std::wstring>& args){
         if(n>0)WideCharToMultiByte(CP_UTF8,0,text.data(),int(text.size()),utf8.data(),n,nullptr,nullptr);
         const auto line=std::string("progress ")+number+" "+utf8+"\n";if(line==last)return;last=line;
         DWORD written=0;if(out&&out!=INVALID_HANDLE_VALUE)WriteFile(out,line.data(),DWORD(line.size()),&written,nullptr);};
+    // A failure also goes to stderr as plain text: RecompLauncher shows the step's last words, not its progress lines.
+    const auto fail=[&](int code,double done,const std::wstring& text){say(done,text);const HANDLE err=GetStdHandle(STD_ERROR_HANDLE);
+        const int n=WideCharToMultiByte(CP_UTF8,0,text.data(),int(text.size()),nullptr,0,nullptr,nullptr);std::string utf8(size_t(std::max(n,0)),'\0');
+        if(n>0)WideCharToMultiByte(CP_UTF8,0,text.data(),int(text.size()),utf8.data(),n,nullptr,nullptr);
+        utf8+="\n";
+        DWORD written=0;if(err&&err!=INVALID_HANDLE_VALUE)WriteFile(err,utf8.data(),DWORD(utf8.size()),&written,nullptr);return code;};
     const HANDLE singleton=CreateMutexW(nullptr,TRUE,L"Local\\TriUnitRecompLauncher");if(!singleton)throw std::runtime_error("launcher mutex");
     const bool open=GetLastError()==ERROR_ALREADY_EXISTS;struct MutexGuard{HANDLE h;bool owned;~MutexGuard(){if(owned)ReleaseMutex(h);CloseHandle(h);}} guard{singleton,!open};
-    if(open){say(0,L"Close the TriUnit Recomp window first.");return 6;}
+    if(open)return fail(6,0,L"Close the TriUnit Recomp window first, then run the setup again.");
     Backend backend(root);
     if(confirm&&!backend.romsAcknowledged()&&!backend.acknowledgeRoms(true))throw std::runtime_error("ROM ownership confirmation not saved");
-    if(!backend.romsAcknowledged()){say(0,L"Confirm that you own the original ROM files.");return 3;}
+    if(!backend.romsAcknowledged())return fail(3,0,L"Confirm that you own the original ROM files.");
     const auto wait=[&](const auto& report){while(backend.setupRunning()){report();Sleep(250);}report();};
     say(0,L"Checking Python and the compiler");backend.checkRequirements();wait([]{});
     const auto& r=backend.setupRequirements();
-    if(r.python.empty()||!r.pythonSupported||r.compiler.empty()){say(0,L"Python 3.12+ and MSYS2 g++ were not found (README, Requirements).");return 5;}
+    if(r.python.empty()||!r.pythonSupported||r.compiler.empty())return fail(5,0,L"Python 3.12+ and MSYS2 g++ were not found (README, Requirements).");
     std::array<fs::path,3> before;for(int i=0;i<3;++i)before[size_t(i)]=backend.setupGame(i).folder;
-    for(int i=0;i<3;++i){if(!backend.setRomFolder(i,roms)){say(0,L"This ROM folder can't be used.");return 2;}backend.queueSetup(i,true);}
+    for(int i=0;i<3;++i){if(!backend.setRomFolder(i,roms))return fail(2,0,L"This ROM folder can't be used.");backend.queueSetup(i,true);}
     wait([&]{say(.02,L"Checking your ROM files");});
     std::vector<int> found;
     for(int i=0;i<3;++i){if(backend.setupGame(i).state=="done")found.push_back(i);else if(!before[size_t(i)].empty())backend.setRomFolder(i,before[size_t(i)]);}
-    if(found.empty()){say(.05,L"No supported ROM set in this folder (README, Compatibility).");return 2;}
+    if(found.empty())return fail(2,.05,L"No supported ROM set in this folder or in its mk1, mk2 and mk3 subfolders (README, Compatibility).");
     const std::array<std::pair<const char*,const wchar_t*>,8> steps{{{"verify",L"checking the ROM files"},{"stage",L"staging the ROM files"},
         {"decoder",L"building the decoder"},{"generate",L"generating the C++"},{"accept",L"checking the generated C++"},{"compile",L"compiling"},
         {"seed",L"making the factory settings"},{"install",L"installing"}}};
@@ -1253,7 +1259,7 @@ int prepare(const fs::path& root,const std::vector<std::wstring>& args){
             say(.05+.95*(double(k)+part)/double(found.size()),text);});
         if(backend.setupGame(i).state!="done"){failed=true;say(.05+.95*double(k+1)/double(found.size()),title+L": failed, see logs\\"+backend.setupLog(i).filename().wstring());}
     }
-    if(failed)return 1;
+    if(failed)return fail(1,1,L"A game didn't build; its log is in the logs folder (Logs button).");
     say(1,L"Ready to play");return 0;
 }
 }

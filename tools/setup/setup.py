@@ -94,6 +94,21 @@ def report(game,folder):
     return out
 
 
+SUBFOLDERS={'mk1':('mk1','mk'),'mk2':('mk2',),'mk3':('mk3',)}   # roms/<game>/ (the staging layout), then the MAME set name
+
+
+def locate(game,folder):
+    """The folder that holds the game's files: `folder` itself or its subfolder named after the game, so one folder with
+    a subfolder per game serves every game. The candidate with the most manifest files wins; ties keep `folder`."""
+    folder=Path(folder);names=[r['path'] for r in json.loads(paths.manifest(game).read_text('utf-8'))['roms']]
+    best,most=folder,-1
+    for candidate in (folder,*(folder/s for s in SUBFOLDERS[game])):
+        if candidate.is_symlink() or getattr(candidate,'is_junction',lambda:False)() or not candidate.is_dir():continue
+        found=sum((candidate/n).is_file() for n in names)
+        if found>most:best,most=candidate,found
+    return best
+
+
 def units_digest(texts):
     """The digest generate.py --check records: name, length and text of every unit, sorted by name."""
     return hashlib.sha256(''.join(f'{n}|{len(t)}|{t}' for n,t in sorted(texts.items())).encode()).hexdigest()
@@ -265,6 +280,7 @@ def main(argv=None):
         found=requirements();print(json.dumps(found,indent=1));return 0 if found['ok'] else 1
     if not a.game or not a.roms:ap.error('--game and --roms are required')
     if not a.roms.is_dir():ap.error(f'not a folder: {a.roms}')
+    a.roms=locate(a.game,a.roms)
     if a.progress:PROGRESS['file']=a.progress.absolute();a.progress.parent.mkdir(parents=True,exist_ok=True)
     PROGRESS.update(started=time.perf_counter(),state=dict(game=a.game,mode='verify' if a.verify_only else 'setup',
                                                            steps=STEPS,state='running'))

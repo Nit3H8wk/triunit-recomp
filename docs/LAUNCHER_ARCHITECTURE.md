@@ -37,7 +37,10 @@ below without a window (RecompLauncher's setup step, `recomplauncher.json`):
 `--requirements`, `--verify-only` for every game on that folder, then a full
 setup of each game that verified, with `progress <0..1> <text>` lines on stdout.
 It holds the launcher mutex, so it refuses to run while the app is open (exit
-6). A game that does not verify on that folder gets its saved folder back
+6). Each game is looked for in that folder and in its subfolder named after the
+game (`mk1`, `mk2`, `mk3`, or the MAME set name `mk`), so one folder with a
+subfolder per game serves every game. A failure is also printed to stderr as
+plain text, which RecompLauncher shows. A game that does not verify on that folder gets its saved folder back
 (a game without one keeps the new folder).
 
 ## Setup queue

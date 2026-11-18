@@ -31,6 +31,19 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(found['checks'],['size','crc32','sha1','sha256'])
         self.assertEqual((found['program'],found['ok']),('not checked',False))
 
+    def test_a_folder_with_a_subfolder_per_game_finds_each_game(self):
+        with tempfile.TemporaryDirectory() as temp:
+            temp=Path(temp);(temp/'manifest.json').write_text(json.dumps(dict(roms=[row('a.bin',b'a'),row('b.bin',b'b')])))
+            for sub,names in (('mk3',('a.bin','b.bin')),('mk1',('a.bin',)),('mk',('a.bin','b.bin'))):
+                (temp/sub).mkdir()
+                for n in names:(temp/sub/n).write_bytes(b'x')
+            (temp/'a.bin').write_bytes(b'x')
+            with mock.patch.object(paths,'manifest',return_value=temp/'manifest.json'):
+                self.assertEqual(setup.locate('mk3',temp),temp/'mk3')        # roms/<game>/ layout
+                self.assertEqual(setup.locate('mk1',temp),temp/'mk')         # MAME set name holds more files than mk1/
+                self.assertEqual(setup.locate('mk2',temp),temp)              # tie with nothing better: the folder itself
+                self.assertEqual(setup.locate('mk3',temp/'mk3'),temp/'mk3')  # the game folder chosen directly
+
     @unittest.skipUnless((paths.ROOT/'roms/mk2').is_dir(),'needs the staged MK2 ROM files')
     def test_supported_revision_passes_with_the_program_check(self):
         found=setup.report('mk2',paths.ROOT/'roms/mk2')

@@ -5,7 +5,7 @@
   "repo": "macielrecomp/triunit-recomp",
   "game": {
     "kind": "folder",
-    "label": "The folder with your own ROM files of a supported board revision (see Compatibility in the README). One folder can hold every game; only files that match the setup's manifests exactly are used."
+    "label": "The folder with your own ROM files of a supported board revision (see Compatibility in the README). One folder can hold every game, directly or in mk1, mk2 and mk3 subfolders; only files that match the setup's manifests exactly are used."
   },
   "start": {
     "program": ["triunit.exe"]
@@ -47,7 +47,7 @@
   ],
   "exit_codes": {
     "1": "A game didn't build. Its log is logs/setup-<game>.log in the game's folder (the Logs button opens it).",
-    "2": "No supported ROM set was found in that folder. TriUnit Recomp only uses the exact revisions listed in its README, under Compatibility. Pick the folder again.",
+    "2": "No supported ROM set was found in that folder or in its mk1, mk2 and mk3 subfolders. TriUnit Recomp only uses the exact revisions listed in its README, under Compatibility. Pick the folder again.",
     "3": "Tick the ROM ownership confirmation on the setup screen, then run the setup again.",
     "4": "TriUnit Recomp could not start. Keep triunit.exe in its folder, next to native, build and tools.",
     "5": "TriUnit Recomp builds the games on your PC and needs Python 3.12 or later and MSYS2 MinGW-w64 g++ at C:/msys64/mingw64/bin/g++.exe. Install them (README, Requirements) and run the setup again.",
