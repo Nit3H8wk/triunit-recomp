@@ -1144,8 +1144,10 @@ struct App {
             g.text(L"OPPOSITE DIRECTIONS (SOCD)",306+shift,744,13,white,.4f);
             g.text(L"An arcade lever cannot hold both: neutral is the original.",560+shift,746,11,muted,.2f);
             control(socdControl,{969+shift,738,260,30},draftControls.socd?L"LAST INPUT WINS":L"NEUTRAL",true,false,12);
+            g.text(L"SAVE STATES",306+shift,778,13,white,.4f);
+            g.text(L"In the game: F5 saves, F7 loads. MK2 Original edition; one slot per ROM, in saves/mk2.",560+shift,780,11,muted,.2f);
         }else{
-            row(202,350,L"LAUNCHER FPS LIMIT",L"Unfocused: 10 FPS. Minimized: rendering paused.",std::to_wstring(draftLauncher.fps)+L" FPS");
+            row(202,350,L"LAUNCHER FPS LIMIT",L"Unfocused: 2 FPS (10 while building). Minimized: paused.",std::to_wstring(draftLauncher.fps)+L" FPS");
             row(203,420,L"LAUNCHER V-SYNC",L"Syncs the launcher with the monitor.",draftLauncher.vsync?L"ON":L"OFF");
             row(204,490,L"REDUCE MOTION",L"Turns off fire, fog, particles and the opening fade.",draftLauncher.reducedMotion?L"ON":L"OFF");
             row(206,560,L"LAUNCHER FULLSCREEN",L"Starts fullscreen. Esc returns to a window; F11 toggles.",draftLauncher.fullscreen?L"ON":L"WINDOW");

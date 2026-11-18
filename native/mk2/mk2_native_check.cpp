@@ -165,6 +165,7 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
                 file.write(reinterpret_cast<const char*>(slot.data()),std::streamsize(slot.size()));file.close();
                 if(!file || !MoveFileExW(pending.c_str(),slot_path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))
                     throw std::runtime_error("cannot write "+slot_path.string());
+                std::cerr<<"MK2 state saved: "<<slot_path.generic_string()<<" ("<<slot.size()<<" bytes)\n";
             } catch(const std::exception& error) {std::cerr<<"MK2 save state kept in memory only: "<<error.what()<<'\n';}
             return;
         }
@@ -181,6 +182,7 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
         mk2::LoadLiveState(program,bytes,continuation,*machine,scanout,audio.get());
         if(audio)state_output_offset+=int64_t(before)-int64_t(audio->OutputSamples());
         replay.End();
+        std::cerr<<"MK2 state loaded from "<<(slot.empty()?slot_path.generic_string():std::string("memory"))<<'\n';
     };
     std::vector<std::string> hashes;
     const auto raster_bytes=[&] {
