@@ -28,6 +28,9 @@ ROOT=paths.ROOT
 GAMES=('mk1','mk2','mk3')
 ACCEPTED=ROOT/'tools/acceptance/generated.json'
 VALIDATED_CC='16.1.0'   # g++ version that validated the routes (docs/PUBLISHING.md)
+# Raised when a release changes what the setup builds: older records then ask for a new build (launcher_setup.hpp
+# kSetupVersion, recomplauncher.json prepare.version).
+SETUP_VERSION='2'
 MIN_PYTHON=(3,12)       # Path.is_junction (link guards of the setup, the package writers and temporary_tree)
 STEPS=('verify','stage','decoder','generate','accept','compile','seed','install')
 PROGRESS=dict(file=None,started=0.0,state={},lock=threading.Lock())   # lock: the two compile workers report units
@@ -275,6 +278,7 @@ def main(argv=None):
         from tools.quality import cpp_build
         cpp_build.on_unit=units
         receipt=SETUP[a.game](a.roms,not a.no_compile)
+        receipt['setup_version']=SETUP_VERSION
         out=paths.output(a.game);out.mkdir(parents=True,exist_ok=True)
         (out/'setup.json').write_text(json.dumps(receipt,indent=1)+'\n',encoding='utf-8')
         bad=[k for k,v in receipt.get('accept',{}).items() if v=='DIFFERS']

@@ -140,7 +140,8 @@ struct App {
     explicit App(fs::path root):backend(root){
         backend.load();draft=backend.config;launcher=draftLauncher=backend.loadLauncherPreferences(backend.config);notice=backend.status();mk1Available=backend.available(0);mk2Available=backend.available(1);mk3Available=backend.available(2);musicAvailable=backend.remasteredAvailable();mk1Remastered=backend.config.remastered;Backend mk2(root);mk2.selectGame(1);mk2Remastered=mk2.config.remastered;Backend mk3(root);mk3.selectGame(2);backend.setMk3Engine(mk3.mk3Engine());availabilityDue=GetTickCount64()+10000;
         refreshRecords();readManifests();seenStatus=backend.status();
-        page=std::any_of(records.begin(),records.end(),[](const SetupRecord& r){return r.finished;})?pagePlay:pageOverview;
+        page=std::any_of(records.begin(),records.end(),[](const SetupRecord& r){return r.finished;})?pagePlay:
+             std::any_of(records.begin(),records.end(),[](const SetupRecord& r){return r.outdated;})?pageBuild:pageOverview;
     }
     ~App() noexcept {
         menuMusic.reset();
@@ -215,9 +216,10 @@ struct App {
         return draft.videoEffects?std::array<int,7>{videoProfile,videoPage,255,256,videoCas,videoSmaa,videoBilateral}
                            :std::array<int,7>{videoProfile,videoPage,videoScale,201,200,207,208};
     }
-    std::array<int,6> displayControls()const{
-        return displayHdr?std::array<int,6>{videoProfile,displayPage,hdrMode,hdrPaper,hdrPeak,hdrHighlights}
-                         :std::array<int,6>{videoProfile,displayPage,250,251,209,videoFullscreen};
+    // HDR on/off is on both pages, so it is visible without paging; its brightness controls are on the HDR page.
+    std::vector<int> displayControls()const{
+        return displayHdr?std::vector<int>{videoProfile,displayPage,hdrMode,hdrPaper,hdrPeak,hdrHighlights}
+                         :std::vector<int>{videoProfile,displayPage,250,251,209,videoFullscreen,hdrMode};
     }
     bool videoControlEnabled(int id)const{
         if(id==256)return scaleFxActive();
@@ -281,7 +283,7 @@ struct App {
     bool canBuild(int i)const{return canVerify(i)&&!(backend.setupRequirements().checked&&backend.setupRequirements().compiler.empty());}
     std::wstring buildLabel(int i)const{
         const auto& s=backend.setupGame(i);
-        return s.active?(s.mode=="verify"?L"Verifying":L"Building"):s.queued?L"Queued":records[size_t(i)].finished?L"Rebuild":L"Build";
+        return s.active?(s.mode=="verify"?L"Verifying":L"Building"):s.queued?L"Queued":records[size_t(i)].finished?L"Rebuild":records[size_t(i)].outdated?L"Update":L"Build";
     }
     // CONTROLS tab cells (ids, boxes and their player / column / action).
     static std::tuple<int,int,unsigned> cell(int id){const int n=id-controlCell;return {n/50,n%50/25,unsigned(n%25)};}
@@ -320,6 +322,7 @@ struct App {
         if(s.queued)return L"Queued";
         if(s.state=="failed")return L"Failed";
         if(records[size_t(i)].finished)return ready(i)?L"Ready":L"Built";
+        if(records[size_t(i)].outdated)return L"Update";
         return s.verified?L"Verified":L"Supported";
     }
     // Step of one game in the six-step strip: folder, verify, generate, validate, compile, ready.
@@ -938,6 +941,7 @@ struct App {
             else if(s.state=="failed"){fraction=float(step-1)/4;line=L"Failed at "+std::wstring(stepLabels[size_t(step)])+L": "+widen(s.message);lineColor=gold;}
             else if(s.state=="cancelled")line=L"Cancelled. Build again to restart from the first step.";
             else if(rec.finished){fraction=1;line=std::wstring(ready(i)?L"Ready to play":L"Built; the launcher package for this build is not installed")+L"  /  executable SHA-256 "+widen(rec.executableSha256.substr(0,16))+L"...  /  setup time "+clockText(rec.seconds);}
+            else if(rec.outdated)line=L"Built by an older version of TriUnit Recomp: build it again to update this game.";
             else line=s.folder.empty()?L"Choose the ROM folder on the ROM Setup page first.":L"Not built yet.";
             g.text(fit(line,15,r.w-240),r.x+20,r.y+58,15,lineColor,.1f);
             const Rect bar{r.x+20,r.y+92,r.w-240,14};g.rounded(bar,7,fieldFill);g.rounded(bar,7,panelEdge,1);
@@ -1084,7 +1088,7 @@ struct App {
         }else if(category==2){
             const auto& v=video();
             row(videoProfile,350,L"VIDEO PROFILE",L"Choose which display profile to edit.",videoEdition,nativeVideo());
-            row(displayPage,410,L"DISPLAY CONTROLS",L"Switch between sync and window options and HDR.",displayHdr?L"HDR":L"SYNC AND WINDOW",nativeVideo());
+            row(displayPage,410,L"DISPLAY CONTROLS",L"Switch between sync and window options and the HDR brightness.",displayHdr?L"HDR":L"SYNC AND WINDOW",nativeVideo());
             const auto nits=[](int n){return n?std::to_wstring(n)+L" NITS":std::wstring(L"AUTO");};
             if(displayHdr){
                 row(hdrMode,470,L"HDR",L"HDR10 when Windows HDR is on for this monitor; SDR otherwise.",v.hdr?L"AUTO":L"OFF",nativeVideo());
@@ -1097,8 +1101,9 @@ struct App {
                 row(251,530,L"HIGH REFRESH",L"Shows the original frames again at the desktop refresh rate.",nativeVideo()?(v.highRefresh?L"ON":L"OFF"):L"UNAVAILABLE",nativeVideo());
                 row(209,590,L"TV FRAME",L"CRT television around the game. Your own: custom_bezel/<game>/bezel.png.",v.bezel?L"ON":L"OFF");
                 row(videoFullscreen,650,L"GAME FULLSCREEN",L"Window mode when this version starts.",v.fullscreen?L"ON":L"WINDOW",nativeVideo());
+                row(hdrMode,710,L"HDR",L"HDR10 when Windows HDR is on; brightness on DISPLAY CONTROLS > HDR.",v.hdr?L"AUTO":L"OFF",nativeVideo());
             }
-            g.text(L"XInput: "+std::to_wstring(pads.count())+L" connected. Arcade: 54.7069 frames per second.",306+shift,723,13,muted,.2f);
+            g.text(L"XInput: "+std::to_wstring(pads.count())+L" connected. Arcade: 54.7069 frames per second.",306+shift,displayHdr?723:783,13,muted,.2f);
         }else if(category==4){
             const bool ready=backend.adjustmentsAvailable();const auto effective=effectiveAdjustments();auto priced=effective;priced.freePlay=false;
             row(260,350,L"COMPUTER DIFFICULTY",L"The arcade's native AI level.",std::array<std::wstring,5>{L"VERY EASY",L"EASY",L"MEDIUM",L"HARD",L"VERY HARD"}[size_t(std::clamp(draftAdjustments.difficulty,1,5)-1)],ready);
@@ -1258,10 +1263,10 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int){
     try{
         std::vector<wchar_t> filename(32768);DWORD n=GetModuleFileNameW(nullptr,filename.data(),DWORD(filename.size()));if(!n||n>=filename.size())throw std::runtime_error("launcher executable path");root=fs::path(filename.data()).parent_path();
         int count=0;auto raw=CommandLineToArgvW(GetCommandLineW(),&count);if(!raw)throw std::runtime_error("launcher arguments");std::vector<std::wstring> args;for(int i=1;i<count;++i)args.emplace_back(raw[i]);LocalFree(raw);
-        fs::path capture;bool captureSettings=false,captureControls=false;int capturePage=-1;
-        // --ui-capture <png> [overview|roms|build|play|legal] / --settings-capture <png> [controls]: one deterministic frame (layout checks).
+        fs::path capture;bool captureSettings=false;int captureTab=launcherTab;int capturePage=-1;
+        // --ui-capture <png> [overview|roms|build|play|legal] / --settings-capture <png> [controls|display]: one deterministic frame (layout checks).
         if(!args.empty()){unattended=true;if(args[0]==L"--prepare")return prepare(root,args);if((args[0]==L"--ui-capture"||args[0]==L"--settings-capture")&&(args.size()==2||args.size()==3)){capture=args[1];captureSettings=args[0]==L"--settings-capture";rejectLinks(capture);
-                if(args.size()==3){if(captureSettings&&args[2]==L"controls")captureControls=true;else{const std::array<const wchar_t*,5> names{L"overview",L"roms",L"build",L"play",L"legal"};for(int k=0;k<5;++k)if(args[2]==names[size_t(k)])capturePage=k;if(capturePage<0)throw std::runtime_error("unknown capture page");}}}
+                if(args.size()==3){if(captureSettings&&args[2]==L"controls")captureTab=controlsTab;else if(captureSettings&&args[2]==L"display")captureTab=2;else{const std::array<const wchar_t*,5> names{L"overview",L"roms",L"build",L"play",L"legal"};for(int k=0;k<5;++k)if(args[2]==names[size_t(k)])capturePage=k;if(capturePage<0)throw std::runtime_error("unknown capture page");}}}
             else return diagnostics(root,args);}
         HANDLE singleton=nullptr;if(capture.empty()){singleton=CreateMutexW(nullptr,TRUE,L"Local\\TriUnitRecompLauncher");if(!singleton)throw std::runtime_error("launcher mutex");if(GetLastError()==ERROR_ALREADY_EXISTS){CloseHandle(singleton);auto existing=FindWindowW(L"MkArcadeCollection",nullptr);if(existing){ShowWindow(existing,SW_RESTORE);SetForegroundWindow(existing);}return 0;}}
         struct MutexGuard{HANDLE h;~MutexGuard(){if(h){ReleaseMutex(h);CloseHandle(h);}}} mutexGuard{singleton};
@@ -1272,7 +1277,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int){
         struct WindowGuard{HWND h;~WindowGuard(){if(IsWindow(h))DestroyWindow(h);}} windowGuard{window};
         app.graphics=std::make_unique<Renderer>(window);// Art is drawn in code; the launcher reads no image file.
         if(!capture.empty()){
-            SetWindowPos(window,nullptr,0,0,1536,1024,SWP_NOZORDER|SWP_NOACTIVATE);app.launcher.reducedMotion=true;app.settings=captureSettings;app.category=captureControls?controlsTab:launcherTab;app.notice.clear();if(capturePage>=0)app.page=capturePage;app.draw(1,true);app.graphics->saveCapture(capture);return 0;
+            SetWindowPos(window,nullptr,0,0,1536,1024,SWP_NOZORDER|SWP_NOACTIVATE);app.launcher.reducedMotion=true;app.settings=captureSettings;app.category=captureTab;app.notice.clear();if(capturePage>=0)app.page=capturePage;app.draw(1,true);app.graphics->saveCapture(capture);return 0;
         }
         eventLog(root,"launcher-start DX12");app.borderless(app.launcher.fullscreen);ShowWindow(window,SW_SHOW);UpdateWindow(window);
         try{

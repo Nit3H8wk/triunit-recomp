@@ -24,8 +24,15 @@ def _replace(source,target):
     _unlinked(target);partial=target.with_name(target.name+'.partial');shutil.copy2(source,partial);os.replace(partial,target)
 
 
+def _retire(product):
+    """Remove the red neon frame image of packages built by older releases; the games draw the TV frame in code."""
+    old=Path(product)/'arcade-bezel.png';_unlinked(old)
+    if old.is_file():old.unlink()
+
+
 def mk1(out):
     from tools.mk1.product import build
+    _retire(build.PRODUCT) # before the package manifest lists the product files
     if not build.main('setup',out/'mk5-native-audio.exe'):raise RuntimeError('MK1 package failed (build/native/manual-temporary-8-20261025/package.json)')
     engine=build.PRODUCT/'mk5-native-audio.exe'
     return dict(product=build.PRODUCT.relative_to(ROOT).as_posix(),executable_sha256=q.sha(engine))
@@ -42,7 +49,7 @@ def mk2(out):
         if not target.exists():os.link(ROOT/'roms/mk2'/rom['path'],target)
         if q.sha(target)!=rom['sha256']:raise RuntimeError('MK2 package ROM differs: '+rom['path'])
     _replace(ROOT/'native/runtime/LICENSE-video.txt',product/'LICENSE-video.txt')
-    _replace(out/'mk2-native.exe',product/'mk2-native.exe')
+    _replace(out/'mk2-native.exe',product/'mk2-native.exe');_retire(product)
     seed=product/'factory-seed.bin';_unlinked(seed)
     seed.with_name('factory-seed.partial').write_bytes(profile._read(profile.FACTORY_SEED,factory=True));os.replace(seed.with_name('factory-seed.partial'),seed)
     executable=q.sha(product/'mk2-native.exe')
@@ -77,6 +84,7 @@ def mk3(out):
                 target=product/relative;_unlinked(target);target.parent.mkdir(parents=True,exist_ok=True);os.replace(file,target)
         finally:
             if temporary.exists():temporary_tree.remove_tree(temporary,stage)
+    _retire(product)
     if q.sha(product/package.EXE)!=q.sha(exe):raise RuntimeError('MK3 package executable differs from the setup build')
     return dict(product=product.relative_to(ROOT).as_posix(),executable_sha256=info['executable_sha256'],files=info['files'])
 

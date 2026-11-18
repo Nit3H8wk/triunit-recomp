@@ -56,8 +56,12 @@ Name the release zip `TriUnit-Recomp-<tag>-Windows-x64.zip` and keep
 `recomplauncher.json` at its top, next to `triunit.exe` (it is in the tree, so
 a zip of the tree carries it). When a release changes what the setup produces
 for players who already built (generators, acceptance digests, install
-layout), change `prepare.version` in `recomplauncher.json` so RecompLauncher
-runs the setup again; keep its `saves` paths in step with `tools/setup/install.py`.
+layout, or the game runtime: video, input, audio), raise `SETUP_VERSION` in
+`tools/setup/setup.py`, `kSetupVersion` in `native/launcher/launcher_setup.hpp`
+and `prepare.version` in `recomplauncher.json` together (`tools/setup/test_setup.py`
+checks they agree). The app then shows older builds as **Update** instead of
+offering them, and RecompLauncher runs the setup again. Keep the `saves` paths in
+step with `tools/setup/install.py`.
 
 Before tagging, check that the release folder holds no `roms/`, `generated/`,
 `build/`, `logs/` or `custom_audio/` file and that `python tools/publish/audit.py`

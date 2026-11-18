@@ -7,8 +7,11 @@
 #include <string>
 #include <vector>
 namespace mklauncher {
+// tools/setup/setup.py SETUP_VERSION: a record of another version was built by an older release and must be built again.
+inline constexpr const char* kSetupVersion="2";
 struct SetupRecord {
  bool finished=false;
+ bool outdated=false; // built by another setup version: not offered until it is built again
  std::filesystem::path directory,executable;
  std::string program,executableSha256;
  double seconds=0; // generate + compile + seed seconds of that setup (the launcher's time estimate)
@@ -39,7 +42,12 @@ inline SetupRecord readSetup(const std::filesystem::path& root,const wchar_t* ga
    const auto f=object.fields.find(key);return f!=object.fields.end()&&f->second.kind==tinyjson::Value::Number?f->second.number:0.0;};
   double seconds=number(value,"generate_seconds")+number(compile->second,"seconds");
   const auto seed=value.fields.find("seed");if(seed!=value.fields.end()&&seed->second.kind==tinyjson::Value::Object)seconds+=number(seed->second,"seconds");
-  if(!best.finished||time>newest){best={true,entry.path(),path,name,sha->second.text,seconds};newest=time;}
+  const auto version=value.fields.find("setup_version");
+  if(version==value.fields.end()||version->second.kind!=tinyjson::Value::String||version->second.text!=kSetupVersion){
+   if(!best.finished)best.outdated=true;
+   continue;
+  }
+  if(!best.finished||time>newest){best={true,false,entry.path(),path,name,sha->second.text,seconds};newest=time;}
  }
  return best;
 }

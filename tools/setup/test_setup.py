@@ -78,7 +78,7 @@ class InstallTests(unittest.TestCase):
             root=Path(temp);out=root/'out';out.mkdir();(out/'mk3.exe').write_bytes(b'new build')
             product=root/package.PRODUCT;(product/'profiles/player').mkdir(parents=True)
             (product/'profiles/player/cmos.bin').write_bytes(b'player save');(product/'mk3.exe').write_bytes(b'old build')
-            (product/'package.ini').write_text('old')
+            (product/'package.ini').write_text('old');(product/'arcade-bezel.png').write_bytes(b'old neon frame')
             def write_product(exe,where,units):
                 fresh=where/package.PRODUCT;(fresh/'profiles/player').mkdir(parents=True);shutil.copy2(exe,fresh/'mk3.exe')
                 (fresh/'package.ini').write_text('new');(fresh/'profiles/player/cmos.bin').write_bytes(b'seed')
@@ -87,8 +87,19 @@ class InstallTests(unittest.TestCase):
                 found=install.mk3(out)
             self.assertEqual(((product/'mk3.exe').read_bytes(),(product/'package.ini').read_text()),(b'new build','new'))
             self.assertEqual((product/'profiles/player/cmos.bin').read_bytes(),b'player save')
+            self.assertFalse((product/'arcade-bezel.png').exists())   # the old frame image is retired
             self.assertEqual([p.name for p in (root/package.STAGE).iterdir()],['product'])   # temporary root removed
             self.assertEqual(found['executable_sha256'],q.sha(out/'mk3.exe'))
+
+
+class VersionTests(unittest.TestCase):
+    def test_setup_launcher_and_recomplauncher_share_the_setup_version(self):
+        import re
+        root=Path(__file__).resolve().parents[2]
+        header=(root/'native/launcher/launcher_setup.hpp').read_text(encoding='utf-8')
+        launcher=re.search(r'kSetupVersion="([^"]+)"',header).group(1)
+        manifest=json.loads((root/'recomplauncher.json').read_text(encoding='utf-8'))['prepare']['version']
+        self.assertEqual((setup.SETUP_VERSION,launcher),(manifest,manifest))
 
 
 class RequirementsTests(unittest.TestCase):
