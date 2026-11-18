@@ -5,9 +5,11 @@
 #include <filesystem>
 
 namespace mk2 {
+namespace state { struct Writer; struct Reader; }
 int MusicTrack(unsigned command);
 class RemasteredMix {
     mk5audio::HostGain host_{mk5audio::master_db::mk2_remastered};
+    template<class A> friend void Fields(A& a,RemasteredMix& m){a(m.host_);}
 public:
     // Median stereo R128 difference of eight matched excerpts; see music_normalization.py.
     static constexpr float original_gain=5.27837207f; // +14.45 dB
@@ -63,6 +65,16 @@ class DcsEffects {
     void Instruction(const AdspBoot&);
     void Sport(const AdspBoot&,uint16_t);
     void TransformUntil(uint16_t);
+    AdspBoot& NewTransform();
+    // Save-state value fields. The transform copy exists only between DSP PCs 0xaa and 0x13b: a load rebuilds it
+    // from the live DSP (its link and ROMs) and then restores its own value fields.
+    template<class A> friend void Fields(A& a,DcsEffects& e){
+        a(e.before_,e.spectrum_,e.overlap_,e.output_,e.output_tags_,e.output_gains_,e.ring_,e.tags_,e.gains_,
+          e.channel_gain_,e.generation_,e.tag_,e.overlap_valid_,e.channel_);
+        bool transform=e.transform_!=nullptr;a(transform);
+        if constexpr(A::reading){if(transform)e.NewTransform();else e.transform_.reset();}
+        if(transform)a(*e.transform_);
+    }
 public:
     explicit DcsEffects(AdspBoot&);
     ~DcsEffects();
@@ -74,9 +86,14 @@ public:
 class RemasteredAudio {
     struct Impl;
     std::unique_ptr<Impl> impl_;
+    // Save-state value fields (mk2_music.cpp). The user's tracks are reloaded from their files, never serialized.
+    friend void Fields(state::Writer&,RemasteredAudio&);
+    friend void Fields(state::Reader&,RemasteredAudio&);
 public:
     RemasteredAudio(AdspBoot&,const std::filesystem::path&,mk5audio::AudioConsumer);
     ~RemasteredAudio();
+    // Identity of the loaded user tracks (slot, PCM, window, loop and gain), computed with the load; binds a save state.
+    const std::string& MusicFingerprint() const;
     void Feed(uint64_t,const float*,size_t);
     uint64_t SourceSamples()const;
     uint64_t OutputSamples()const;

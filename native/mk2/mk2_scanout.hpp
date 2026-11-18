@@ -18,13 +18,17 @@ class Scanout {
     std::vector<uint32_t> backdrop_work_,backdrop_;
     mk5presentation::FighterCapture fighter_work_;
     mk5presentation::FighterFrame fighters_;
+    // Save-state value fields; remastered_ is the edition, checked by the file header.
     template<class A> friend void Fields(A& a,Scanout& s){
-        // shortcut: Original raster only; the Remastered layers join the save state with the Remastered follow-up.
-        if(s.remastered_)throw std::logic_error("MK2 Remastered scanout is not in the save state");
-        a(s.width_,s.height_,s.rows_,s.frames_,s.collecting_,s.work_,s.complete_);
+        auto enabled=s.display_enabled_.to_string();
+        a(s.width_,s.height_,s.rows_,s.frames_,s.collecting_,s.scenery_visible_,s.fighter_capture_started_,enabled,
+          s.work_,s.complete_,s.blood_work_,s.presentation_,s.blood_cover_,s.backdrop_work_,s.backdrop_,
+          s.fighter_work_,s.fighters_);
+        if constexpr(A::reading)s.display_enabled_=std::bitset<289>(enabled);
     }
 public:
     explicit Scanout(bool remastered=false):remastered_(remastered){}
+    bool remastered() const { return remastered_; }
     unsigned width() const { return width_; }
     unsigned height() const { return height_; }
     uint64_t frames() const { return frames_; }

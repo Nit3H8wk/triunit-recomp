@@ -128,7 +128,8 @@ class AdspBoot {
           d.external_pm, d.control, d.trace, d.accesses);
     }
 public:
-    struct Access { uint16_t pc, address; uint32_t value; uint64_t cycle; char space; };
+    struct Access { uint16_t pc, address; uint32_t value; uint64_t cycle; char space;
+        template<class A> friend void Fields(A& a, Access& x) { a(x.pc, x.address, x.value, x.cycle, x.space); } };
     uint16_t pc = 0, si = 0, ar = 0, af = 0, cntr = 0, mx0 = 0, mx1 = 0;
     uint16_t ax0 = 0, ax1 = 0, ay0 = 0, ay1 = 0, my0 = 0, my1 = 0;
     uint16_t mr0 = 0, mr1 = 0, mr2 = 0, mf = 0, se = 0, sb = 0, sr0 = 0, sr1 = 0;

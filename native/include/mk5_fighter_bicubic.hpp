@@ -8,6 +8,7 @@ struct FighterLayer {
     bool smooth=false;
     std::vector<uint32_t> pixels;
     uint64_t order=0;
+    template<class A> friend void Fields(A& a,FighterLayer& l){a(l.x,l.y,l.width,l.height,l.smooth,l.pixels,l.order);}
 };
 
 struct FighterFrame {
@@ -16,6 +17,7 @@ struct FighterFrame {
     std::vector<uint64_t> opaque_order;
     std::vector<uint8_t> covered;
     std::vector<FighterLayer> layers;
+    template<class A> friend void Fields(A& a,FighterFrame& f){a(f.serial,f.underlay,f.backdrop,f.opaque_order,f.covered,f.layers);}
 };
 
 inline constexpr int fighter_margin=2;

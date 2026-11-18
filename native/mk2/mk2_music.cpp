@@ -2,6 +2,8 @@
 #include "mk5_program.hpp"
 #include "../runtime/mk2_music_manifest.hpp"
 #include "../audio/custom_audio.hpp"
+#include "mk2_state_io.hpp"
+#include <cstdio>
 
 namespace mk2 {
 int MusicTrack(unsigned command) {
@@ -19,6 +21,14 @@ void DcsEffects::TransformUntil(uint16_t end) {
         if(count>=20000)throw std::runtime_error("DCS presentation transform exceeded finite boundary");
         transform_->Step();
     }
+}
+AdspBoot& DcsEffects::NewTransform() {
+    transform_=std::unique_ptr<AdspBoot>(new AdspBoot(dsp_));
+    auto& copy=*transform_;
+    copy.music_instruction_={};copy.music_sport_={};copy.dac_observer_={};
+    copy.presentation_only_=true;copy.observe_trace_=false;
+    copy.trace.clear();copy.accesses.clear();
+    return copy;
 }
 void DcsEffects::Instruction(const AdspBoot& dsp) {
     if(dsp.pc==8){tag_=0;overlap_valid_=false;transform_.reset();output_.fill(0);output_tags_.fill(0);output_gains_.fill(0);channel_gain_=0;return;}
@@ -46,11 +56,7 @@ void DcsEffects::Instruction(const AdspBoot& dsp) {
     if(dsp.pc==0xa5 && (channel_!=0 || !tag_))
         for(size_t n=0;n<spectrum_.size();++n)spectrum_[n]=uint16_t(spectrum_[n]+dsp.dm[n]-before_[n]);
     if(dsp.pc==0xaa){
-        transform_=std::unique_ptr<AdspBoot>(new AdspBoot(dsp));
-        auto& copy=*transform_;
-        copy.music_instruction_={};copy.music_sport_={};copy.dac_observer_={};
-        copy.presentation_only_=true;copy.observe_trace_=false;
-        copy.trace.clear();copy.accesses.clear();
+        auto& copy=NewTransform();
         std::copy(spectrum_.begin(),spectrum_.end(),copy.dm.begin());
         if(overlap_valid_)std::copy(overlap_.begin(),overlap_.end(),copy.external_pm.begin()+0x61d);
         TransformUntil(0x12a);
@@ -89,6 +95,23 @@ void DcsEffects::Read(uint64_t first,size_t count,float* effects,uint64_t* tags,
 // Music level relative to the DCS music channel envelope: the median of the per-cue stereo R128 matches measured
 // for the former reference recordings (music_normalization.py). A slot's gain_db in slots.json scales it.
 static constexpr float music_gain_default=4.903509576f;
+// 64-bit FNV-1a over every slot's presence, window, loop, gain and PCM (four samples per word). Computed with the
+// load, before playback, so a save never stalls the audio queue on it.
+static std::string Fingerprint(const std::vector<std::optional<customaudio::Track>>& tracks) {
+    uint64_t hash=0xcbf29ce484222325ull;
+    const auto mix=[&hash](uint64_t value){hash=(hash^value)*0x100000001b3ull;};
+    for(const auto& slot:tracks){
+        mix(slot.has_value());
+        if(!slot)continue;
+        uint32_t gain;std::memcpy(&gain,&slot->gain,sizeof gain);
+        for(const uint64_t value:{slot->begin,slot->end,slot->repeat_begin,slot->repeat_end,uint64_t(slot->loop),uint64_t(gain),uint64_t(slot->pcm.size())})mix(value);
+        const auto& pcm=slot->pcm;size_t n=0;
+        for(uint64_t word;n+4<=pcm.size();n+=4){std::memcpy(&word,pcm.data()+n,sizeof word);mix(word);}
+        for(;n<pcm.size();++n)mix(uint16_t(pcm[n]));
+    }
+    char text[17];std::snprintf(text,sizeof text,"%016llx",static_cast<unsigned long long>(hash));
+    return text;
+}
 struct RemasteredAudio::Impl {
     static constexpr uint64_t attack=240,splice=720; // 5 ms de-click, 15 ms overlap at 48 kHz.
     DcsEffects effects;
@@ -102,6 +125,7 @@ struct RemasteredAudio::Impl {
     float cue_gain=0,music_gain=0,release_gain=0;
     const customaudio::Track* release_track=nullptr;
     uint64_t release_position=0,release_remaining=0;
+    std::string fingerprint;
     Impl(AdspBoot& dsp,const std::filesystem::path& directory,mk5audio::AudioConsumer out)
         :effects(dsp),original([this](const auto*p,size_t n){original_pcm.assign(p,p+n);}),
          effect_audio([this](const auto*p,size_t n){effects_pcm.assign(p,p+n);}),
@@ -109,6 +133,7 @@ struct RemasteredAudio::Impl {
         if(!consumer)throw std::invalid_argument("remastered DCS requires a consumer");
         tracks=customaudio::LoadSlots(directory,std::vector<std::string>(music_slots.begin(),music_slots.end()),
                                       std::vector<bool>(music_slots.size(),true));
+        fingerprint=Fingerprint(tracks);
     }
     // A cue whose slot has no usable user file keeps the arcade's own music (the full DCS signal).
     const customaudio::Track* Track(uint64_t tag) const {
@@ -189,6 +214,22 @@ void RemasteredAudio::Feed(uint64_t first,const float* samples,size_t count){
     }
     if(!s.original_pcm.empty())s.consumer(out.data(),s.original_pcm.size()*2);
 }
+const std::string& RemasteredAudio::MusicFingerprint()const{return impl_->fingerprint;}
+template<class A,class Impl> static void RemasteredFields(A& a,Impl& s){
+    a(s.effects,s.original,s.effect_audio,s.gain_audio,s.mix,s.tags,s.last_tag,s.position,s.starts,s.output,
+      s.cue_gain,s.music_gain,s.release_gain,s.release_position,s.release_remaining);
+    // The release tail points into the reloaded tracks: stored as its slot index.
+    int64_t release=-1;
+    for(size_t n=0;n<s.tracks.size();++n)if(s.tracks[n] && &*s.tracks[n]==s.release_track)release=int64_t(n);
+    a(release);
+    if constexpr(A::reading){
+        if(release>=int64_t(s.tracks.size()) || (release>=0 && !s.tracks[size_t(release)]))
+            throw std::runtime_error("MK2 save state music release names an absent track");
+        s.release_track=release<0?nullptr:&*s.tracks[size_t(release)];
+    }
+}
+void Fields(state::Writer& a,RemasteredAudio& r){RemasteredFields(a,*r.impl_);}
+void Fields(state::Reader& a,RemasteredAudio& r){RemasteredFields(a,*r.impl_);}
 uint64_t RemasteredAudio::SourceSamples()const{return impl_->original.SourceSamples();}
 uint64_t RemasteredAudio::OutputSamples()const{return impl_->output;}
 uint64_t RemasteredAudio::Starts()const{return impl_->starts;}

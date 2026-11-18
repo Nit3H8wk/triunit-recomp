@@ -34,7 +34,8 @@ struct BootVideo {
     bool BackdropEnabled()const{return !backdrop.empty();}
     uint16_t BackdropPixel(size_t index)const{return backdrop[index];}
     bool backdrop_list=false,world_object_list=false;
-    struct DrawOwner {bool scenery=false;uint64_t fighter=0;};
+    struct DrawOwner {bool scenery=false;uint64_t fighter=0;
+        template<class A> friend void Fields(A& a,DrawOwner& o){a(o.scenery,o.fighter);}};
     void StageDraw(uint32_t cursor,DrawOwner owner){
         if(owner.scenery || owner.fighter)draw_queue[cursor]=owner;
         else draw_queue.erase(cursor);
@@ -331,11 +332,19 @@ private:
         if(scenery)backdrop[index]=vram[index]|backdrop_owner;
         else backdrop[index]&=~backdrop_owner;
     }
-    struct BloodDraw { uint32_t cursor,page,camera,clip_start,clip_end; bool visible; } blood_draw{};
+    struct BloodDraw { uint32_t cursor,page,camera,clip_start,clip_end; bool visible;
+        template<class A> friend void Fields(A& a,BloodDraw& d){a(d.cursor,d.page,d.camera,d.clip_start,d.clip_end,d.visible);}
+    } blood_draw{};
     using BloodPalette=std::array<uint16_t,12>;
     std::array<uint8_t,35*11> blood_pixels{};
     std::map<std::tuple<int16_t,int16_t,bool>,BloodPalette> blood_stains;
     std::vector<uint16_t> blood_layer;
+    // Save-state value fields (mk2_save_state.hpp). Which layers exist is the edition, checked by the file header;
+    // blood_pixels is decoded from the program ROM by EnableBlood and stays with the live session.
+    template<class A> friend void Fields(A& a,BootVideo& v){
+        a(v.palette_ram,v.vram,v.shift_register,v.dma_palette,v.dma_registers,v.backdrop_list,v.world_object_list,
+          v.backdrop,v.fighters,v.fighter_objects,v.draw_queue,v.blood_draw,v.blood_stains,v.blood_layer);
+    }
     static unsigned PaletteOffset(uint32_t address) {
         if (address < 0x01800000 || address > 0x0187fff0 || (address & 15))
             throw std::runtime_error("MK2 palette access outside aligned mapped words");

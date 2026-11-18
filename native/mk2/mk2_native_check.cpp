@@ -150,14 +150,14 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
     const auto source_samples=[&]{return music?music->SourceSamples():audio->SourceSamples();};
     const auto output_samples=[&]{return music?music->OutputSamples():audio->OutputSamples();};
     mk2::Scanout scanout(remastered && show_window);
-    // One slot per program ROM: in memory, mirrored to saves/mk2/<program sha>/ for later sessions.
-    const auto slot_path=std::filesystem::path(L"saves/mk2")/program.sha256/L"slot1.state";
+    // One slot per program ROM and edition: in memory, mirrored to saves/mk2/<program sha>/ for later sessions.
+    const auto slot_path=std::filesystem::path(L"saves/mk2")/program.sha256/(remastered?L"slot1-remastered.state":L"slot1.state");
     std::vector<uint8_t> slot;
     int64_t state_output_offset=0; // Output samples a load rewound or skipped; the sink still counts every one.
     const auto state_request=[&](Mk5Window::StateRequest request,mk2::LiveHostContinuation& continuation) {
-        if(remastered){std::cerr<<"MK2 save states cover the Original edition only\n";return;}
+        const mk2::LiveAudio live_audio{audio.get(),music.get()};
         if(request==Mk5Window::StateRequest::Save) {
-            slot=mk2::SaveLiveState(program,continuation,*machine,scanout,audio.get());
+            slot=mk2::SaveLiveState(program,continuation,*machine,scanout,live_audio);
             try {
                 std::filesystem::create_directories(slot_path.parent_path());
                 auto pending=slot_path;pending+=L".tmp";
@@ -176,11 +176,11 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
                 if(!file)throw std::runtime_error("no saved state");
                 bytes.assign(std::istreambuf_iterator<char>(file),{});
             }
-            mk2::state::CheckLiveState(program,bytes,audio!=nullptr);
+            mk2::state::CheckLiveState(program,bytes,mk2::state::LiveIdentity(continuation,scanout,live_audio));
         } catch(const std::exception& error) {std::cerr<<"MK2 save state not loaded: "<<error.what()<<'\n';return;}
-        const auto before=audio?audio->OutputSamples():0;
-        mk2::LoadLiveState(program,bytes,continuation,*machine,scanout,audio.get());
-        if(audio)state_output_offset+=int64_t(before)-int64_t(audio->OutputSamples());
+        const auto before=sink?output_samples():0;
+        mk2::LoadLiveState(program,bytes,continuation,*machine,scanout,live_audio);
+        if(sink)state_output_offset+=int64_t(before)-int64_t(output_samples());
         replay.End();
         std::cerr<<"MK2 state loaded from "<<(slot.empty()?slot_path.generic_string():std::string("memory"))<<'\n';
     };

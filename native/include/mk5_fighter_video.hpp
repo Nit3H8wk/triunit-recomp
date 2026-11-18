@@ -7,6 +7,7 @@ namespace mk5presentation {
 class FighterSlots {
     uint64_t next_=0;
     std::map<uint32_t,uint64_t> live_;
+    template<class A> friend void Fields(A& a,FighterSlots& s){a(s.next_,s.live_);}
 public:
     void Bind(uint32_t slot){
         if(live_.try_emplace(slot,next_+1).second)++next_;
@@ -26,12 +27,17 @@ class FighterSurface {
     friend class FighterCapture;
     static constexpr unsigned stride=512;
     static constexpr size_t row_limit=stride*16;
-    struct Opaque { uint64_t order=0; uint32_t blood=0; uint16_t pen=0; };
-    struct Texel { uint64_t order; uint16_t x,pen; };
-    struct Row { std::vector<Texel> texels; bool overflow=false; };
+    struct Opaque { uint64_t order=0; uint32_t blood=0; uint16_t pen=0;
+        template<class A> friend void Fields(A& a,Opaque& o){a(o.order,o.blood,o.pen);} };
+    struct Texel { uint64_t order; uint16_t x,pen;
+        template<class A> friend void Fields(A& a,Texel& t){a(t.order,t.x,t.pen);} };
+    struct Row { std::vector<Texel> texels; bool overflow=false;
+        template<class A> friend void Fields(A& a,Row& r){a(r.texels,r.overflow);} };
     std::vector<Opaque> opaque_;
     std::vector<Row> rows_;
     uint64_t order_=0,owner_=0;
+    // Save-state value fields (native/mk2/mk2_save_state.hpp); presence (enabled) is part of the state.
+    template<class A> friend void Fields(A& a,FighterSurface& s){a(s.opaque_,s.rows_,s.order_,s.owner_);}
 public:
     struct DrawToken { uint64_t owner,order=0; };
     explicit FighterSurface(size_t pixels=0):opaque_(pixels),rows_(pixels/stride){}
@@ -88,11 +94,13 @@ class FighterCapture {
         int left,right;
         unsigned top,bottom;
         std::vector<Sample> samples;
+        template<class A> friend void Fields(A& a,Layer& l){a(l.left,l.right,l.top,l.bottom,l.samples);}
     };
     unsigned width_=0,height_=0,rows_=0;
     bool valid_=false;
-    FighterFrame frame_;
+    FighterFrame frame_; // After Complete it holds the swapped-out frame, whose buffers the next Begin reuses.
     std::map<uint64_t,Layer> layers_;
+    template<class A> friend void Fields(A& a,FighterCapture& c){a(c.width_,c.height_,c.rows_,c.valid_,c.frame_,c.layers_);}
 
     bool CanContribute(const Layer& layer,uint64_t order)const{
         const int left=std::max(0,layer.left-fighter_margin);
