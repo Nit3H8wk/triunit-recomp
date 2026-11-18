@@ -15,6 +15,7 @@
     "args": ["--prepare", "--roms", "{game}"],
     "label": "Checking your ROM files, then generating and compiling each game on this PC",
     "timeout": 3600,
+    "version": "2",
     "options": [
       {
         "id": "own_roms",
@@ -33,6 +34,7 @@
     "{install}/build/native/manual-temporary-8-20261025/profile/launcher.ini",
     "{install}/build/native/mk2-native-v1/product/profiles/player/cmos.bin",
     "{install}/build/native/mk2-native-v1/profile/launcher.ini",
+    "{install}/build/native/mk2-native-v1/product/saves",
     "{install}/build/native/mk3-native/product/profiles/player/cmos.bin",
     "{install}/build/native/mk3-native/profile/launcher.ini",
     "{install}/build/native/launcher-profile/launcher.cfg"
