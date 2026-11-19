@@ -16,6 +16,7 @@
 #pragma once
 #include "mk3_dma_observer.hpp"
 #include "mk3_profile.hpp"
+#include "mk3_program.hpp"
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -207,5 +208,26 @@ private:
         }
     }
 };
+
+// Remastered floor blood (mk3_blood.hpp): the splash frame's palette indices, drawn by this blitter from the frame header
+// (width, height, anchor, source, command bits at words 0-6, as the object walker reads it) into a scratch video RAM.
+inline void EnableFloorBlood(FloorBlood& blood, const Program& program, const std::vector<uint8_t>& graphics) {
+    const auto word = [&](unsigned k) { return program.Word(FloorBlood::kFrame + 16 * k); };
+    if (word(0) != FloorBlood::kWidth || word(1) != FloorBlood::kHeight) throw std::runtime_error("MK3 invalid original floor splash");
+    Dma dma{graphics};
+    dma.profile = Profile::Game;
+    dma.reg[Dma::WIDTH] = word(0); dma.reg[Dma::HEIGHT] = word(1);
+    dma.reg[Dma::OFFSETLO] = word(4); dma.reg[Dma::OFFSETHI] = word(5);
+    dma.reg[Dma::BOTCLIP] = 511; dma.reg[Dma::RIGHTCLIP] = 1023;
+    dma.Write(Dma::COMMAND, uint16_t(0x8002 | (word(6) & ~0x30u)));   // unmirrored; the stain mirrors itself
+    blood.shape.assign(size_t(FloorBlood::kWidth) * FloorBlood::kHeight, 0);
+    for (int y = 0; y < FloorBlood::kHeight; ++y)
+        for (int x = 0; x < FloorBlood::kWidth; ++x) {
+            const uint16_t pixel = dma.vram[size_t(y) * 512 + size_t(x)];
+            if (pixel >= FloorBlood::Colors{}.size()) throw std::runtime_error("MK3 invalid original floor splash palette index");
+            blood.shape[size_t(y) * FloorBlood::kWidth + size_t(x)] = uint8_t(pixel);
+        }
+    blood.layer.assign(dma.vram.size(), 0);
+}
 
 } // namespace mk3

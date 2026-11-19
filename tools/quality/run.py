@@ -471,6 +471,13 @@ def fast(cc, sanitizer, scratch, graphics=False):
             cases.append(("mk2-remastered-blood", ["native/tests/mk2_remastered_blood_tests.cpp",
                           "native/mk2/mk2_program.cpp", "native/src/mk5_program.cpp"],
                           ["-lbcrypt"], [str(mk2_roms)]))
+        from tools.mk3 import roms as mk3_roms   # the ROM_LOAD32_BYTE "video" rows (tools/mk3/reference_dma.py)
+        mk3_graphics = [(ROOT / "roms/mk3" / row["path"], row["offset_bytes"], row["size"]) for row in mk3_roms.definition() if row["region"] == "video"]
+        if mk3_graphics and all(path.is_file() for path, _, _ in mk3_graphics) and (ROOT / "roms/mk3/mk321u54.bin").is_file():
+            (scratch / "mk3-gfx.txt").write_text("".join(f"{o} {s} {p}\n" for p, o, s in mk3_graphics), encoding="utf-8")
+            cases.append(("mk3-remastered-blood", ["native/tests/mk3_remastered_blood_tests.cpp",
+                          "native/mk3/mk3_program.cpp", "native/src/mk5_program.cpp"],
+                          ["-lbcrypt"], [str(ROOT / "roms/mk3"), str(scratch / "mk3-gfx.txt")]))
     for name, sources, extra, arguments in cases:
         exe = scratch / (name + ".exe")
         build = command(flags + [str(ROOT / path) for path in sources] + extra

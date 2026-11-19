@@ -120,10 +120,11 @@ No emulator runs the game.
 
 ### Floor blood that stays (Remastered)
 
-In Mortal Kombat and Mortal Kombat II, the blood splashes stay on the arena
-floor for the whole fight and are cleared when a new fight starts. It is a
-presentation layer: the game's state, rules and timing do not change.
-Mortal Kombat 3 is next.
+In Mortal Kombat, Mortal Kombat II and Mortal Kombat 3, the blood splashes
+stay on the arena floor for the whole fight and are cleared when a new fight
+starts (in Mortal Kombat 3 also when the fight moves to another arena, and the
+stains dim with the arena when it fades or darkens). It is a presentation
+layer: the game's state, rules and timing do not change.
 
 ### Video filters and scaling
 

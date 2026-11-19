@@ -10,7 +10,8 @@
 //   --hashes     one JSON line per presented frame: FNV-1a 64 of the visible RGB (current pens, palette at VBLANK) and
 //                of the previous frame's pens through the same palette (what MAME screen_device::pixels() returns in a
 //                frame notifier, after video_output_update swapped m_curbitmap), and of the palette RAM
-//   --dump F[,F]  the visible RGB of each frame F (both views) as hex; Remastered also the backdrop and the 4x frame
+//   --dump F[,F]  the visible RGB of each frame F (both views) as hex; Remastered also the backdrop, the presented frame
+//                (with the floor blood of mk3_blood.hpp) and the 4x frame
 //   --linger S   with --window, keep the last frame (and the stop message) on screen S seconds (default: until Esc)
 //   --tape F     legal input tape ("cycle port value" rows, tools/mk3/replay.py format; port 0 IN0, 1 IN1, 2 DSW, 3 IN2):
 //                from the first TMS instruction boundary >= cycle (and >= 1000, not a PIXBLT restart re-entry, the rule
@@ -21,8 +22,8 @@
 //                mk3_dma_observer.hpp, with the CPU's video RAM stores (Ops::vram_observer), give the scenery backdrop
 //                and the fighter layers, which the window composes 4x bicubic as MK2 (mk5_stage_bicubic.hpp,
 //                mk5_fighter_bicubic.hpp); presentation only: the canonical state, scanout and hashes are the same.
-//                Headless Remastered with --hashes also prints the scenery pixel count, the fighter layer count and
-//                the hash of the 4x frame.
+//                Headless Remastered with --hashes also prints the scenery pixel count, the fighter layer count, the
+//                kept floor stains and the hash of the 4x frame.
 //   --dma-census per-producer DMA counts (writer/enqueue PC, display list, scroll word, table routine, graphics bank)
 //   --state-test PLAN  test plan of save states, e.g. save@100,hash@200,load@200,hash@200: each item once, in order, at
 //                the first presented frame >= its number, as F5 (save), F7 (load) or a digest of the state (hash)
@@ -223,7 +224,8 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
         auto layers = std::make_unique<mk3::DmaLayers>();
         CpuTap cpu_tap;
         if (layer2) {
-            layers->writer_pc = &b.o.instruction_pc; layers->b14 = &b.s.b[14]; layers->ram = &b.o.ram;
+            layers->writer_pc = &b.o.instruction_pc; layers->b14 = &b.s.b[14]; layers->ram = &b.o.ram; layers->palette = &b.o.palette;
+            mk3::EnableFloorBlood(layers->blood, program, b.o.blitter.gfx);
             b.o.blitter.observer = layers.get(); scanout.layers = layers.get();
             cpu_tap.layers = layers.get(); b.o.vram_observer = &cpu_tap;
         }
@@ -365,14 +367,15 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
                 // Headless Remastered: the 4x presentation the window would compose (mk5stage::Bicubic4x).
                 std::vector<uint32_t> composed;
                 if (layer2 && !window && s.fighters.serial) composed = mk5presentation::ComposeFighterFrame4x(s.fighters, mk3::Scanout::kFrameWidth, mk3::Scanout::kFrameHeight);
-                else if (layer2 && !window && flagged) composed = mk5stage::Bicubic4x(s.frame, s.backdrop, mk3::Scanout::kFrameWidth, mk3::Scanout::kFrameHeight);
+                else if (layer2 && !window && flagged) composed = mk5stage::Bicubic4x(s.presentation, s.backdrop, mk3::Scanout::kFrameWidth, mk3::Scanout::kFrameHeight);
                 if (hashes) {
                     std::printf("{\"frame\":%llu,\"as\":\"%llu%018llu\",\"cycle\":%llu,\"rgb\":\"%016llx\",\"prev\":\"%016llx\",\"palette\":\"%llx\"",
                                 (unsigned long long)frame, sec, atto, (unsigned long long)b.Cycles(),
                                 (unsigned long long)HashRgb(s.frame), (unsigned long long)HashRgb(previous_rgb),
                                 (unsigned long long)HashWords(b.o.palette));
                     if (!state_plan.empty()) { std::printf(",\"pcm\":\"%016llx\"", (unsigned long long)pcm_hash); pcm_hash = 0xcbf29ce484222325ull; }
-                    if (layer2) std::printf(",\"scenery\":%llu,\"fighters\":%zu,\"rm\":\"%016llx\"", (unsigned long long)flagged, s.fighters.serial ? s.fighters.layers.size() : size_t(0),
+                    if (layer2) std::printf(",\"scenery\":%llu,\"fighters\":%zu,\"blood\":%zu,\"rm\":\"%016llx\"", (unsigned long long)flagged, s.fighters.serial ? s.fighters.layers.size() : size_t(0),
+                                            layers->blood.stains.size(),
                                             (unsigned long long)(composed.empty() ? 0 : HashRgb(composed)));
                     std::printf("}\n");
                 }
@@ -380,6 +383,7 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
                     std::printf("{\"dump\":%llu,\"rgb\":\"", (unsigned long long)frame); Hex(s.frame);
                     std::printf("\",\"prev\":\""); Hex(previous_rgb);
                     if (layer2) { std::printf("\",\"backdrop\":\""); for (const uint32_t v : s.backdrop) std::printf("%08x", unsigned(v)); }
+                    if (layer2) { std::printf("\",\"present\":\""); Hex(s.presentation); }
                     if (layer2) {   // writer class per visible pixel (DmaClass; 7 = CPU-written; 8 = blank)
                         std::printf("\",\"classes\":\"");
                         for (int y = 0; y < mk3::Scanout::kFrameHeight; ++y)
@@ -399,7 +403,7 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
 
             if (window) {
                 if (!window->Pump()) { stop = closed = true; return; }
-                shown = s.frame;
+                shown = layer2 ? s.presentation : s.frame;   // Remastered: with the floor blood
                 for (auto& v : shown) v |= 0xff000000u;
                 if (flagged) backdrop_shown = s.backdrop; else backdrop_shown.clear();
                 fighters_shown.layers.clear();

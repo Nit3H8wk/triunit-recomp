@@ -5,6 +5,7 @@
 // (mk3::CpuVramObserver, mk3_cpu.hpp) to DmaLayers::Cpu.
 #pragma once
 #include "../include/mk5_fighter_video.hpp"  // relative: core test builds pass only -I native/mk3
+#include "mk3_blood.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <unordered_map>
@@ -219,11 +220,15 @@ inline DmaClass ClassifyDma(const DmaSource& s, const DmaDraw& d, const std::vec
 // its last DMA stored is taken as CPU-written (its own pen, unflagged).
 // Fighters (as MK2, mk5_fighter_video.hpp): every draw also goes into `fighters`; a Fighter draw is a layer texel owned by
 // its object, any other draw (and a CPU store) an opaque base pen, bit 15 = scenery. The scanout samples it per row.
+// Floor blood (mk3_blood.hpp, enabled by EnableFloorBlood): composed when the pump pops the world pass's first entry;
+// every later DMA or CPU store covers it, and a fighter texel over a stain keeps it as its base.
 struct DmaLayers : DmaObserver {
     static constexpr uint32_t kScenery = 0x10000;
     const uint32_t* writer_pc = nullptr;   // Ops::instruction_pc
     const uint32_t* b14 = nullptr;         // ResetTrace::b[14], the queue cursor
     const std::vector<uint16_t>* ram = nullptr;   // Ops::ram (fighter slots); null: no Fighter class
+    const std::vector<uint16_t>* palette = nullptr;   // Ops::palette: the colours of a kept stain
+    FloorBlood blood;
     DmaQueue queue;
     ObjectBinder objects;
     std::vector<uint16_t> stored = std::vector<uint16_t>(0x80000), under = std::vector<uint16_t>(0x80000);
@@ -238,10 +243,12 @@ struct DmaLayers : DmaObserver {
     void Step(uint32_t pc, const uint32_t* a) {   // the host calls it before every TMS instruction
         queue.Step(pc, a, ram);
         if (ram) objects.Step(pc, a, *ram);
+        if (ram) blood.Step(pc, a, *ram, palette);
         if (pc == DmaQueue::kObject)
             if (const auto it = objects.bound.find(a[0]); it != objects.bound.end()) queue.staged[a[1] - 0xc0].bound = uint8_t(it->second);
     }
     void Begin(const DmaDraw& d) override {
+        if (*writer_pc == DmaQueue::kPump) blood.Pump(*b14, stored, palette);
         Flush();
         const DmaSource src = queue.Take(*writer_pc, *b14);
         now = ClassifyDma(src, d, ram);
@@ -253,7 +260,10 @@ struct DmaLayers : DmaObserver {
         stored[i] = v; ++pixels[unsigned(now)];
         cls[i] = uint8_t(now);
         if (now == DmaClass::Scenery || now == DmaClass::Clear) under[i] = v;
-        fighters.Write(token, i, uint16_t((v & 0x7fff) | (now == DmaClass::Scenery ? 0x8000 : 0)));
+        const uint16_t stain = blood.At(i);
+        blood.Mask(i);
+        fighters.Write(token, i, uint16_t((v & 0x7fff) | (now == DmaClass::Scenery ? 0x8000 : 0)),
+                       now == DmaClass::Fighter && stain ? FloorBlood::kMark | (stain & 0x7fffu) : 0);
     }
     // CPU stores: the page fill (kPageFill) and the CPU-decoded pictures (kPictureRows) are Scenery; any other CPU
     // store: Cpu (nearest).
@@ -262,6 +272,7 @@ struct DmaLayers : DmaObserver {
         const bool picture = pc == kPictureRows[0] || pc == kPictureRows[1] || pc == kPictureRows[2];
         const DmaClass c = pc == kPageFill || picture ? DmaClass::Scenery : DmaClass::Cpu;
         stored[i] = under[i] = v; cls[i] = uint8_t(c); ++cpu_words[picture ? 2 : c == DmaClass::Scenery];
+        blood.Mask(i);
         if (i != cpu_end) { Flush(); cpu_begin = i; }
         cpu_end = i + 1;
     }

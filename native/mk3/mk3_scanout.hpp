@@ -17,6 +17,10 @@
 // `frame` and the hashes are computed exactly as without it. Each row also samples layers->fighters through
 // mk5presentation::FighterCapture (as MK2's scanout, with pens instead of colours); Present() completes `fighters`
 // through the same palette (serial 0 = no fighter layer this frame or a row the capture cannot follow).
+// Floor blood (mk3_blood.hpp): a visible word under a stain of layers->blood is the stain's colour in `presentation`
+// (the frame the Remastered window shows), unflagged in `backdrop` and in the fighters' underlay; `frame` stays canonical.
+// Present dims the frame's stains by the brightness of the canonical pens they cover (the floor words) through the
+// VBLANK palette against their FloorBlood floor references, so the program's palette fades take them along.
 #pragma once
 #include "mk3_dma_observer.hpp"
 #include "mk3_video.hpp"
@@ -47,6 +51,10 @@ struct Scanout {
     mk5presentation::FighterFrame fighters;
     std::vector<uint32_t> row_pens = std::vector<uint32_t>(kFrameWidth), row_back = std::vector<uint32_t>(kFrameWidth);
     std::vector<uint32_t> backdrop_pens, backdrop;   // pen | DmaLayers::kScenery; 0x00RRGGBB | kSceneryRgb (visible area)
+    std::vector<uint32_t> presentation_pens, presentation;   // visible area: pen or FloorBlood::kMark | RGB555; 0x00RRGGBB
+    std::vector<uint8_t> presentation_floor;   // visible area: FloorBlood floor reference of a stained pixel
+    std::vector<uint16_t> row_blood = std::vector<uint16_t>(kWidth);
+    std::vector<uint8_t> row_floor = std::vector<uint8_t>(kWidth);
     static constexpr uint32_t kSceneryRgb = 0x80000000u;   // mk5stage::scenery
 
     void ResetPartial() { last_partial_scan = 0; }   // scanline-0 timer: reset_partial_updates
@@ -74,7 +82,12 @@ struct Scanout {
                 if (backdrop_pens.empty()) backdrop_pens.assign(pens.size(), kBlackPen);
                 uint32_t* back = &backdrop_pens[size_t(top) * kWidth];
                 const size_t base = (rowaddr << 9) & 0x3fe00;
-                for (int x = heblnk, c = int(col); x < hsblnk; ++x, ++c) back[x] = layers->Backdrop(base + (c & 0x1ff), src[c & 0x1ff]);
+                std::fill(row_blood.begin(), row_blood.end(), uint16_t(0));
+                for (int x = heblnk, c = int(col); x < hsblnk; ++x, ++c) {
+                    back[x] = layers->Backdrop(base + (c & 0x1ff), src[c & 0x1ff]);
+                    row_blood[x] = layers->blood.At(base + (c & 0x1ff)); row_floor[x] = layers->blood.Floor(base + (c & 0x1ff));
+                    if (row_blood[x]) back[x] = FloorBlood::kMark | (row_blood[x] & 0x7fffu);
+                }
             }
             for (int x = heblnk; x < hsblnk; ++x) dest[x] = src[col++ & 0x1ff] & 0x7fff;
         } else heblnk = hsblnk = kRight + 1;
@@ -85,9 +98,15 @@ struct Scanout {
             uint32_t* back = &backdrop_pens[size_t(top) * kWidth];
             for (int x = kLeft; x <= kRight; ++x) if (x < heblnk || x >= hsblnk) back[x] = kBlackPen;
             if (top == kTop) fighter_work.Begin(kFrameWidth, kFrameHeight);
+            if (!enabled) std::fill(row_blood.begin(), row_blood.end(), uint16_t(0));
+            if (presentation_pens.empty()) presentation_pens.assign(frame.size(), kBlackPen);
+            if (presentation_floor.empty()) presentation_floor.assign(frame.size(), 0);
             for (int x = 0; x < kFrameWidth; ++x) {
-                row_pens[x] = dest[x + kLeft];
-                row_back[x] = (back[x + kLeft] & 0xffff) | (back[x + kLeft] & DmaLayers::kScenery ? kSceneryRgb : 0);
+                const uint16_t stain = row_blood[x + kLeft];
+                row_pens[x] = stain ? FloorBlood::kMark | (stain & 0x7fffu) : dest[x + kLeft];
+                row_back[x] = stain ? row_pens[x] : (back[x + kLeft] & 0xffff) | (back[x + kLeft] & DmaLayers::kScenery ? kSceneryRgb : 0);
+                presentation_pens[size_t(top - kTop) * kFrameWidth + x] = row_pens[x];
+                presentation_floor[size_t(top - kTop) * kFrameWidth + x] = stain ? row_floor[x + kLeft] : uint8_t(0);
             }
             layers->Flush();
             fighter_work.Line(layers->fighters, unsigned(top - kTop), row_base, row_col, row_pens.data(), row_back.data(),
@@ -104,14 +123,29 @@ struct Scanout {
             }
         if (layers) {
             if (backdrop_pens.empty()) backdrop_pens.assign(pens.size(), kBlackPen);
+            if (presentation_pens.empty()) presentation_pens.assign(frame.size(), kBlackPen);
+            if (presentation_floor.empty()) presentation_floor.assign(frame.size(), 0);
+            uint64_t now = 0, then = 0;   // the floor under this frame's stains: now (VBLANK palette) and at its references
+            for (int y = 0; y < kFrameHeight; ++y)
+                for (int x = 0; x < kFrameWidth; ++x) {
+                    const size_t i = size_t(y) * kFrameWidth + size_t(x);
+                    if (!(presentation_pens[i] & FloorBlood::kMark) || !presentation_floor[i]) continue;
+                    const uint16_t pen = pens[size_t(y + kTop) * kWidth + size_t(x + kLeft)];
+                    now += pen == kBlackPen ? 0 : FloorBlood::Sum(palette[pen]); then += presentation_floor[i] - 1u;
+                }
+            const auto rgb = [&](uint32_t pen) {
+                return pen & FloorBlood::kMark ? Rgb(FloorBlood::Dim(uint16_t(pen & 0x7fff), now, then))
+                                               : (pen & 0xffff) == kBlackPen ? 0 : Rgb(palette[pen & 0x7fff]);
+            };
+            presentation.resize(frame.size());
+            for (size_t i = 0; i < frame.size(); ++i) presentation[i] = rgb(presentation_pens[i]);
             backdrop.resize(frame.size());
             for (int y = 0; y < kFrameHeight; ++y)
                 for (int x = 0; x < kFrameWidth; ++x) {
                     const uint32_t pen = backdrop_pens[size_t(y + kTop) * kWidth + size_t(x + kLeft)];
-                    backdrop[size_t(y) * kFrameWidth + x] = (pen & 0xffff) == kBlackPen ? 0 : Rgb(palette[pen & 0x7fff]) | (pen & DmaLayers::kScenery ? kSceneryRgb : 0);
+                    backdrop[size_t(y) * kFrameWidth + x] = rgb(pen) | (pen & DmaLayers::kScenery ? kSceneryRgb : 0);
                 }
             fighter_work.Complete(frames + 1, fighters);
-            const auto rgb = [&](uint32_t pen) { return (pen & 0xffff) == kBlackPen ? 0 : Rgb(palette[pen & 0x7fff]); };
             if (fighters.serial) {
                 for (auto& v : fighters.underlay) v = rgb(v);
                 for (auto& v : fighters.backdrop) v = rgb(v) | (v & kSceneryRgb);
@@ -121,7 +155,7 @@ struct Scanout {
         ++frames;
         if (presented) presented(*this);
     }
-    // Self-check of `fighters`: its layers over the underlay at 1x (opaque order kept) must give `frame`; mismatched pixels.
+    // Self-check of `fighters`: its layers over the underlay at 1x (opaque order kept) must give `presentation`; mismatched pixels.
     uint64_t FighterMismatched() const {
         if (!fighters.serial) return 0;
         std::vector<uint32_t> img = fighters.underlay;
@@ -134,7 +168,7 @@ struct Scanout {
                 if (fighters.opaque_order[i] < l.order) img[i] = v;
             }
         uint64_t n = 0;
-        for (size_t i = 0; i < img.size(); ++i) n += (img[i] & 0xffffff) != frame[i];
+        for (size_t i = 0; i < img.size(); ++i) n += (img[i] & 0xffffff) != presentation[i];
         return n;
     }
     static uint32_t Rgb(uint16_t c) {

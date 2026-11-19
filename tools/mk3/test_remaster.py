@@ -7,17 +7,17 @@ Checks:
   filtered from the hidden scenery, CPU writes, blanking, clear, fighter slots, fighter layers (1x rebuild, HUD on top,
   CPU stores), CPU page fill, objects bound by their creator (fighter children, screen art; K6: body parts, sprays,
   character figures, combo counter, countdown, code row; K7: binding read at the enqueue, effect processes of a
-  fighter, screen labels, the text list moved into 0105DC10; K8: effect parent read at the call, arena floor tiles; K9: arena 0Ah floor object; K10: banner of effect 2Ah), CPU picture rows; each with its negative control;
+  fighter, screen labels, the text list moved into 0105DC10; K8: effect parent read at the call, arena floor tiles; K9: arena 0Ah floor object; K10: banner of effect 2Ah), CPU picture rows, floor blood (K11); each with its negative control;
 - the route matrix: every receipt of build/native/mk3-m2/routes (its legal tape, from reset, up to its horizon), headless,
   Original and Remastered: per-frame canonical hashes (`rgb`, `prev`, palette) equal, no flagged pixel off its canonical
-  colour, fighter layers rebuilding the canonical frame at 1x, DMA classes and bound objects counted, every popped queue
+  colour, fighter layers rebuilding the canonical frame at 1x, floor stains counted per frame (K11), DMA classes and bound objects counted, every popped queue
   entry with its enqueue; the 4x frame hash of the Remastered run;
 - windows (shared GPU pixel validation), Original and Remastered, route r1sp00 (attract, select, VS, fight with
   projectiles): per-frame canonical hashes equal to each other and to headless, bicubic stage and fighter frames only in
   the Remastered, fps, PCM underruns and the frame preparation (composition) time;
 - preview PNGs (Original nearest 4x | Remastered) of the classes of this round, small crops, in build/native/mk3-rm2.
 Everything else lives in the scratch tree of tools/mk3/preview.py, removed also on failure.
-Receipt: build/native/mk3-m2/rm2-r9.json (K10; K9: rm2-r8.json, K8: rm2-r7.json, K7: rm2-r6.json, K6: rm2-r5.json, K5: rm2-r4.json, round 3: rm2-r3.json, round 2: rm2-r2.json, round 1: rm2.json).
+Receipt: build/native/mk3-m2/rm2-r10.json (K11, floor blood; K10: rm2-r9.json, K9: rm2-r8.json, K8: rm2-r7.json, K7: rm2-r6.json, K6: rm2-r5.json, K5: rm2-r4.json, round 3: rm2-r3.json, round 2: rm2-r2.json, round 1: rm2.json).
 """
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -27,7 +27,7 @@ from tools.quality import run as q
 from tools.mk3 import explore,preview
 
 ROOT=preview.ROOT
-RECEIPT=ROOT/'build/native/mk3-m2/rm2-r9.json'
+RECEIPT=ROOT/'build/native/mk3-m2/rm2-r10.json'
 PNG_DIR=ROOT/'build/native/mk3-rm2'
 ROUTES_DIR=ROOT/'build/native/mk3-m2/routes'
 CYCLES_PER_FRAME=506*289*6.25/8   # TMS cycles (6.25 MHz) per raster of 506 x 289 pixel clocks (8 MHz)
@@ -35,15 +35,15 @@ WORKERS=int(os.environ.get('MK3_REMASTER_WORKERS','3'))   # route-matrix process
 WINDOW_ROUTE='r1sp00'
 # Scenes (route, VBLANK, native crop x, y, w, h, what): Original nearest 4x beside the Remastered 4x. Only this round's new
 # class (earlier rounds' PNGs stay; K5: the tower frames chained at FF9FCA00 and the plane 0105DB10 on scroll word 0105D9E0).
-SCENES=[('r1fin17',3900,60,60,280,72,'faixa-efeito-2a')]   # K10: r1fin17, the two-part banner of effect 2Ah (FFA8E8E0)
-PNG_PREFIX='rm2-r9'
+SCENES=[('r1fin00',4150,40,170,320,60,'sangue-chao')]   # K11: r1fin00, the stains kept on the arena floor (mk3_blood.hpp); K10: r1fin17 3900, banner of effect 2Ah
+PNG_PREFIX='rm2-r10'
 W,H=400,254
 # Classes: the DmaClass rules and object sites of native/mk3/mk3_dma_observer.hpp (addresses only). The prose evidence of
 # each class (rounds 1-K10) described the program's routines and screens and was removed for publication (plan
 # 2026-11-15-conformidade-legal.md, 5.1, 16/11/2026); the receipt keeps the class list.
 EVIDENCE={c:'mk3_dma_observer.hpp' for c in ('lutador','lutador (filho)','cenario','texto','limpeza','outros','objetos','cpu')}
 OPEN=['objetos de 0105DC10 sem sitio classificado ficam objetos (vizinho mais proximo); uma classe propria exige mudar o formato '
-      'de 3 bits do backdrop (mk3_scanout)','PNGs rm2-r5 a rm2-r9 nao conferidos pelo usuario']
+      'de 3 bits do backdrop (mk3_scanout)','PNGs rm2-r5 a rm2-r10 nao conferidos pelo usuario']
 
 
 
@@ -87,7 +87,7 @@ def tape_options(p,name):
 
 class Remaster(unittest.TestCase):
     def test_remaster(self):
-        r={'evidence':EVIDENCE,'open':OPEN,'milestone':'RM2 (frente C), rodada 9 (K10)','date':time.strftime('%Y-%m-%d'),'committed':False,'installed':False};t={}
+        r={'evidence':EVIDENCE,'open':OPEN,'milestone':'RM2 (frente C), rodada 10 (K11, sangue no chao)','date':time.strftime('%Y-%m-%d'),'committed':False,'installed':False};t={}
         t0=time.perf_counter();made,run,fc=focal();t['focal']=round(time.perf_counter()-t0,1)
         self.assertTrue(made['passed'],q.compact(made));self.assertTrue(run['passed'],q.compact(run));self.assertFalse(fc['exists_after'])
         r['focal']=json.loads(run['stdout'].strip().splitlines()[-1]);self.assertEqual(r['focal']['failures'],0)
@@ -106,6 +106,7 @@ class Remaster(unittest.TestCase):
                                  classes={k:v for k,v in l2['classes'].items() if v['draws']},bound_draws=l2['bound_draws'],cpu_words=l2['cpu_words'],
                                  scenery_frames=l2['scenery_frames'],mismatched=l2['mismatched'],staged_left=l2['staged_left'],
                                  fighter_frames=l2['fighter_frames'],fighter_layers=l2['fighter_layers'],fighter_mismatched=l2['fighter_mismatched'],
+                                 blood_frames=sum(1 for f in m['frames'] if f['blood']),blood_max=max((f['blood'] for f in m['frames']),default=0),
                                  rm_frames=sum(1 for f in m['frames'] if f['rm']!='0'*16),
                                  rm_sha256=hashlib.sha256(''.join(f['rm'] for f in m['frames']).encode()).hexdigest(),
                                  wall_seconds=dict(original=round(b-a,1),remastered=round(c-b,1))),[f['prev'] for f in o['frames']] if name==WINDOW_ROUTE else None
@@ -166,7 +167,8 @@ class Remaster(unittest.TestCase):
             self.assertTrue(x['canonical_equal'],name);self.assertEqual(x['mismatched'],0,name)
             self.assertEqual(x['fighter_mismatched'],0,name);self.assertEqual(x['staged_left'],0,name)
         self.assertGreater(totals['child'],0);self.assertGreater(totals['screen_art'],0);self.assertGreater(totals['picture_words'],0)
-        self.assertGreater(totals['text'],0);self.assertEqual(totals['unclassified_draws'],0)
+        self.assertGreater(totals['text'],0);self.assertGreater(sum(x['blood_frames'] for x in routes.values()),0)
+        self.assertEqual(totals['unclassified_draws'],0)
         for e,w in windows.items():
             self.assertTrue(w['canonical_equal_headless'],e);self.assertEqual(w['underruns'],0,e)
             self.assertEqual(w['window']['gpu_validation_mismatches'],0,e)

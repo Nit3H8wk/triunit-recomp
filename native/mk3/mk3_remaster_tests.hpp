@@ -504,6 +504,122 @@ inline int Run() {
         Rig f; insert(f, kTile, 0xffa8e8b0); draw(f, kTile, 0);
         Negative(count(f, mk3::DmaClass::Text) == 0, "effect 2Ah banner return one instruction off classed");
     }
+    // 21. Floor blood (mk3_blood.hpp): a splash kept at the world position of its last staged draw, with the colours of
+    // its slot at the keep, composed when the pump pops the world pass's first entry, mirrored, following camera and
+    // page, covered by later draws, dimmed by the program's fades, hidden off the arena, cleared on round 1 and the arena
+    // switch; `frame` canonical.
+    {
+        using mk3::FloorBlood;
+        const auto put = [](Rig& r, uint32_t at, uint32_t v) { const size_t i = (at - 0x01000000) / 16; r.ram[i] = uint16_t(v); r.ram[i + 1] = uint16_t(v >> 16); };
+        constexpr uint32_t kSplashA = 0x010a0000, kSplashB = 0x010a1000, kDrop = 0x010a2000, kCursor = 0x01100000;
+        constexpr uint32_t kPage1 = 256u << 16 | 56, kPage0 = 0;
+        const auto rig = [&](Rig& r) {
+            r.layers.palette = &r.palette;
+            r.layers.blood.shape.resize(size_t(FloorBlood::kWidth) * FloorBlood::kHeight);
+            for (size_t k = 0; k < r.layers.blood.shape.size(); ++k) r.layers.blood.shape[k] = uint8_t(k % 7 == 3 ? 0 : 1 + k % 15);
+            r.layers.blood.layer.assign(r.dma.vram.size(), 0);
+            for (unsigned s = 0; s < 16; ++s) r.palette[0x0400 + s] = uint16_t(0x0421 * s + 0x1000);
+            for (uint32_t o : {kSplashA, kSplashB, kDrop}) { put(r, o + 0x1a0, o == kDrop ? 0xffc839a0 : FloorBlood::kFrame); put(r, o + 0x140, 0x0404); }
+            put(r, kSplashB + 0xf0, 0x10);
+            put(r, FloorBlood::kArenaShown, 1);
+        };
+        const auto step = [](Rig& r, uint32_t pc, std::initializer_list<std::pair<unsigned, uint32_t>> regs) {
+            uint32_t a[16] = {}; for (const auto& [k, v] : regs) a[k] = v; r.layers.Step(pc, a);
+        };
+        const auto stage = [&](Rig& r, uint32_t o, uint32_t xy, uint32_t page, uint32_t camera) { step(r, FloorBlood::kEnqueue, {{0, o}, {10, xy}, {5, page}, {4, camera}}); };
+        const auto keep = [&](Rig& r, uint32_t o) { step(r, FloorBlood::kKeep, {{8, o}}); };
+        const auto walk = [&](Rig& r, uint32_t page, uint32_t camera) {
+            put(r, FloorBlood::kPage, page);
+            step(r, FloorBlood::kWalk, {{0, FloorBlood::kWorldList}, {1, kCursor + 0xc0}, {4, camera}, {14, 0}, {13, 254u << 16 | 400}});
+        };
+        const auto shade = [](const Rig& r, int dx, int dy, bool flip) { return r.layers.blood.shape[size_t(dy) * FloorBlood::kWidth + size_t(flip ? FloorBlood::kWidth - 1 - dx : dx)]; };
+        const auto stain_ok = [&](const Rig& r, int left, int top, bool flip, uint16_t xor_colour = 0) {
+            for (int dy = 0; dy < FloorBlood::kHeight; ++dy) for (int dx = 0; dx < FloorBlood::kWidth; ++dx) {
+                const uint8_t s = shade(r, dx, dy, flip);
+                const uint16_t want = s ? uint16_t(((0x0421 * s + 0x1000) ^ xor_colour) | 0x8000) : 0;
+                if (r.layers.blood.At(size_t(top + dy) * 512 + size_t(left + dx)) != want) return false;
+            }
+            return true;
+        };
+        // A: staged on page 1 at (120, 200) with camera (10, 8): world (130, 208). B: mirrored, staged on page 0, DMA start
+        // x = 300 (its right column) with camera 0: world left 266, top 100. Then the slot is reused, the pass runs on page 0
+        // with camera (20, 0).
+        Rig r; rig(r);
+        stage(r, kSplashA, (256u + 200) << 16 | (56 + 120), kPage1, 8u << 16 | 10); keep(r, kSplashA);
+        stage(r, kSplashB, 100u << 16 | 300, kPage0, 0); keep(r, kSplashB);
+        stage(r, kDrop, 50u << 16 | 50, kPage0, 0); keep(r, kDrop);
+        for (unsigned s = 0; s < 16; ++s) r.palette[0x0400 + s] = 0x03e0;
+        walk(r, kPage0, 20);
+        r.pc = mk3::DmaQueue::kPump; r.layers.blood.Pump(kCursor + 0x20, r.layers.stored, r.layers.palette);
+        Check(r.layers.blood.stains.size() == 2, "floor blood: the two splashes kept, the drop frame not");
+        Check(r.layers.blood.At(208 * 512 + 110) == 0, "floor blood: the pass waits for its own cursor");
+        r.layers.blood.Pump(kCursor, r.layers.stored, r.layers.palette);
+        Check(stain_ok(r, 110, 208, false) && stain_ok(r, 246, 100, true), "floor blood: world position of the staged draw, camera, mirror, colours at the keep");
+        Negative(!stain_ok(r, 111, 208, false) && !stain_ok(r, 246, 100, false) && !stain_ok(r, 110, 208, false, 0x0001),
+                 "stain one pixel off, unmirrored or with another colour accepted");
+        // Page 1 with the camera at (10, 8): A back at its staged place.
+        walk(r, kPage1, 8u << 16 | 10); r.layers.blood.Pump(kCursor, r.layers.stored, r.layers.palette);
+        Check(stain_ok(r, 56 + 120, 256 + 200, false), "floor blood: the stain follows the camera onto page 1");
+        // A later draw (any class) covers the words it stores; the composed page keeps the rest.
+        walk(r, kPage0, 20); r.layers.blood.Pump(kCursor, r.layers.stored, r.layers.palette);
+        r.pc = 0xff800000; r.Draw(110, 208, 4, 2, 0x0100, 0, true);
+        Check(r.layers.blood.At(208 * 512 + 110) == 0 && r.layers.blood.At(209 * 512 + 113) == 0 && r.layers.blood.At(208 * 512 + 115) != 0,
+              "floor blood: a later DMA covers the stain where it draws");
+        // Scanout on page 0: the presented frame shows the stain, `frame` and the pens stay canonical, the backdrop unflagged.
+        {
+            Rig plain(false); Scanout canonical, s; s.layers = &r.layers;
+            r.Render(s); plain.palette = r.palette; plain.dma.vram = r.dma.vram; plain.Render(canonical);
+            const size_t at = At(121, 210);
+            const uint16_t word = r.layers.blood.At(210 * 512 + 121);
+            Check(word && s.presentation[at] == Scanout::Rgb(word & 0x7fff) && !(s.backdrop[at] & Scanout::kSceneryRgb),
+                  "floor blood: presented colour, unflagged backdrop");
+            Check(s.frame == canonical.frame && s.pens == canonical.pens, "floor blood: canonical frame and pens without the stain");
+            Negative(s.presentation != s.frame, "presented frame equal to the canonical one");
+        }
+        // A fade: the palette dims the floor words the stain covers to 45/93 of their brightness, then to black, then
+        // restores them, with no pass in between; Present dims the stain with them (rounded per channel) and shows its
+        // kept colours again, exactly, once they are back.
+        {
+            Rig g; rig(g); stage(g, kSplashA, 200u << 16 | 120, kPage0, 0); keep(g, kSplashA);
+            for (int dy = 0; dy < FloorBlood::kHeight; ++dy) for (int dx = 0; dx < FloorBlood::kWidth; ++dx) {
+                const size_t i = size_t(200 + dy) * 512 + size_t(120 + dx);
+                g.dma.vram[i] = g.layers.stored[i] = 0x0010;
+            }
+            g.palette[0x0010] = 0x7fff; walk(g, kPage0, 0); g.layers.blood.Pump(kCursor, g.layers.stored, g.layers.palette);
+            const auto shown = [&] { Scanout s; s.layers = &g.layers; g.Render(s); return s.presentation[At(121, 200)]; };
+            const uint16_t kept = uint16_t(0x0421 * shade(g, 1, 0, false) + 0x1000);
+            const auto dim = [](unsigned v) { return (v * 45 + 46) / 93; };   // every stain pixel over word 0010h
+            const uint32_t half = Scanout::Rgb(uint16_t(dim(kept >> 10 & 31) << 10 | dim(kept >> 5 & 31) << 5 | dim(kept & 31)));
+            const bool bright = shown() == Scanout::Rgb(kept);
+            g.palette[0x0010] = 0x3def; const bool dimmed = shown() == half;
+            g.palette[0x0010] = 0; const bool black = shown() == 0;
+            g.palette[0x0010] = 0x7fff;
+            Check(bright && dimmed && black && shown() == Scanout::Rgb(kept), "floor blood: Present dims the stain with the floor it covers and restores it exactly");
+            g.palette[0x0010] = 0x3def; std::fill(g.layers.blood.floor.begin(), g.layers.blood.floor.end(), uint8_t(0));
+            Negative(shown() != half, "stain kept bright through a fade");
+        }
+        // Off the arena: the pass clears its page and draws nothing.
+        put(r, FloorBlood::kArenaShown, 0); walk(r, kPage0, 20); r.layers.blood.Pump(kCursor, r.layers.stored, r.layers.palette);
+        Check(r.layers.blood.At(100 * 512 + 250) == 0 && r.layers.blood.stains.size() == 2, "floor blood: hidden off the arena, kept for its fight");
+        // Round 2 keeps, round 1 (a new fight) clears; the arena switch clears.
+        Rig k; rig(k); stage(k, kSplashA, 200u << 16 | 120, kPage0, 0); keep(k, kSplashA);
+        step(k, FloorBlood::kRound, {{0, 2}});
+        Check(k.layers.blood.stains.size() == 1, "floor blood: kept across rounds");
+        step(k, FloorBlood::kRound, {{0, 1}});
+        Check(k.layers.blood.stains.empty(), "floor blood: a new fight clears");
+        stage(k, kSplashA, 200u << 16 | 120, kPage0, 0); keep(k, kSplashA); step(k, FloorBlood::kArenaSwitch, {});
+        Check(k.layers.blood.stains.empty(), "floor blood: the arena switch clears");
+        Rig n; rig(n); keep(n, kSplashA);
+        Negative(n.layers.blood.stains.empty(), "splash kept without a staged draw");
+        // A fighter texel over a stain keeps the stain as its base (the fighters' underlay); disabled = no stain at all.
+        Rig f; rig(f); f.Slot(0, kFighter);
+        stage(f, kSplashA, 60u << 16 | 100, kPage0, 0); keep(f, kSplashA); walk(f, kPage0, 0);
+        f.Queued(kWorld, kWorldScroll, kFighter); f.Draw(100, 60, 10, 4, 0x0200, 0x40000);
+        Scanout fs; fs.layers = &f.layers; f.Render(fs);
+        Check(fs.fighters.serial && fs.FighterMismatched() == 0, "floor blood: fighter layers over the stained underlay rebuild the presented frame");
+        Rig d; d.layers.palette = &d.palette; stage(d, kSplashA, 0, 0, 0); keep(d, kSplashA);
+        Check(!d.layers.blood.enabled() && d.layers.blood.stains.empty(), "floor blood: disabled without the decoded frame");
+    }
     std::printf("{\"checks\":%d,\"failures\":%d,\"negatives\":%d,\"detected\":%d}\n", checks, failures, negatives, detected);
     return failures || detected != negatives;
 }
