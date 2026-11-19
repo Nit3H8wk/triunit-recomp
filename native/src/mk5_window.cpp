@@ -15,6 +15,7 @@
 #include "mk5_bezel.hpp"
 #include "mk5_hdr.hpp"
 #include "mk5_audio_link.hpp"
+#include "mk5_audio_output.hpp"
 #define WIN32_LEAN_AND_MEAN
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -171,6 +172,7 @@ struct Mk5Window::Impl {
     } pending,prepared,staged;
     HANDLE wake=nullptr,pace_timer=nullptr,compose_wake=nullptr;
     LONGLONG frequency=0,interval=0,next_due=0;
+    unsigned ahead_low=0,ahead_late=0;bool ahead_stopped=false;   // run-ahead guard (Present)
     // One UI-owned submission at a time. The producer never waits on a GPU fence.
     ComPtr<ID3D12Device> device;ComPtr<ID3D12CommandQueue> queue;
     ComPtr<IDXGISwapChain3> swap;
@@ -1179,6 +1181,15 @@ void Mk5Window::Present(const std::vector<uint32_t>& pixels,unsigned width,unsig
     if(!(impl->legacy_pacing&&mk5audio::GameAudioUsesOutputClock())){
     // Native raster clock, independent of audio packet boundaries. Never skip guest work.
     LARGE_INTEGER now{};QueryPerformanceCounter(&now);
+    // Run-ahead guard: the game keeps pace while its audio queue holds the startup reserve. 4 frames in a row late with
+    // the queue under 75%, or 8 frames in a row under half of it, mean the speculative frame does not fit: run-ahead is
+    // off for this session, before any underrun.
+    if(impl->controls.runAhead && !impl->ahead_stopped && impl->frames>=60){
+        const int reserve=mk5audio::output_reserve_percent;
+        impl->ahead_late=impl->next_due>now.QuadPart?0:impl->ahead_late+1;
+        impl->ahead_low=reserve>=0 && reserve<50?impl->ahead_low+1:0;
+        impl->ahead_stopped=impl->ahead_low>=8 || (impl->ahead_late>=4 && reserve>=0 && reserve<75);
+    }
     if(impl->next_due>now.QuadPart){
         arm_pace_timer(impl->pace_timer,impl->next_due-now.QuadPart,impl->frequency);
         if(WaitForSingleObject(impl->pace_timer,INFINITE)!=WAIT_OBJECT_0)throw std::runtime_error("MK5 presentation wait failed");
@@ -1198,15 +1209,15 @@ void Mk5Window::Present(const std::vector<uint32_t>& pixels,unsigned width,unsig
     }
     LARGE_INTEGER stamp{};QueryPerformanceCounter(&stamp);{std::lock_guard<std::mutex> lock(impl->stats_mutex);if(impl->frames>=60)impl->producer_timing.observe(stamp.QuadPart,impl->frequency);}
     ++impl->frames;SetEvent(impl->compose_wake?impl->compose_wake:impl->wake);
-
 }
 void Mk5Window::Frontier(uint32_t pc){if(impl->hwnd)PostMessageW(impl->hwnd.load(),kFrontier,pc,0);}
 uint64_t Mk5Window::frames()const{return impl->frames;}
+bool Mk5Window::RunAhead()const{return impl->controls.runAhead && !impl->ahead_stopped;}
 uint64_t Mk5Window::input_events()const{return impl->events;}
 bool Mk5Window::GraphicsValidationEnabled()const{return impl->validate_graphics;}
 std::string Mk5Window::presentation_json()const{
     std::lock_guard<std::mutex> lock(impl->stats_mutex);
-    std::ostringstream s;s<<"{\"renderer\":\"D3D12-DXGI-flip\",\"vsync\":"<<((impl->sync_mode==0||!impl->tearing||impl->exclusive)?"true":"false")<<",\"sync_requested\":"<<impl->sync_mode<<",\"tearing_supported\":"<<(impl->tearing?"true":"false")<<",\"vrr_driver_monitor_verified\":false,\"fullscreen_start\":"<<(impl->fullscreen?"true":"false")<<",\"bezel\":"<<(impl->bezel?"true":"false")<<",\"color_mode\":"<<impl->color_mode<<",\"brightness\":"<<impl->brightness<<",\"gamepads_connected\":"<<impl->controller_count<<",\"gamepad_poll_ms\":4,\"native_frame_ms\":18.27925,\"high_refresh\":"<<(impl->high_refresh?"true":"false")<<",\"repeated_frames\":"<<impl->repeats<<",\"producer_intervals\":"<<impl->producer_timing.json()<<",\"present_call_intervals\":"<<impl->display_timing.json()<<",\"ui_thread_isolated\":true,\"exclusive\":"<<(impl->exclusive?"true":"false")
+    std::ostringstream s;s<<"{\"renderer\":\"D3D12-DXGI-flip\",\"vsync\":"<<((impl->sync_mode==0||!impl->tearing||impl->exclusive)?"true":"false")<<",\"sync_requested\":"<<impl->sync_mode<<",\"tearing_supported\":"<<(impl->tearing?"true":"false")<<",\"vrr_driver_monitor_verified\":false,\"fullscreen_start\":"<<(impl->fullscreen?"true":"false")<<",\"bezel\":"<<(impl->bezel?"true":"false")<<",\"color_mode\":"<<impl->color_mode<<",\"brightness\":"<<impl->brightness<<",\"gamepads_connected\":"<<impl->controller_count<<",\"gamepad_poll_ms\":4,\"native_frame_ms\":18.27925,\"high_refresh\":"<<(impl->high_refresh?"true":"false")<<",\"run_ahead\":\""<<(!impl->controls.runAhead?"off":impl->ahead_stopped?"stopped":"on")<<"\""<<",\"audio_reserve_percent\":"<<mk5audio::output_reserve_percent.load()<<",\"repeated_frames\":"<<impl->repeats<<",\"producer_intervals\":"<<impl->producer_timing.json()<<",\"present_call_intervals\":"<<impl->display_timing.json()<<",\"ui_thread_isolated\":true,\"exclusive\":"<<(impl->exclusive?"true":"false")
       <<",\"submitted_frames\":"<<impl->frames<<",\"displayed_frames\":"<<impl->displayed<<",\"coalesced_host_frames\":"<<impl->coalesced
       <<",\"frame_queue_limit\":"<<impl->frame_queue_limit
       <<",\"frame_preparation_ms\":"<<impl->prepare_timing.json()

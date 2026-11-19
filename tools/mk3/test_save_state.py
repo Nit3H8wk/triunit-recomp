@@ -50,4 +50,24 @@ class SaveStateTests(unittest.TestCase):
             self.assertEqual(refused(),[{'save_state':'refused','error':'MK3 save state payload is damaged'}])
 
 
+
+class RunAheadTests(unittest.TestCase):
+    """Run-ahead (F6), headless with the legal round start tape: every real frame line (raster, palette, machine time,
+    host PCM, Remastered composite) is the same with and without --run-ahead, and each frame run ahead of a real one is
+    the next real frame, in both editions."""
+    @unittest.skipUnless((ROOT/'roms/mk3').is_dir(),'requires authenticated ROMs')
+    def test_real_frames_unchanged_and_each_frame_ahead_is_the_next(self):
+        with preview.Preview() as p:
+            for edition in ('original','remastered'):
+                # --state-test adds the host PCM to every frame line in both runs; its one digest at E is the last line.
+                run=lambda *extra:p.run('--hashes','--tape',TAPE,'--edition',edition,'--frames',E,'--state-test',f'hash@{E}',*extra,timeout=1800)
+                off,on=run(),run('--run-ahead')
+                self.assertEqual(on['frames'],off['frames'],'run-ahead changed a real frame line')
+                self.assertTrue(all('pcm' in f for f in on['frames']) and len({f['pcm'] for f in on['frames']})>1)
+                real={f['frame']:f['rgb'] for f in off['frames']}
+                self.assertEqual([a['ahead'] for a in on['ahead']],list(range(2,E+1)))
+                self.assertEqual([a['rgb'] for a in on['ahead']],[real[a['ahead']] for a in on['ahead']],'a frame ahead differs from the real one')
+                print(edition,'frames compared',len(on['frames']),'frames ahead',len(on['ahead']))
+
+
 if __name__=='__main__':unittest.main()

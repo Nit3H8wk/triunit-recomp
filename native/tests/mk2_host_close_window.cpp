@@ -1,5 +1,6 @@
 // Test-only window substitute. CPU/DSP/CMOS remain the real native implementation; GPU/audio are unqualified.
 #include "mk5_window.hpp"
+#include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
 struct Mk5Window::Impl {
@@ -19,10 +20,15 @@ BootDiInputs Mk5Window::Inputs(BootDiInputs base)const{
     if(impl->closed)throw std::runtime_error("input queried after window close");
     ++impl->samples;base.in01=impl->input;return base;
 }
-void Mk5Window::Present(const std::vector<uint32_t>&,unsigned,unsigned,
-                        const std::vector<uint32_t>&,const mk5presentation::FighterFrame&){
+// MK2_TEST_PRESENT_HASHES: one line per presented frame with the FNV-1a of its pixels and backdrop (run-ahead tests).
+void Mk5Window::Present(const std::vector<uint32_t>& pixels,unsigned,unsigned,
+                        const std::vector<uint32_t>& backdrop,const mk5presentation::FighterFrame&){
     if(impl->closed)throw std::runtime_error("presentation submitted after window close");
     ++impl->presentations;
+    if(!std::getenv("MK2_TEST_PRESENT_HASHES"))return;
+    uint64_t hash=0xcbf29ce484222325ull;
+    for(const auto* frame:{&pixels,&backdrop})for(const uint32_t v:*frame)hash=(hash^v)*0x100000001b3ull;
+    std::printf("{\"present\":\"%016llx\"}\n",(unsigned long long)hash);
 }
 void Mk5Window::Frontier(uint32_t){if(impl->closed)throw std::runtime_error("frontier submitted after window close");}
 // MK2_TEST_STATE="save@N,load@M": F5/F7 as the real window queues them, once the host sampled the input N (M) times.
@@ -38,6 +44,7 @@ std::vector<Mk5Window::StateRequest> Mk5Window::TakeStateRequests(){
     }
     return out;
 }
+bool Mk5Window::RunAhead()const{return std::getenv("MK2_TEST_RUN_AHEAD")!=nullptr;}
 uint64_t Mk5Window::frames()const{return impl->presentations;}
 uint64_t Mk5Window::input_events()const{return impl->samples;}
 bool Mk5Window::GraphicsValidationEnabled()const{return false;}

@@ -95,6 +95,9 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
     std::unique_ptr<Mk5Window> window;
     if (show_window) window=std::make_unique<Mk5Window>(cmos_live&&!remastered);
     bool stop_requested=false,valid_host_admitted=false,live_boundary_validated=false;
+    // Run-ahead (F6): the real frames are held; the frame after each one, run from a snapshot, is shown, then undone.
+    bool hold_frames=false,speculating=false;
+    uint64_t raster_tick=0; // the native tick of the last complete raster
     uint32_t last_host_input=0xffffffffu;
     uint64_t provider_requests=0,last_host_input_tick=0,stop_observed_tick=0;
     uint64_t service_first_tick=0;
@@ -113,12 +116,12 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
         if(remastered){
             const wchar_t* directory=_wgetenv(L"MK1_MUSIC_DIRECTORY");
             if(!directory || !*directory)throw std::runtime_error("MK2 remastered music directory missing");
-            music=std::make_unique<mk2::RemasteredAudio>(machine->dsp,std::filesystem::path(directory),[&](const int16_t*p,size_t n){sink->Push(p,n);});
+            music=std::make_unique<mk2::RemasteredAudio>(machine->dsp,std::filesystem::path(directory),[&](const int16_t*p,size_t n){if(!speculating)sink->Push(p,n);});
         }
         // Shorter driver buffers reduce completion waits on the guest thread.
         const auto packet=remastered?mk5audio::WaveOutPacket::Ms20:mk5audio::WaveOutPacket::Ms10;
         sink=std::make_unique<mk5audio::WaveOutSink>(remastered?2:1,packet);
-        if(!remastered)audio=std::make_unique<mk2::OriginalAudio>([&](const int16_t* samples,size_t count) {sink->Push(samples,count);});
+        if(!remastered)audio=std::make_unique<mk2::OriginalAudio>([&](const int16_t* samples,size_t count) {if(!speculating)sink->Push(samples,count);});
         machine->dsp.SetDacObserver([&](uint64_t first,const float* samples,size_t count) {if(music)music->Feed(first,samples,count);else audio->Feed(first,samples,count);});
     }
     const auto source_samples=[&]{return music?music->SourceSamples():audio->SourceSamples();};
@@ -168,6 +171,7 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
     machine->SetScanlineObserver([&](const auto& edge,const auto& live_video) {
         const auto before=scanout.frames();scanout.Line(edge,live_video);
         if (scanout.frames()==before) return;
+        raster_tick=94875+uint64_t(edge.scanline_events-1)*6325;
         if(!cmos_live&&!test_switch) {
             const auto bytes=raster_bytes();
             hashes.push_back(Sha256(bytes));
@@ -185,8 +189,8 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
             if(cmos_host||cmos_live||test_switch) {
                 if(!pump_host(94875+uint64_t(edge.scanline_events-1)*6325))return;
             } else if (!window->Pump()) throw std::runtime_error("native diagnostic window closed");
-            window->Present(scanout.presentation(),scanout.width(),scanout.height(),
-                            scanout.backdrop_pixels(),scanout.fighter_frame());
+            if(!hold_frames || speculating)window->Present(scanout.presentation(),scanout.width(),scanout.height(),
+                                                           scanout.backdrop_pixels(),scanout.fighter_frame());
         }
     });
     const auto host_range=host_controls&&!cmos_host&&!cmos_live ? mk2::HostControlRange(0,int(mk2::kFirstFightWindowCount)-2) : mk2::HostControlBounds{};
@@ -225,14 +229,37 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
             auto continuation=mk2::RunValidLiveHost(program,draw,*machine,[&](uint64_t tick) {
                 ++provider_requests;
                 if(pump_host(tick)) {last_host_input=window->Inputs({0xffffffffu,0xffffffffu}).in01;last_host_input_tick=tick;}
-                replay.Observe(tick,last_host_input);
+                if(!speculating)replay.Observe(tick,last_host_input);
                 return last_host_input;
             },draw.ready.cycles+mk2::live_detail::kRequestCycles);
             valid_host_admitted=true;
+            // Run-ahead: each chunk ends just after the next raster (one native frame of 1827925 ticks after the last).
+            const auto frame_end=[&] {
+                const auto now=continuation.State().ready.cycles,next=(raster_tick+1827925)/16+1;
+                return next>now?next:now+1827925/16;
+            };
+            mk2::state::Snapshot ahead;
             while(!stop_requested) {
-                const auto target=continuation.State().ready.cycles+mk2::live_detail::kRequestCycles;
-                continuation=mk2::ResumeValidLiveHost(program,std::move(continuation),*machine,target);
+                hold_frames=window->RunAhead();   // the window stops it when the frame does not fit
+                if(!hold_frames) {
+                    const auto target=continuation.State().ready.cycles+mk2::live_detail::kRequestCycles;
+                    continuation=mk2::ResumeValidLiveHost(program,std::move(continuation),*machine,target);
+                    for(const auto request:window->TakeStateRequests())state_request(request,continuation);
+                    continue;
+                }
+                for(const auto real=scanout.frames();!stop_requested && scanout.frames()==real;)
+                    continuation=mk2::ResumeValidLiveHost(program,std::move(continuation),*machine,frame_end());
                 for(const auto request:window->TakeStateRequests())state_request(request,continuation);
+                if(stop_requested)break;
+                // The next frame with the same live inputs: shown, never heard nor recorded, then undone.
+                const mk2::LiveAudio live_audio{audio.get(),music.get()};
+                const auto fields=[&](auto& a){mk2::state::Session(a,continuation,*machine,scanout,live_audio);};
+                const auto host=std::make_tuple(raster_tick,last_host_input,last_host_input_tick,provider_requests);
+                ahead.Save(fields);speculating=true;
+                for(const auto real=scanout.frames();!stop_requested && scanout.frames()==real;)
+                    continuation=mk2::ResumeValidLiveHost(program,std::move(continuation),*machine,frame_end());
+                ahead.Load(fields);speculating=false;
+                std::tie(raster_tick,last_host_input,last_host_input_tick,provider_requests)=host;
             }
             continuation.ValidateBoundary(program,*machine);live_boundary_validated=true;
             return continuation.State().ready;

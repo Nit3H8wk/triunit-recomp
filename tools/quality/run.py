@@ -508,7 +508,8 @@ def fast(cc, sanitizer, scratch, graphics=False):
                              # These compile the generated whole-program closure (executor from reset).
                              900 if name in ("test_executor.py", "test_native.py", "test_profile.py", "test_profile_session.py",
                                              "test_valid_cmos_boot.py", "test_valid_cmos_startup.py") else
-                             480 if name in ("test_live_suspend.py", "test_save_state.py") else
+                             480 if name == "test_live_suspend.py" else
+                             900 if name == "test_save_state.py" else
                              600 if name == "test_host_runtime.py" else
                              300 if name == "test_valid_cmos_startup.py" else
                              300 if name == "test_first_fight_video.py" else

@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -6,6 +7,8 @@
 namespace mk5audio {
 using AudioConsumer=std::function<void(const int16_t*,size_t)>;
 void SetGameAudioConsumer(AudioConsumer);
+// The live sink's queued PCM in percent of its startup reserve (-1: none playing); the run-ahead guard reads it.
+inline std::atomic<int> output_reserve_percent{-1};
 enum class WaveOutPacket : unsigned { Ms10=10, Ms20=20 };
 class WaveOutSink {
  struct Impl;std::unique_ptr<Impl> impl;

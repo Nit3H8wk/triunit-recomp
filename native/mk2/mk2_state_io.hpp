@@ -19,6 +19,8 @@
 namespace mk2::state {
 template<class T> constexpr bool kBlock=std::is_arithmetic_v<T> ||
     (std::is_trivially_copyable_v<T> && std::has_unique_object_representations_v<T>);
+// A run-ahead snapshot (Snapshot below) is read back only by this process: it also copies padded plain structs whole.
+template<class T> constexpr bool kSnapshotBlock=!kBlock<T> && std::is_trivially_copyable_v<T>;
 template<class A,class T> void Io(A&,T&);
 template<class A,class T,size_t N> void Io(A&,std::array<T,N>&);
 template<class A,class T,class Al> void Io(A&,std::vector<T,Al>&);
@@ -33,13 +35,19 @@ template<class A> void Io(A&,std::string&);
 struct Writer {
     static constexpr bool reading=false;
     std::vector<uint8_t> bytes;
-    void Raw(const void* data,size_t size){const auto* p=static_cast<const uint8_t*>(data);bytes.insert(bytes.end(),p,p+size);}
+    bool snapshot=false;size_t used=0;   // snapshot: `bytes` is a buffer reused every frame, `used` its written length
+    void Raw(const void* data,size_t size){
+        if(!snapshot){bytes.insert(bytes.end(),static_cast<const uint8_t*>(data),static_cast<const uint8_t*>(data)+size);return;}
+        if(bytes.size()<used+size)bytes.resize(std::max(used+size,bytes.size()*2));
+        std::memcpy(bytes.data()+used,data,size);used+=size;
+    }
     uint64_t Size(uint64_t size){Raw(&size,sizeof size);return size;}
     template<class... T> void operator()(T&... values){(Io(*this,values),...);}
 };
 struct Reader {
     static constexpr bool reading=true;
     const uint8_t* at;const uint8_t* end;
+    bool snapshot=false;
     void Raw(void* data,size_t size){
         if(size_t(end-at)<size)throw std::runtime_error("save state is truncated");
         std::memcpy(data,at,size);at+=size;
@@ -51,16 +59,19 @@ struct Reader {
 
 template<class A,class T> void Io(A& a,T& value){
     if constexpr(std::is_enum_v<T> || kBlock<T>)a.Raw(&value,sizeof value);
+    else if constexpr(kSnapshotBlock<T>){if(a.snapshot)a.Raw(&value,sizeof value);else Fields(a,value);}
     else Fields(a,value);
 }
 template<class A,class T,size_t N> void Io(A& a,std::array<T,N>& values){
     if constexpr(kBlock<T>)a.Raw(values.data(),sizeof values);
+    else if constexpr(kSnapshotBlock<T>){if(a.snapshot)a.Raw(values.data(),sizeof values);else for(auto& value:values)Io(a,value);}
     else for(auto& value:values)Io(a,value);
 }
 template<class A,class T,class Al> void Io(A& a,std::vector<T,Al>& values){
     const auto size=a.Size(values.size());
     if constexpr(A::reading)values.resize(size_t(size));
     if constexpr(kBlock<T>){if(size)a.Raw(values.data(),size_t(size)*sizeof(T));}
+    else if constexpr(kSnapshotBlock<T>){if(a.snapshot){if(size)a.Raw(values.data(),size_t(size)*sizeof(T));}else for(auto& value:values)Io(a,value);}
     else for(auto& value:values)Io(a,value);
 }
 template<class A,class T,class Al> void Io(A& a,std::deque<T,Al>& values){
@@ -100,4 +111,14 @@ template<class A> void Io(A& a,std::string& text){
     if constexpr(A::reading)text.resize(size_t(size));
     if(size)a.Raw(text.data(),size_t(size));
 }
+// Run-ahead (F6): a save state's payload kept in memory, without its header or hash; the buffer is reused per frame.
+// `fields(a)` passes the session's state list to the writer or the reader, as the game's save state does.
+struct Snapshot {
+    Writer saved;
+    template<class F> void Save(F&& fields){saved.used=0;saved.snapshot=true;fields(saved);}
+    template<class F> void Load(F&& fields){
+        Reader reader{saved.bytes.data(),saved.bytes.data()+saved.used,true};fields(reader);
+        if(reader.at!=reader.end)throw std::logic_error("run-ahead snapshot read a different length");
+    }
+};
 }

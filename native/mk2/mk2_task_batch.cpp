@@ -736,13 +736,21 @@ void WriteTaskBatchObservations(const Program& program, const BootContinuation& 
 
 
 namespace mk2 {
+// shortcut: the ROM identity is hashed once per Program object and buffers (run-ahead resumes the chain every frame);
+// a Program whose bytes changed in place would not be hashed again, and no live path writes them.
+static bool AuthenticLiveProgram(const Program& program) {
+    static thread_local const Program* checked=nullptr;static thread_local const uint8_t* bytes=nullptr;static thread_local const uint8_t* graphics=nullptr;
+    if(checked==&program && bytes==program.bytes.data() && graphics==program.graphics.data())return true;
+    if(program.bytes.size()!=0x100000 || Sha256(program.bytes)!=kProgramSha256 ||
+       program.graphics.size()!=0xc00000 || Sha256(program.graphics)!=kGraphicsSha256)return false;
+    checked=&program;bytes=program.bytes.data();graphics=program.graphics.data();return true;
+}
 static void RequireLiveMemoryState(const Program& program,const BootContinuation& prefix,const DcsBootMachine& machine) {
     const auto& s=prefix.ready;
     if(!IsFirstFightStaticPC(s.next_pc) || s.cycles!=machine.LastMainCycles() || s.board.scanline_events!=machine.ScanlineEvents() ||
        prefix.observe_history || !prefix.bus.empty() || !prefix.points.empty() || machine.dsp.TraceObservationEnabled() || !machine.dsp.trace.empty() ||
        prefix.main_ram.size()!=262144 || s.cmos.size()!=8192 || prefix.video.vram.size()!=524288 || prefix.video.palette_ram.size()!=32768 ||
-       !OperatorDswSupported(s.board.dip_switches) || program.bytes.size()!=0x100000 || Sha256(program.bytes)!=kProgramSha256 ||
-       program.graphics.size()!=0xc00000 || Sha256(program.graphics)!=kGraphicsSha256)
+       !OperatorDswSupported(s.board.dip_switches) || !AuthenticLiveProgram(program))
         throw std::runtime_error("MK2 live requires authentic ROMs and synchronized cooperative memory without full histories");
 }
 static uint64_t RequireLiveMemory(const Program& program,const BootContinuation& prefix,const DcsBootMachine& machine,uint64_t requested) {

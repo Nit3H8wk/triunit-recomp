@@ -20,6 +20,8 @@ public:
     // F5 saves and F7 loads; the requests wait here until the game loop reaches a state boundary.
     std::vector<StateRequest> TakeStateRequests();
     BootDiInputs Inputs(BootDiInputs base)const;
+    // Run-ahead (launcher CONTROLS, MK1_CONTROLS): the loop presents the frame after the current one, run speculatively.
+    bool RunAhead()const;
     void Present(const std::vector<uint32_t>& pixels,unsigned width,unsigned height,
                  const std::vector<uint32_t>& backdrop={},
                  const mk5presentation::FighterFrame& fighters={});

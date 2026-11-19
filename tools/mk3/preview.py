@@ -74,7 +74,8 @@ class Preview:
         if not run['passed'] or summary is None or run['discarded_output_bytes']:
             raise RuntimeError('preview run failed: '+run['stdout'][-2000:])
         return dict(summary=summary,frames=[l for l in lines if 'frame' in l and 'rgb' in l],dumps=[l for l in lines if 'dump' in l],
-                    census=next((l for l in lines if 'dma_census' in l),None),states=[l for l in lines if 'save_state' in l],underrun_records=underruns,
+                    census=next((l for l in lines if 'dma_census' in l),None),states=[l for l in lines if 'save_state' in l],
+                    ahead=[l for l in lines if 'ahead' in l],underrun_records=underruns,
                     wall_seconds=run['wall_seconds'],log=[l for l in run['stdout'].splitlines() if not l.startswith('{')][-20:])
 
 

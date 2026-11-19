@@ -115,4 +115,39 @@ class CmosGuardTests(unittest.TestCase):
         self.assertFalse(cleanup['exists_after'])
 
 
+class RunAheadTests(unittest.TestCase):
+    """Run-ahead (F6) through the product loop of mk5_boot_flow_cli.cpp with the test window (constant input) and the
+    test PCM sink, Original and Remastered with music: 300 frames shown with run-ahead are the next real frames of a
+    session without it, and the PCM delivered is the same."""
+    @unittest.skipUnless((ROOT/'roms/mk1').is_dir(),'requires authenticated ROMs')
+    def test_shows_the_next_real_frame_and_keeps_the_audio(self):
+        from tools.setup import mk1
+        from tools.mk2.test_save_state import lines,same_pcm,shown_ahead
+        mk1.inc_dir();seed=mk1.seed_path().resolve()
+        objects=json.loads((ROOT/'tools/mk1/runtime-inputs.json').read_text('utf-8'))['objects']
+        with q.scratch_tree() as (scratch,cleanup):
+            srcs=[ROOT/p for p in objects if Path(p).stem not in ('mk5_window','mk5_audio_output')]
+            srcs+=[ROOT/'native/tests/mk2_host_close_window.cpp',ROOT/'native/tests/mk2_test_audio_sink.cpp']
+            exe,_=routes.build(scratch,srcs)
+            write_tracks(scratch/'tracks',0)
+            env={'PATH':str(q.DEFAULT_CC.parent)+os.pathsep+os.environ['PATH'],'TEMP':str(scratch),'TMP':str(scratch),
+                 'MK2_TEST_PRESENT_HASHES':'1','MK2_TEST_PCM_HASHES':'1','MK2_TEST_CLOSE_AFTER_SAMPLES':'100000000'}
+            dsw=[a for prefix in ('','boot-','task-','body-','main-') for a in (f'--{prefix}dsw-word','65279')]
+            dsw+=[a for prefix in ('','body-','active-') for a in (f'--{prefix}irq-in01','0xffffffff',f'--{prefix}irq-in2-dsw','4278190079')]
+            for edition,extra in (('original',{'MK1_MUSIC_MODE':'original'}),
+                                  ('remastered',{'MK1_MUSIC_MODE':'remastered','MK1_MUSIC_DIRECTORY':str(scratch/'tracks')})):
+                def session(ahead):
+                    flags=dict(env,**extra,**({'MK2_TEST_RUN_AHEAD':'1'} if ahead else {}))
+                    r=q.command([exe,'--roms',ROOT/'roms','--stage','visual','--window-frames','300','--irq-pending','0x400',
+                                 '--raster-next-line','1','--raster-quanta','6325','--body-sound-status-byte','128',*dsw,
+                                 '--cmos-input',seed],scratch,cwd=scratch,timeout=600,output_limit=4<<20,env=flags)
+                    out=r['stdout'];game=next((json.loads(l) for l in out.splitlines() if l.startswith('{"scope":"mk5-visual"')),None)
+                    self.assertTrue(r['passed'] and game and game['stop']=='window-frame-limit',out[-1500:])
+                    return out
+                off,on=session(False),session(True)
+                frames=shown_ahead(self,lines(off,'present'),lines(on,'present'));checkpoints=same_pcm(self,off,on)
+                print(edition,'frames compared',frames,'PCM checkpoints',checkpoints)
+        self.assertFalse(cleanup['exists_after'])
+
+
 if __name__=='__main__':unittest.main()

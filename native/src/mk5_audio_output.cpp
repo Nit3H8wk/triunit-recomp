@@ -56,7 +56,8 @@ struct WaveOutSink::Impl {
  void push(const int16_t* data,size_t count){
   if(count && !data)throw std::invalid_argument("null PCM buffer");
   if(count%channels)throw std::invalid_argument("partial stereo PCM frame");
-  if(count){auto now=GetTickCount64();if(last_push)max_producer_gap=std::max<uint64_t>(max_producer_gap,now-last_push);poll();if(started && completed==submitted){checked(waveOutPause(device));started=false;startup_blocks=0;++underruns;if(underruns<=8)std::clog<<"{\"audio_underrun_sample\":"<<submitted<<",\"producer_gap_ms\":"<<(last_push?now-last_push:0)<<"}\n";}last_push=now;}
+  if(count){auto now=GetTickCount64();if(last_push)max_producer_gap=std::max<uint64_t>(max_producer_gap,now-last_push);poll();if(started && completed==submitted){checked(waveOutPause(device));started=false;startup_blocks=0;++underruns;if(underruns<=8)std::clog<<"{\"audio_underrun_sample\":"<<submitted<<",\"producer_gap_ms\":"<<(last_push?now-last_push:0)<<"}\n";}last_push=now;
+   output_reserve_percent=started?int((submitted-completed)*100/(startup_target*packet_samples)):0;}
   while(count){auto& slot=slots[cursor];if(!filled)wait(slot);size_t n=std::min(count,packet_samples*channels-filled);
    if(volume==100)std::memcpy(slot.samples.data()+filled,data,n*2);
    else std::transform(data,data+n,slot.samples.data()+filled,[this](int16_t sample){return ScaleVolume(sample,volume);});

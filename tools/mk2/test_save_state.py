@@ -80,4 +80,61 @@ class WindowStateTests(unittest.TestCase):
             retracked=session('load@10',60,'other-tracks')
             self.assertIn('MK2 save state not loaded: MK2 save state was made with other music tracks',retracked)
         self.assertFalse(cleanup['exists_after'])
+
+def shown_ahead(test,off,on):
+    """`on` (run-ahead) must show the frames of `off` one ahead, after the frames both show before run-ahead starts."""
+    test.assertGreater(len(on),100,len(on))
+    k=next(i for i,(a,b) in enumerate(zip(on,off)) if a!=b)
+    n=min(len(on),len(off)-1)
+    test.assertGreaterEqual(n-k,50,'too few frames after run-ahead started')
+    test.assertEqual(on[k:n],off[k+1:n+1],'a frame shown with run-ahead is not the next real frame')
+    return n-k
+
+
+def lines(out,key):
+    return [json.loads(l)[key] if key=='present' else json.loads(l) for l in out.splitlines() if l.startswith('{"'+key+'"')]
+
+
+def same_pcm(test,off,on):
+    """The PCM delivered with run-ahead is the PCM without it, at every checkpoint both sessions reached."""
+    a={p['at']:p['pcm'] for p in lines(off,'pcm')};b={p['at']:p['pcm'] for p in lines(on,'pcm')}
+    common=sorted(set(a)&set(b));test.assertGreaterEqual(len(common),5,common)
+    test.assertEqual([a[k] for k in common],[b[k] for k in common],'run-ahead changed the delivered PCM')
+    return len(common)
+
+
+class RunAheadTests(unittest.TestCase):
+    """Run-ahead (F6) through the live loop with the test window and a constant input, Original and Remastered with music:
+    every frame shown with run-ahead is the next real frame of a session without it, and the PCM delivered is the same."""
+    @unittest.skipUnless((q.ROOT/'roms/mk2').is_dir(),'requires authenticated ROMs')
+    def test_shows_the_next_real_frame_and_keeps_the_audio(self):
+        run.verify_roms(q.ROOT/'roms/mk2')
+        sources=[q.ROOT/p for p in run.SOURCES if p!='native/tests/mk2_foundation_tests.cpp']
+        sources+=[q.ROOT/p for p in ('native/mk2/mk2_native_check.cpp','native/mk2/mk2_music.cpp','native/tests/mk2_test_audio_sink.cpp',
+                                    'native/tests/mk2_host_close_window.cpp')]
+        with q.scratch_tree()as(scratch,cleanup):
+            exe=scratch/'run-ahead.exe';env={'PATH':str(q.DEFAULT_CC.parent)+os.pathsep+os.environ.get('PATH','')}
+            build=q.command([q.DEFAULT_CC,'-std=c++17','-O1','-municode','-pthread','-Wall','-Wextra','-Werror',
+                '-Wno-unused-parameter','-Wno-missing-field-initializers','-I'+str(q.ROOT/'native/include'),*sources,
+                '-lbcrypt','-luser32','-lgdi32','-lwinmm','-o',exe],scratch,env=env,timeout=300)
+            self.assertTrue(build['passed'],q.compact(build))
+            profile.prepare(scratch/'profile');write_tracks(scratch/'tracks',0)
+            argv=[exe,q.ROOT/'roms/mk2','--window','--host-controls','--through','cmos-live','--profile',scratch/'profile','--audio']
+            for edition,extra in (('original',{'MK1_MUSIC_MODE':'original'}),
+                                  ('remastered',{'MK1_MUSIC_MODE':'remastered','MK1_MUSIC_DIRECTORY':str(scratch/'tracks')})):
+                def session(ahead):
+                    flags=dict(extra,MK2_TEST_PRESENT_HASHES='1',MK2_TEST_PCM_HASHES='1',MK2_TEST_CLOSE_AFTER_SAMPLES='400')
+                    if ahead:flags['MK2_TEST_RUN_AHEAD']='1'
+                    result=q.command(argv,scratch,cwd=scratch,timeout=300,output_limit=4<<20,env=dict(env,**flags))
+                    out=result['stdout']
+                    # As WindowStateTests: the session ends at the profile guard of the test window, after the live loop.
+                    self.assertEqual((result['exit_code'],'native profile requires unambiguous presentation metrics' in out),(1,True),
+                                     [l[:300] for l in out.splitlines() if 'cmos_hex' not in l][-20:])
+                    return out
+                off,on=session(False),session(True)
+                frames=shown_ahead(self,lines(off,'present'),lines(on,'present'));checkpoints=same_pcm(self,off,on)
+                print(edition,'frames compared',frames,'PCM checkpoints',checkpoints)
+        self.assertFalse(cleanup['exists_after'])
+
+
 if __name__=='__main__':unittest.main()

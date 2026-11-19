@@ -154,6 +154,13 @@ layer: the game's state, rules and timing do not change.
 - XInput pads and DirectInput / HID arcade sticks (Raw Input).
 - Opposite directions held together (SOCD) are neutral, as on an arcade lever,
   or last input wins.
+- **Run-ahead (off by default, all three games).** *Settings > Controls >
+  Run-ahead: 1 frame* shows the frame after the current one, run from an
+  in-memory state with the same inputs and silenced, then undone: one frame
+  less input lag than the arcade. The game itself, its audio and its CMOS are
+  the same as without it. It needs about twice the CPU per frame; when a
+  frame does not fit (the audio queue starts to drain), it turns itself off
+  for that session (`"run_ahead":"stopped"` in the session log).
 - Keyboard and XInput controllers work in the games and in the app.
 
 ### Audio

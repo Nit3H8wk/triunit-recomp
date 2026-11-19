@@ -6,6 +6,8 @@ struct AudioDiagnosticCounts {uint64_t commands=0,events=0,samples=0;};
 AudioDiagnosticCounts GameAudioDiagnosticCounts();
 // Publishes pending samples first. Without a consumer, retains the full history.
 bool TrimGameAudioDiagnostics();
+// Run-ahead (F6): while on, published PCM never reaches the consumer and trims are not counted; the frame is undone.
+void SetGameAudioSpeculative(bool on);
 // Exclusive scope for one new live history. It never attaches to a replay log.
 class GameAudioScope {
  WilliamsAudio* board;

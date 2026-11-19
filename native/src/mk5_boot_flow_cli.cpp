@@ -213,6 +213,9 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered,Mk5StateHost host){
                     // Keep the producer responsive while reaching the first
                     // decompressed frame as well as after window activation.
                     if(o.visual)o.body.instruction_budget=10000;
+                    // Run-ahead (F6): each real frame is held; the frame after it, run from a snapshot, is shown, then undone.
+                    const bool run_ahead=prepared_window&&prepared_window->RunAhead()&&host.audio&&host.gain&&screen;
+                    mk2::state::Snapshot ahead;
                     const uint64_t call_limit=o.visual?(o.window_frames?20000ull+uint64_t(o.window_frames)*16:uint64_t(-1)):o.main_slices;
                     for(uint64_t call=0;call<call_limit;++call){
                         if(o.visual && !window && call>=20000){window_stop="window-start-budget";break;}
@@ -228,13 +231,34 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered,Mk5StateHost host){
                                 std::ostringstream status;status<<"{\"scanout_frame\":"<<screen->frames()<<",\"presented_before\":"<<window->frames()<<",\"reference_cycles\":"<<s.reference_cycles<<",\"mode\":"<<wide(0x01051190)<<",\"p1\":"<<wide(0x01051200)<<",\"p2\":"<<wide(0x010514e0)<<",\"fighter1\":"<<word(0x01051290)<<",\"fighter2\":"<<word(0x01051570)<<",\"life1\":"<<life(0)<<",\"life2\":"<<life(1)<<",\"round_wins1\":"<<word(0x01051330)<<",\"round_wins2\":"<<word(0x01051610)<<",\"winner\":"<<word(0x010519e0)<<",\"tower_slot\":"<<word(0x01051a10)<<",\"tower_table\":"<<wide(0x010519f0)<<",\"reserve\":"<<word(0x01051a50)<<",\"in01\":"<<o.body.active_di->in01<<",\"credits\":"<<unsigned(uint8_t(f.cmos.at(270)))<<"}\n";
                                 auto metrics=status.str();metrics.resize(metrics.size()-2);metrics+=",\"x1\":"+coordinate(0)+",\"x2\":"+coordinate(1)+",\"presentation\":"+window->presentation_json()+"}\n";live_status.Write(metrics);
                             }
-                            window->Present(screen->pixels(),screen->width(),screen->height(),
-                                            screen->backdrop_pixels(),screen->fighter_frame());
-                            shown_frame=screen->frames();if(o.window_frames && window->frames()>=o.window_frames){window_stop="window-frame-limit";break;}
+                            if(!run_ahead || !window->RunAhead()){
+                                window->Present(screen->pixels(),screen->width(),screen->height(),
+                                                screen->backdrop_pixels(),screen->fighter_frame());
+                                shown_frame=screen->frames();if(o.window_frames && window->frames()>=o.window_frames){window_stop="window-frame-limit";break;}
+                            }
                         }
                         if(window){const auto trim=runner.CompactDiagnostics();discarded.writes+=trim.writes;discarded.returns+=trim.returns;discarded.cmos+=trim.cmos;discarded.irqs+=trim.irqs;discarded.scanlines+=trim.scanlines;discarded.dma+=trim.dma;discarded.completions+=trim.completions;mk5audio::TrimGameAudioDiagnostics();
-                            if(host.audio && host.gain && screen && (main.stop==TaskBodyStop::Budget || main.stop==TaskBodyStop::DiLimit))
-                                for(const auto request:window->TakeStateRequests())state_request(request);}
+                            const bool boundary=host.audio && host.gain && screen && (main.stop==TaskBodyStop::Budget || main.stop==TaskBodyStop::DiLimit);
+                            if(boundary)for(const auto request:window->TakeStateRequests())state_request(request);
+                            if(run_ahead && window->RunAhead() && boundary && screen->frames()>shown_frame){
+                                // The next frame with the same live inputs: shown, never heard, then undone at a boundary.
+                                const auto fields=[&](auto& a){a(runner,*screen,*host.audio,*host.gain);};
+                                const auto real=screen->frames();const auto inputs=o.body.active_di;bool closed=false;
+                                ahead.Save(fields);mk5audio::SetGameAudioSpeculative(true);
+                                while(screen->frames()==real){
+                                    if(!window->Pump()){closed=true;break;}
+                                    o.body.active_di=window->Inputs(*active_base);
+                                    const auto next=runner.ContinueMain(o.body,o.main_di_limit);
+                                    if(next.stop!=TaskBodyStop::Budget && next.stop!=TaskBodyStop::DiLimit)break; // the real run meets it
+                                }
+                                if(!closed && screen->frames()>real)window->Present(screen->pixels(),screen->width(),screen->height(),
+                                                                                     screen->backdrop_pixels(),screen->fighter_frame());
+                                runner.CompactDiagnostics();mk5audio::TrimGameAudioDiagnostics();
+                                ahead.Load(fields);mk5audio::SetGameAudioSpeculative(false);o.body.active_di=inputs;
+                                shown_frame=real;
+                                if(closed){window_stop="window-closed";break;}
+                                if(o.window_frames && window->frames()>=o.window_frames){window_stop="window-frame-limit";break;}
+                            }}
                         if(main.stop!=TaskBodyStop::Budget && !(o.decompressor && main.stop==TaskBodyStop::DiLimit))break;
                     }
                     switch(main.stop){

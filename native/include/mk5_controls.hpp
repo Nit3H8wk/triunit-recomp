@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -24,25 +25,29 @@ struct Config {
     // Block on RB / RT and Run on LB / LT (MK3); without Run (MK1, MK2) Run also blocks, as LB / LT always did.
     std::array<std::array<uint32_t,Count>,2> pad{{{0,0,0,0,X,RB|RT,Y,A,B,LB|LT,BACK,START},{0,0,0,0,X,RB|RT,Y,A,B,LB|LT,BACK,START}}};
     int socd=0; // 0 neutral (an arcade lever cannot hold both), 1 last input wins
+    int runAhead=0; // frames shown ahead of the game (0 or 1): one frame less input lag than the arcade
 };
-// Text form for the launcher profile and MK1_CONTROLS: 24 keys, 24 pad masks, SOCD, comma-separated hex.
+// Text form for the launcher profile and MK1_CONTROLS: 24 keys, 24 pad masks, SOCD, run-ahead (absent before F6: 0),
+// comma-separated hex.
 inline std::string format(const Config& c){
     std::string out;char cell[16];
     for(const auto& p:c.keys)for(auto k:p){std::snprintf(cell,sizeof cell,"%x,",unsigned(k));out+=cell;}
     for(const auto& p:c.pad)for(auto m:p){std::snprintf(cell,sizeof cell,"%x,",unsigned(m));out+=cell;}
-    return out+std::to_string(c.socd);
+    return out+std::to_string(c.socd)+","+std::to_string(c.runAhead);
 }
 inline bool parse(const std::string& text,Config& c){
-    Config out;size_t at=0;std::array<unsigned long,2*Count*2+1> v{};
-    for(size_t i=0;i<v.size();++i){
-        const size_t end=i+1<v.size()?text.find(',',at):text.size();
+    Config out;size_t at=0;std::array<unsigned long,2*Count*2+2> v{};
+    const size_t fields=std::count(text.begin(),text.end(),',')+1;
+    if(fields!=v.size()&&fields!=v.size()-1)return false;
+    for(size_t i=0;i<fields;++i){
+        const size_t end=i+1<fields?text.find(',',at):text.size();
         if(end==std::string::npos||end==at||end-at>8||text.find_first_not_of("0123456789abcdef",at)<end)return false;
         v[i]=std::stoul(text.substr(at,end-at),nullptr,16);at=end+1;
     }
     for(size_t i=0;i<2*Count;++i){if(v[i]>255)return false;out.keys[i/Count][i%Count]=uint8_t(v[i]);}
     for(size_t i=0;i<2*Count;++i)out.pad[i/Count][i%Count]=i%Count<HighPunch?0:uint32_t(v[2*Count+i]);
-    if(v.back()>1)return false;
-    out.socd=int(v.back());c=out;return true;
+    if(v[2*Count*2]>1||v.back()>1)return false;
+    out.socd=int(v[2*Count*2]);out.runAhead=int(v.back());c=out;return true;
 }
 // Held actions (bit per Action) of one player.
 inline uint32_t from_keys(const Config& c,unsigned player,const std::array<bool,256>& keys){

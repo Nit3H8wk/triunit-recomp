@@ -155,7 +155,7 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
     uint64_t max_frames = 0;
     std::set<uint64_t> dump_frames;
     double linger = -1;
-    bool window_on = false, audio_on = false, strict = false, hashes = false, remastered = false, census_on = false;
+    bool window_on = false, audio_on = false, strict = false, hashes = false, remastered = false, census_on = false, run_ahead = false;
     int watch_dcs = -1;
     std::wstring tape_file, cmos_dir, cmos_out;
     enum class StateRequest { Save, Load, Hash };
@@ -171,6 +171,7 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
         else if (a == "--audio") audio_on = true;
         else if (a == "--strict") strict = true;
         else if (a == "--hashes") hashes = true;
+        else if (a == "--run-ahead") run_ahead = true;
         else if (a == "--dma-census") census_on = true;
         else if (a == "--tape" && n + 1 < argc) tape_file = argv[++n];
         else if (a == "--watch-dcs" && n + 1 < argc) watch_dcs = int(std::stoul(mk3host::Narrow(argv[++n]), nullptr, 0) & 0xffff);
@@ -303,6 +304,13 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
             return apply(audio, host_gain, consumed, blocks_seen, sample_ns, dcs_high, previous_pens, tape_next);
         };
         mk3::DmaLayers* state_layers = layer2 ? layers.get() : nullptr;
+        // Run-ahead (F6): each real frame is held; the frame after it, run from a snapshot at the next instruction
+        // boundary with the same inputs, is shown (never heard), then undone. 1: snapshot due, 2: speculating, 3: undo due.
+        if (window && window->RunAhead()) run_ahead = true;
+        if (census_on) run_ahead = false;
+        int ahead = 0;
+        mk2::state::Snapshot ahead_state;
+        const auto ahead_fields = [&](auto& a) { host_state([&](auto&... host) { mk3::state::Session(a, b, scanout, state_layers, host...); return 0; }); };
         const auto state_request = [&](StateRequest request) {
             if (census_on) { std::printf("{\"save_state\":\"refused\",\"error\":\"not with --dma-census\"}\n"); return; }
             if (request != StateRequest::Load) {
@@ -338,7 +346,32 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
                         from_file ? "file" : "memory");
         };
 
+        // Inputs at the frame update, as MAME polls the host once per frame.
+        const auto poll = [&] {
+            if (!tape.empty()) return;
+            const auto p = input.Poll();
+            const uint16_t now[3] = {p.in0, p.in1, p.in2};
+            for (int k = 0; k < 3; ++k) if (now[k] != last_in[k]) { ++input_changes; last_in[k] = now[k]; }
+            b.o.ports[0] = p.in0; b.o.ports[1] = p.in1; b.o.ports[3] = p.in2;
+        };
+        const auto show = [&](const mk3::Scanout& s, bool scenery) {
+            shown = layer2 ? s.presentation : s.frame;   // Remastered: with the floor blood
+            for (auto& v : shown) v |= 0xff000000u;
+            if (scenery) backdrop_shown = s.backdrop; else backdrop_shown.clear();
+            fighters_shown.layers.clear();
+            if (s.fighters.serial) fighters_shown = s.fighters;
+            window->Present(shown, mk3::Scanout::kFrameWidth, mk3::Scanout::kFrameHeight, backdrop_shown, fighters_shown);   // paced to the 146234-clock raster
+        };
         scanout.presented = [&](const mk3::Scanout& s) {
+            if (ahead == 2) {
+                ahead = 3;
+                if (hashes) std::printf("{\"ahead\":%llu,\"rgb\":\"%016llx\"}\n", (unsigned long long)s.frames, (unsigned long long)HashRgb(s.frame));
+                if (!window) return;
+                if (!window->Pump()) { stop = closed = true; return; }
+                show(s, layer2 && std::any_of(s.backdrop.begin(), s.backdrop.end(), [](uint32_t v) { return (v & mk3::Scanout::kSceneryRgb) != 0; }));
+                return;
+            }
+            if (run_ahead && window && !window->RunAhead()) run_ahead = false;   // the window stops it when the frame does not fit
             // Audio: every DAC sample delivered so far, through the shared DCS 31250 Hz -> 48 kHz resampler.
             for (; blocks_seen < b.dcs.dac_blocks.size(); ++blocks_seen) sample_ns.insert(b.dcs.dac_blocks[blocks_seen].sample_ns);
             if (consumed < b.dcs.pcm.size() && (sample_ns.size() != 1 || *sample_ns.begin() != 32000))
@@ -358,7 +391,8 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
             scan_dcs();
             if (census_on) census.CpuWrites(b.s.writes);
             b.s.writes.clear(); b.s.reads.clear(); b.o.interrupts.clear(); b.host_events.clear(); b.dcs.host_reads.clear();
-            if (b.dcs.pcm.size() > (1u << 20)) { trimmed_samples += b.dcs.pcm.size(); b.dcs.pcm.clear(); b.dcs.dac_blocks.clear(); consumed = blocks_seen = 0; }
+            // Run-ahead trims every frame: the consumed PCM would otherwise be copied twice per frame by its snapshot.
+            if (b.dcs.pcm.size() > (run_ahead ? 0u : 1u << 20)) { trimmed_samples += b.dcs.pcm.size(); b.dcs.pcm.clear(); b.dcs.dac_blocks.clear(); consumed = blocks_seen = 0; }
 
             const uint64_t frame = s.frames;
             // Every flagged backdrop pixel is the canonical pixel's own colour (same pen, same palette): counted, must be 0.
@@ -393,7 +427,7 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
                                 (unsigned long long)frame, sec, atto, (unsigned long long)b.Cycles(),
                                 (unsigned long long)HashRgb(s.frame), (unsigned long long)HashRgb(previous_rgb),
                                 (unsigned long long)HashWords(b.o.palette));
-                    if (!state_plan.empty()) { std::printf(",\"pcm\":\"%016llx\"", (unsigned long long)pcm_hash); pcm_hash = 0xcbf29ce484222325ull; }
+                    if (!state_plan.empty() || run_ahead) { std::printf(",\"pcm\":\"%016llx\"", (unsigned long long)pcm_hash); pcm_hash = 0xcbf29ce484222325ull; }
                     if (layer2) std::printf(",\"scenery\":%llu,\"fighters\":%zu,\"blood\":%zu,\"rm\":\"%016llx\"", (unsigned long long)flagged, s.fighters.serial ? s.fighters.layers.size() : size_t(0),
                                             layers->blood.stains.size(),
                                             (unsigned long long)(composed.empty() ? 0 : HashRgb(composed)));
@@ -423,26 +457,16 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
 
             if (window) {
                 if (!window->Pump()) { stop = closed = true; return; }
-                shown = layer2 ? s.presentation : s.frame;   // Remastered: with the floor blood
-                for (auto& v : shown) v |= 0xff000000u;
-                if (flagged) backdrop_shown = s.backdrop; else backdrop_shown.clear();
-                fighters_shown.layers.clear();
-                if (s.fighters.serial) fighters_shown = s.fighters;
-                window->Present(shown, mk3::Scanout::kFrameWidth, mk3::Scanout::kFrameHeight, backdrop_shown, fighters_shown);   // paced to the 146234-clock raster
+                if (!run_ahead) show(s, flagged != 0);
                 for (const auto r : window->TakeStateRequests())
                     state_requests.push_back(r == Mk5Window::StateRequest::Save ? StateRequest::Save : StateRequest::Load);
-                // Inputs at the frame update, as MAME polls the host once per frame.
-                if (tape.empty()) {
-                    const auto p = input.Poll();
-                    const uint16_t now[3] = {p.in0, p.in1, p.in2};
-                    for (int k = 0; k < 3; ++k) if (now[k] != last_in[k]) { ++input_changes; last_in[k] = now[k]; }
-                    b.o.ports[0] = p.in0; b.o.ports[1] = p.in1; b.o.ports[3] = p.in2;
-                }
+                if (!run_ahead) poll();   // run-ahead polls after the undo, before the real frame that reads it
             }
             if (max_frames && frame >= max_frames) stop = true;
+            if (run_ahead && !stop) ahead = 1;
         };
         b.stop = [&](const mk3::Board& board) {
-            if (!state_requests.empty() && !stop) return true;   // before the observers' Step: Run resumes at this instruction
+            if ((!state_requests.empty() || ahead == 1 || ahead == 3) && !stop) return true;   // before the observers' Step: Run resumes at this instruction
             if (census_on) census.queue.Step(board.s.pc, board.s.a.data());
             if (layer2) layers->Step(board.s.pc, board.s.a.data());
             if (tape_next < tape.size()) {
@@ -455,11 +479,14 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
 
         std::string frontier = "none";
         try {
-            for (b.Run(); !stop && !state_requests.empty(); b.Run()) {
+            for (b.Run(); !stop && (!state_requests.empty() || ahead == 1 || ahead == 3); b.Run()) {
                 const auto requests = std::move(state_requests);
                 state_requests.clear();
                 for (const auto r : requests) state_request(r);
+                if (ahead == 1) { ahead_state.Save(ahead_fields); ahead = 2; }
+                else if (ahead == 3) { ahead_state.Load(ahead_fields); ahead = 0; if (window) poll(); }
             }
+            if (ahead >= 2) { ahead_state.Load(ahead_fields); ahead = 0; }   // closed during the speculative frame
         } catch (const std::runtime_error& e) { frontier = e.what(); }
         const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
         if (sink) sink->Drain();
