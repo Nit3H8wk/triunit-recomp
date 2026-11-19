@@ -395,7 +395,7 @@ struct App {
         if(!settings&&page!=pagePlay)for(const auto& button:pageButtons())controls.push_back({button.id,button.box,button.enabled});
         if(settings){
             for(int i=0;i<tabCount;++i)controls.push_back({220+i,{300+float(i)*134,294,134,40},tabEnabled(i)});
-            if(category==controlsTab){for(int id:controlCells())controls.push_back({id,cellBox(id),true});controls.push_back({socdControl,{969,712,260,30},true});controls.push_back({runAheadControl,{969,748,260,30},true});}
+            if(category==controlsTab){for(int id:controlCells())controls.push_back({id,cellBox(id),true});controls.push_back({socdControl,{969,708,260,28},true});controls.push_back({runAheadControl,{969,742,260,28},true});}
             if(category==0){float y=350;for(int id:videoControls()){controls.push_back({id,{969,y,260,54},videoControlEnabled(id)});y+=60;}}
             if(category==1){controls.push_back({245,{969,350,260,54},musicAvailable||draft.remastered});controls.push_back({205,{969,420,260,54},true});controls.push_back({243,{969,490,260,54},false});controls.push_back({244,{969,560,260,54},false});}
             if(category==2){float y=350;for(int id:displayControls()){controls.push_back({id,{969,y,260,54},videoControlEnabled(id)});y+=60;}}
@@ -1142,14 +1142,14 @@ struct App {
             }
             for(int id:controlCells()){auto box=cellBox(id);box.x+=shift;const auto [player,column,action]=cell(id);
                 control(id,box,capture==id?L"PRESS...":column?padName(draftControls.pad[size_t(player)][action]):keyName(draftControls.keys[size_t(player)][action]),true,capture==id,11);}
-            g.text(L"OPPOSITE DIRECTIONS (SOCD)",306+shift,718,13,white,.4f);
-            g.text(L"An arcade lever cannot hold both: neutral is the original.",560+shift,720,11,muted,.2f);
-            control(socdControl,{969+shift,712,260,30},draftControls.socd?L"LAST INPUT WINS":L"NEUTRAL",true,false,12);
-            g.text(L"RUN-AHEAD",306+shift,754,13,white,.4f);
-            g.text(L"Shows the next frame: one frame less input lag. Off is the arcade.",560+shift,756,11,muted,.2f);
-            control(runAheadControl,{969+shift,748,260,30},draftControls.runAhead?L"1 FRAME":L"OFF",true,false,12);
-            g.text(L"SAVE STATES",306+shift,790,13,white,.4f);
-            g.text(L"In the game: F5 saves, F7 loads. Every game and edition; one slot each, in saves.",560+shift,792,11,muted,.2f);
+            g.text(L"OPPOSITE DIRECTIONS (SOCD)",306+shift,713,13,white,.4f);
+            g.text(L"An arcade lever cannot hold both: neutral is the original.",560+shift,715,11,muted,.2f);
+            control(socdControl,{969+shift,708,260,28},draftControls.socd?L"LAST INPUT WINS":L"NEUTRAL",true,false,12);
+            g.text(L"RUN-AHEAD",306+shift,747,13,white,.4f);
+            g.text(L"Shows the next frame: one frame less input lag. Off is the arcade.",560+shift,749,11,muted,.2f);
+            control(runAheadControl,{969+shift,742,260,28},draftControls.runAhead?L"1 FRAME":L"OFF",true,false,12);
+            g.text(L"SAVE STATES",306+shift,782,13,white,.4f);
+            g.text(L"In the game: F5 saves, F7 loads. Every game and edition; one slot each, in saves.",560+shift,784,11,muted,.2f);
         }else{
             row(202,350,L"LAUNCHER FPS LIMIT",L"Unfocused: 2 FPS (10 while building). Minimized: paused.",std::to_wstring(draftLauncher.fps)+L" FPS");
             row(203,420,L"LAUNCHER V-SYNC",L"Syncs the launcher with the monitor.",draftLauncher.vsync?L"ON":L"OFF");
