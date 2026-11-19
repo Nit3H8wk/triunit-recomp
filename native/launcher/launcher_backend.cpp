@@ -764,6 +764,13 @@ bool Backend::chooseMk3Engine(int engine){
  if(save())return true;
  config=before;mk3Engine_=effective;return false;
 }
+std::vector<std::wstring> mk3Arguments(const fs::path& executable,const fs::path& roms,const fs::path& seed,const fs::path& graphics,
+                                       const fs::path& profile,bool remastered,const Config& c){
+ std::vector<std::wstring> args={executable.wstring(),roms.wstring(),seed.wstring(),graphics.wstring(),L"--window",L"--audio",
+  L"--edition",remastered?L"remastered":L"original",L"--cmos-profile",profile.wstring()};
+ if(const auto dsw=mk3DswWord(c);dsw!=mk3DefaultDsw)args.insert(args.end(),{L"--dsw-word",std::to_wstring(dsw)});
+ return args;
+}
 bool Backend::launchMk3(){
  forgetFileHashes();
  try{
@@ -776,8 +783,7 @@ bool Backend::launchMk3(){
   output.h=CreateFileW(log.c_str(),GENERIC_WRITE,FILE_SHARE_READ,&security,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
   input.h=CreateFileW(L"NUL",GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,&security,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
   if(output.h==INVALID_HANDLE_VALUE||input.h==INVALID_HANDLE_VALUE)throw std::runtime_error("MK3 native log");
-  const std::vector<std::wstring> args={spec.executable.wstring(),spec.roms.wstring(),spec.seed.wstring(),spec.graphics.wstring(),L"--window",L"--audio",
-   L"--edition",remastered?L"remastered":L"original",L"--cmos-profile",spec.profile.wstring()};
+  const auto args=mk3Arguments(spec.executable,spec.roms,spec.seed,spec.graphics,spec.profile,remastered,selected);
   std::wstring command;for(const auto& arg:args){if(!command.empty())command+=L' ';command+=quote(arg);}
   STARTUPINFOW si{};si.cb=sizeof(si);si.dwFlags=STARTF_USESTDHANDLES;si.hStdInput=input.h;si.hStdOutput=output.h;si.hStdError=output.h;
   PROCESS_INFORMATION pi{};

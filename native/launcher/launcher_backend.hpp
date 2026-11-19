@@ -41,6 +41,13 @@ struct Config {
  VideoConfig& video(){return video(remastered);}
  const VideoConfig& video()const{return video(remastered);}
 };
+// MK3 command line (Backend::launch): the native package's files, the edition, the CMOS profile and the cabinet's DSW
+// (--dsw-word, INPUT_PORTS(mk3) default FD7Dh; Blood 4000h and Violence 8000h from Config, the operator's DIP switches),
+// passed only when a switch differs from the default.
+constexpr unsigned mk3DefaultDsw=0xfd7d;
+constexpr unsigned mk3DswWord(const Config& c){return (mk3DefaultDsw&~0xc000u)|(c.blood?0x4000u:0)|(c.violence?0x8000u:0);}
+std::vector<std::wstring> mk3Arguments(const std::filesystem::path& executable,const std::filesystem::path& roms,const std::filesystem::path& seed,
+                                       const std::filesystem::path& graphics,const std::filesystem::path& profile,bool remastered,const Config& c);
 struct GameAdjustments {int difficulty=3,coinage=1;bool freePlay=false,customCoinage=false;};
 struct LauncherPreferences {
  int fps=60,musicVolume=100;
@@ -62,6 +69,9 @@ public:
  mk5controls::Config loadControls()const;bool saveControls(const mk5controls::Config&)const;
  GameAdjustments adjustments;
  bool refreshAdjustments(bool read=true);bool adjustmentsAvailable()const;
+ // Blood and Violence: the cabinet's DIP switches, offered with the CMOS adjustments (MK1, native MK2) and always for MK3,
+ // whose launch passes them as its DSW (mk3Arguments) without a CMOS profile.
+ bool dipSwitchesAvailable()const;
  std::wstring coinageLabel(const GameAdjustments&)const;
  bool saveAll(const Config&,const GameAdjustments&);bool resetHighScores();
  bool selectGame(int index,bool adjustments=true);

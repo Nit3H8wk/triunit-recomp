@@ -19,6 +19,7 @@ std::vector<uint8_t> lane(const fs::path& path){
 }
 namespace mklauncher {
 bool Backend::adjustmentsAvailable()const{return adjustmentsAvailable_;}
+bool Backend::dipSwitchesAvailable()const{return adjustmentsAvailable_||gameIndex_==2;}
 bool Backend::refreshAdjustments(bool read){
  adjustmentsAvailable_=false;adjustments={};adjustmentsImage_.clear();adjustmentsProgram_.clear();coinageLabels_.clear();adjustmentsSha_.clear();
  if(!read)return false;

@@ -399,7 +399,7 @@ struct App {
             if(category==0){float y=350;for(int id:videoControls()){controls.push_back({id,{969,y,260,54},videoControlEnabled(id)});y+=60;}}
             if(category==1){controls.push_back({245,{969,350,260,54},musicAvailable||draft.remastered});controls.push_back({205,{969,420,260,54},true});controls.push_back({243,{969,490,260,54},false});controls.push_back({244,{969,560,260,54},false});}
             if(category==2){float y=350;for(int id:displayControls()){controls.push_back({id,{969,y,260,54},videoControlEnabled(id)});y+=60;}}
-            if(category==4){for(int i=0;i<5;++i)controls.push_back({260+i,{969,350+float(i)*70,260,54},backend.adjustmentsAvailable()});}
+            if(category==4){for(int i=0;i<5;++i)controls.push_back({260+i,{969,350+float(i)*70,260,54},i<3?backend.adjustmentsAvailable():backend.dipSwitchesAvailable()});}
             if(category==5){controls.push_back({270,{969,350,260,54},gameVolumeEnabled()});controls.push_back({271,{969,420,260,54},backend.adjustmentsAvailable()});if(resetScoresPending){controls.push_back({272,{969,520,125,54},true});controls.push_back({273,{1104,520,125,54},true});}}
             if(category==launcherTab){
                 std::array<int,5> ids{202,203,204,206,230};
@@ -457,7 +457,7 @@ struct App {
         if(pressed==menuVolume&&category==launcherTab)draftLauncher.musicVolume=sliderValue(mx,menuVolumeBox.w);
     }
     void changeAdjustment(int id,int step){
-        if(!backend.adjustmentsAvailable())return;
+        if(!(id==263||id==264?backend.dipSwitchesAvailable():backend.adjustmentsAvailable()))return;
         if(id==261||id==262){draftAdjustments=effectiveAdjustments();draft.cmosCoinage=true;}
         if(id==260)draftAdjustments.difficulty=(draftAdjustments.difficulty-1+step+5)%5+1;
         if(id==261){draftAdjustments.coinage=(draftAdjustments.coinage-1+step+58)%58+1;draftAdjustments.customCoinage=false;}
@@ -589,7 +589,7 @@ struct App {
         if(category==0)for(int id:videoControls()){if(videoControlEnabled(id))a.push_back(id);}
         else if(category==2)for(int id:displayControls()){if(videoControlEnabled(id))a.push_back(id);}
         else if(category==1){if(musicAvailable||draft.remastered)a.push_back(245);a.push_back(205);}
-        else if(category==4){if(backend.adjustmentsAvailable())a={260,261,262,263,264};}
+        else if(category==4){if(backend.adjustmentsAvailable())a={260,261,262};if(backend.dipSwitchesAvailable())a.insert(a.end(),{263,264});}
         else if(category==5){
             if(gameVolumeEnabled())a.push_back(270);
             if(backend.adjustmentsAvailable())a.push_back(271);
@@ -1118,13 +1118,13 @@ struct App {
             }
             g.text(L"XInput: "+std::to_wstring(pads.count())+L" connected. Arcade: 54.7069 frames per second.",306+shift,displayHdr?723:783,13,muted,.2f);
         }else if(category==4){
-            const bool ready=backend.adjustmentsAvailable();const auto effective=effectiveAdjustments();auto priced=effective;priced.freePlay=false;
+            const bool ready=backend.adjustmentsAvailable(),dips=backend.dipSwitchesAvailable();const auto effective=effectiveAdjustments();auto priced=effective;priced.freePlay=false;
             row(260,350,L"COMPUTER DIFFICULTY",L"The arcade's native AI level.",std::array<std::wstring,5>{L"VERY EASY",L"EASY",L"MEDIUM",L"HARD",L"VERY HARD"}[size_t(std::clamp(draftAdjustments.difficulty,1,5)-1)],ready);
             row(261,420,L"COINAGE",L"Preset / credits to start / continue. Original bonuses and minimums.",backend.coinageLabel(priced),ready);
             row(262,490,L"FREE PLAY",L"Start without coins through the game's own setting.",effective.freePlay?L"ON":L"OFF",ready);
-            row(263,560,L"BLOOD",L"The cabinet's original blood DIP switch.",draft.blood?L"ON":L"OFF",ready);
-            row(264,630,L"VIOLENCE",L"The cabinet's original violence DIP switch.",draft.violence?L"ON":L"OFF",ready);
-            g.text(ready?L"SAVE applies the adjustments the next time this game starts.":L"Start the game once to create its profile; CMOS and ROMs must be valid.",306+shift,723,13,muted,.2f);
+            row(263,560,L"BLOOD",L"The cabinet's original blood DIP switch.",draft.blood?L"ON":L"OFF",dips);
+            row(264,630,L"VIOLENCE",L"The cabinet's original violence DIP switch.",draft.violence?L"ON":L"OFF",dips);
+            g.text(ready||selected==2?L"SAVE applies the adjustments the next time this game starts.":L"Start the game once to create its profile; CMOS and ROMs must be valid.",306+shift,723,13,muted,.2f);
         }else if(category==5){
             row(270,350,L"VOLUME ADJUST",gameVolumeEnabled()?L"Software volume of this game's music, voices and effects.":L"Per-game control available on the native engine.",gameVolumeEnabled()?std::to_wstring(draft.gameVolume)+L"%":L"UNAVAILABLE",gameVolumeEnabled());
             g.rounded({969+shift,408,260,4},2,{.14f,.13f,.15f,1});g.rounded({969+shift,408,260.f*draft.gameVolume/100,4},2,red);

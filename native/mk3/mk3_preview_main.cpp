@@ -6,6 +6,7 @@
 // Fidelity is claimed only for the compared routes (docs/MK3_DEVELOPMENT.md).
 // argv: ROM_DIRECTORY CMOS_SEED GRAPHICS_LIST [--frames N] [--window] [--audio] [--strict] [--hashes] [--dump F]
 //       [--linger SECONDS] [--tape FILE] [--watch-dcs CMD] [--edition original|remastered] [--cmos-profile DIR]
+//       [--dsw-word N]
 //   --frames N   stop after N presented frames (default: until the frontier or the window closes)
 //   --hashes     one JSON line per presented frame: FNV-1a 64 of the visible RGB (current pens, palette at VBLANK) and
 //                of the previous frame's pens through the same palette (what MAME screen_device::pixels() returns in a
@@ -28,6 +29,9 @@
 //   --state-test PLAN  test plan of save states, e.g. save@100,hash@200,load@200,hash@200: each item once, in order, at
 //                the first presented frame >= its number, as F5 (save), F7 (load) or a digest of the state (hash)
 //   --cmos-out FILE  write the final NVRAM image to FILE when the run ended at no frontier (setup: factory seed)
+//   --dsw-word N  the DSW port (2) from reset, as the cabinet's DIP switches: only the Blood (4000h) and Violence (8000h)
+//                switches may differ from the INPUT_PORTS(mk3) default FD7Dh (the launcher's operator setting). A switch is
+//                outside the machine state, so a loaded save state keeps this word (without a tape, which owns the ports)
 //   --cmos-profile DIR  load DIR/cmos.bin (the seed when absent) and save the NVRAM there at exit; without it the
 //                seed is used and nothing is written
 // mk3 --input-map prints the Wolf-Unit ports for each key and pad control alone (tools/mk3/test_preview.py).
@@ -50,6 +54,7 @@
 #include <iterator>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -156,6 +161,7 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
     enum class StateRequest { Save, Load, Hash };
     struct PlannedState { StateRequest request; uint64_t frame; };
     std::vector<PlannedState> state_plan;
+    std::optional<uint16_t> dsw_word;
     for (int n = 4; n < argc; ++n) {
         const std::string a = mk3host::Narrow(argv[n]);
         if (a == "--frames" && n + 1 < argc) max_frames = std::stoull(mk3host::Narrow(argv[++n]));
@@ -170,6 +176,17 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
         else if (a == "--watch-dcs" && n + 1 < argc) watch_dcs = int(std::stoul(mk3host::Narrow(argv[++n]), nullptr, 0) & 0xffff);
         else if (a == "--cmos-profile" && n + 1 < argc) cmos_dir = argv[++n];
         else if (a == "--cmos-out" && n + 1 < argc) cmos_out = argv[++n];
+        else if (a == "--dsw-word" && !dsw_word && n + 1 < argc) {
+            const std::string raw = mk3host::Narrow(argv[++n]);
+            size_t used = 0;
+            unsigned long value = 0;
+            try { value = std::stoul(raw, &used, 0); } catch (const std::exception&) { used = 0; }
+            if (raw.empty() || raw[0] == '-' || used != raw.size() || value > 0xffff || (value & ~0xc000ul) != (0xfd7dul & ~0xc000ul)) {
+                std::fprintf(stderr, "--dsw-word accepts only the original blood/violence switches: %s\n", raw.c_str());
+                return 2;
+            }
+            dsw_word = uint16_t(value);
+        }
         else if (a == "--state-test" && n + 1 < argc) {
             std::stringstream list(mk3host::Narrow(argv[++n]));
             for (std::string item; std::getline(list, item, ',');) {
@@ -211,6 +228,8 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
         const auto gfx = LoadGraphics(argv[3]);
         auto board = std::make_unique<mk3::Board>(program, cmos, u2, gfx);
         mk3::Board& b = *board;
+        if (dsw_word) b.o.ports[2] = *dsw_word;   // the DIP switches are set before power-on
+        const uint16_t dsw = b.o.ports[2];
         b.dcs.AttachSoundData(argv[1]);
         mk3::FirstExecution log;
         b.SetProfile(strict ? mk3::Profile::Strict : mk3::Profile::Game, &log);
@@ -314,6 +333,7 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
                 return;
             }
             host_state([&](auto&... host) { mk3::LoadLiveState(program, bytes, b, scanout, state_layers, host...); return 0; });
+            if (tape.empty()) b.o.ports[2] = dsw;   // the cabinet's switches, not the saved session's
             std::printf("{\"save_state\":\"loaded\",\"frame\":%llu,\"from\":\"%s\"}\n", (unsigned long long)scanout.frames,
                         from_file ? "file" : "memory");
         };
@@ -498,9 +518,9 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
                               (unsigned long long)sink->Submitted(), (unsigned long long)sink->Completed(), (unsigned long long)sink->Underruns(),
                               sink->QueueCapacityMs(), (unsigned long long)sink->MaxProducerGapMs());
         std::printf("},\"inputs\":{\"changes\":%llu,\"pads\":%u},\"tape\":{\"events\":%zu,\"applied\":%zu},\"dcs\":{\"commands\":%llu,\"watch\":%d,\"watch_cycle\":%llu},"
-                    "\"edition\":\"%s\",\"cmos\":{\"profile\":%s,\"from_profile\":%s,\"saved\":%s,\"refused\":\"%s\"},\"first_execution\":{",
+                    "\"edition\":\"%s\",\"dsw\":%u,\"cmos\":{\"profile\":%s,\"from_profile\":%s,\"saved\":%s,\"refused\":\"%s\"},\"first_execution\":{",
                     (unsigned long long)input_changes, input.pads(), tape.size(), tape_next, (unsigned long long)dcs_commands, watch_dcs,
-                    (unsigned long long)watch_cycle, remastered ? "remastered" : "original", profile ? "true" : "false",
+                    (unsigned long long)watch_cycle, remastered ? "remastered" : "original", unsigned(dsw), profile ? "true" : "false",
                     cmos_from_profile ? "true" : "false", profile && cmos_refused.empty() ? "true" : "false", cmos_refused.c_str());
         first = true;
         for (const auto& [k, v] : kinds) { std::printf("%s\"%s\":%llu", first ? "" : ",", k.c_str(), (unsigned long long)v); first = false; }
