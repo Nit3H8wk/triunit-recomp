@@ -14,7 +14,7 @@ MANIFEST = Path(__file__).with_name("roms-l31.json")
 SOURCES = ["native/mk2/mk2_task_batch.cpp", "native/tests/mk2_foundation_tests.cpp", "native/mk2/mk2_program.cpp", "native/mk2/mk2_dcs.cpp", "native/mk2/mk2_adsp.cpp", "native/src/mk5_program.cpp"]
 HEADERS = ["native/mk2/mk2_task_batch.hpp", "native/mk2/mk2_task_batch.inc", "native/mk2/mk2_task_draw.inc", "native/mk2/mk2_task_palette.inc", "native/mk2/mk2_task_queue.inc", "native/mk2/mk2_task_resume.inc", "native/mk2/mk2_dispatcher.inc", "native/mk2/mk2_program.hpp", "native/mk2/mk2_reset.hpp",
            "native/mk2/mk2_board.hpp", "native/mk2/mk2_video.hpp", "native/mk2/mk2_pixblt.hpp",
-           "native/include/mk5_stage_bicubic.hpp", "native/include/mk5_fighter_bicubic.hpp", "native/include/mk5_fighter_video.hpp",
+           "native/include/mk5_stage_bicubic.hpp", "native/include/mk5_fighter_bicubic.hpp", "native/include/mk5_fighter_video.hpp", "native/include/mk5_blood_shade.hpp",
            "native/mk2/mk2_boot_ops.hpp",
            "native/mk2/mk2_protection.hpp", "native/mk2/mk2_dcs.hpp", "native/mk2/mk2_adsp.hpp",
            "native/mk2/mk2_adsp_boot.inc", "native/mk2/mk2_video_irq.inc", "native/include/mk5_program.hpp"]

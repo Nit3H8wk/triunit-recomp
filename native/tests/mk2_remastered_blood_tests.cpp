@@ -72,6 +72,119 @@ void check(mk2::BootVideo& video, mk2::Scanout& scanout, const mk2::Program& pro
     need(video.BloodPixel(index) == 0, "new combat clears both draw pages");
 }
 
+// The program's palette fades (mk5_blood_shade.hpp): with the floor under the stain dimmed from 93 to 45 (Sum of its
+// RGB555), to black and back, with no draw in between, the presented stain dims with it (rounded per channel), shows
+// its kept colours again, exactly, and never brightens; the arcade raster stays canonical.
+unsigned checks = 0, negatives = 0;
+void check_fade(bool condition, const char* message) { need(condition, message); ++checks; }
+void negative(bool rejected, const char* message) { need(rejected, message); ++negatives; }
+
+void fades(const mk2::Program& program) {
+    constexpr unsigned x = 120, y = 216, floor_pen = 0x0010;
+    constexpr uint16_t bright = 0x7fff, half = 0x3def;   // Sum 93 and 45
+    const auto dim = [](uint32_t rgb, unsigned now, unsigned then) {
+        const auto ch = [&](unsigned shift) {
+            const unsigned v = ((rgb >> shift & 255) >> 3) * now;
+            const unsigned d = (v + then / 2) / then;
+            return ((d << 3) | (d >> 2)) << shift;
+        };
+        return 0xff000000u | ch(16) | ch(8) | ch(0);
+    };
+    struct Rig {
+        mk2::BootVideo video;
+        mk2::BoardBootControls board;
+        mk2::Scanout scanout{true};
+    };
+    // One frame of the 11 stain rows (page 0, column 0, 400 wide).
+    const auto present = [](Rig& r) {
+        auto& io = r.board.io;
+        io[1] = 50; io[2] = 250; io[3] = 252; io[5] = 20; io[6] = 31; io[7] = 288; io[8] = 0xe410; io[27] = 0;
+        for (unsigned v = 20; v <= 31; ++v) {
+            r.board.vcount = v;
+            r.board.display_address = uint16_t((y + v - 20) << 4);
+            r.scanout.Line(r.board, r.video);
+        }
+    };
+    const auto make = [&](Rig& r, uint16_t floor) {
+        r.video.EnableBlood(program);
+        r.video.EnableFighters();
+        std::fill(r.video.vram.begin(), r.video.vram.end(), uint16_t(floor_pen));
+        for (unsigned s = 0; s < 12; ++s) r.video.palette_ram[0x0400 + s] = uint16_t(0x0421 * s + 0x1000);
+        r.video.KeepBlood(x, y, false, 0x0404);
+        r.video.palette_ram[floor_pen] = floor;
+        r.video.DrawBlood(0, 0, 0, xy(400, 254));
+    };
+    // Every stain pixel of the frame against `want(kept colour)`; the raster keeps the floor colour.
+    const auto all = [&](const Rig& r, auto want) {
+        unsigned stains = 0;
+        for (unsigned dy = 0; dy < 11; ++dy)
+            for (unsigned dx = 0; dx < 35; ++dx) {
+                const auto kept = r.video.BloodPixel((y + dy) * 512 + x + dx);
+                const size_t p = size_t(dy) * 400 + x + dx;
+                if (!kept) continue;
+                ++stains;
+                if (r.scanout.presentation()[p] != want(kept) ||
+                    r.scanout.pixels()[p] != mk2::ExpandRgb555(r.video.palette_ram[floor_pen])) return false;
+            }
+        return stains > 0;
+    };
+    const auto exact = [](uint32_t kept) { return kept; };
+    const auto halved = [&](uint32_t kept) { return dim(kept, 45, 93); };
+
+    Rig f; make(f, bright);
+    present(f);
+    check_fade(all(f, exact) && f.scanout.blood_shade().now == f.scanout.blood_shade().then,
+               "floor blood: without a fade the stain keeps its colours exactly (ratio 1)");
+    // A shadow drawn under half of the stain before the next pass, no palette change: the kept colours stay exact.
+    {
+        Rig s; make(s, bright);
+        for (size_t i = y * 512; i < (y + 6) * 512; ++i) s.video.vram[i] = 0x0020;
+        s.video.palette_ram[0x0020] = 0;
+        s.video.DrawBlood(0, 0, 0, xy(400, 254)); present(s);
+        bool kept = true;
+        for (unsigned dy = 0; dy < 11; ++dy)
+            for (unsigned dx = 0; dx < 35; ++dx)
+                if (const auto c = s.video.BloodPixel((y + dy) * 512 + x + dx))
+                    kept &= s.scanout.presentation()[size_t(dy) * 400 + x + dx] == c;
+        check_fade(kept && s.scanout.blood_shade().now == s.scanout.blood_shade().then,
+                   "floor blood: a shadow under the stain without a fade leaves its colours");
+    }
+    f.video.palette_ram[floor_pen] = half; present(f);
+    check_fade(all(f, halved), "floor blood: the stain dims with the floor it covers (45/93, per channel)");
+    negative(!all(f, exact), "stain kept bright through a fade");
+    negative(f.scanout.pixels() != f.scanout.presentation(), "the arcade raster carries the stain");
+    f.video.palette_ram[floor_pen] = 0; present(f);
+    check_fade(all(f, [](uint32_t) { return 0xff000000u; }), "floor blood: a fade to black takes the stain along");
+    // A draw during the fade keeps the references of the first cover.
+    f.video.palette_ram[floor_pen] = half; f.video.DrawBlood(0, 0, 0, xy(400, 254)); present(f);
+    check_fade(all(f, halved), "floor blood: a draw during the fade keeps the first references");
+    negative(!all(f, exact), "references retaken during the fade");
+    f.video.palette_ram[floor_pen] = bright; present(f);
+    check_fade(all(f, exact), "floor blood: the kept colours come back exactly with the floor");
+
+    // First covered over a dim floor, then the floor brightens: never above the kept colours.
+    Rig g; make(g, half);
+    g.video.palette_ram[floor_pen] = bright; present(g);
+    check_fade(all(g, exact), "floor blood: a brighter floor leaves the kept colours");
+    negative(!all(g, [&](uint32_t kept) { return dim(kept, 93, 46); }), "stain brightened above its kept colours");
+
+    // A fighter drawn over a stain pixel: its covered underlay dims with the frame's stains.
+    Rig h; make(h, bright);
+    constexpr size_t at = size_t(y + 5) * 512 + x + 17;
+    const auto kept = h.video.BloodPixel(at);
+    need(kept != 0, "the fighter rig covers a stain pixel");
+    auto& r = h.video.dma_registers;
+    r[4] = r[17] = at % 512; r[5] = r[13] = uint16_t(at / 512); r[6] = r[7] = 1; r[9] = 1;
+    h.video.StartDma(0x800c, h.board, program.graphics, false, 1);
+    need(h.video.BloodPixel(at) == 0 && h.video.FighterVideo().Blood(at) == kept, "the fighter covers the stain pixel");
+    h.video.palette_ram[floor_pen] = half; present(h);
+    const auto& fighter = h.scanout.fighter_frame();
+    const size_t p = 5 * 400 + x + 17;
+    check_fade(fighter.serial && fighter.covered[p] && fighter.underlay[p] == (halved(kept) & 0xffffff),
+               "floor blood: the fighter's covered underlay dims with the stains");
+    negative(fighter.underlay[p] != (kept & 0xffffff), "fighter underlay kept bright through a fade");
+}
+
 }
 
 int main(int argc, char** argv) try {
@@ -80,7 +193,8 @@ int main(int argc, char** argv) try {
     mk2::BootVideo video;
     mk2::Scanout scanout(true);
     check(video, scanout, program);
-    std::cout << "PASS MK2 Remastered floor splash\n";
+    fades(program);
+    std::cout << "PASS MK2 Remastered floor splash; fades " << checks << " checks, " << negatives << " negatives\n";
     return 0;
 } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';

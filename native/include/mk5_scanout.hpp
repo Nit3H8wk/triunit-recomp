@@ -1,6 +1,7 @@
 #pragma once
 #include "mk5_irq.hpp"
 #include "mk5_fighter_video.hpp"
+#include "mk5_blood_shade.hpp"
 #include <filesystem>
 class Mk5LiveVideo;
 // RGB is sampled from live VRAM/palette at each raster edge, before DPYADR
@@ -14,12 +15,18 @@ class Mk5Scanout {
     std::vector<uint32_t> work,complete;
     std::vector<uint32_t> backdrop_work,backdrop_complete;
     std::vector<unsigned> blood_cover;
+    // The floor of this frame's stains (mk5_blood_shade.hpp): their first covered pens through each line's palette,
+    // against their references; the stains dim with it at the frame's end (palette fades), never brighten. fighter_blood:
+    // pixels whose actor underlay is a covered stain.
+    mk5blood::Shade blood_shade,frame_shade;
+    std::vector<unsigned> fighter_blood;
     mk5presentation::FighterCapture fighter_work;
     mk5presentation::FighterFrame fighter_complete;
     void line(const Mk5ScanlineEvent&,const std::array<uint16_t,32>&);
     template<class A> friend void Fields(A& a,Mk5Scanout& s){   // save states, the partial frame included
         a(s.width_,s.height_,s.rows_,s.frames_,s.last_frame_quanta_,s.collecting,s.scenery_visible,s.work,s.complete,
-          s.backdrop_work,s.backdrop_complete,s.blood_cover,s.fighter_work,s.fighter_complete);
+          s.backdrop_work,s.backdrop_complete,s.blood_cover,s.fighter_work,s.fighter_complete,s.blood_shade,s.frame_shade,
+          s.fighter_blood);
     }
 public:
     Mk5Scanout(Mk5IrqController&,const Mk5MemoryBuffers&,const Mk5LiveVideo* presentation=nullptr);
@@ -32,5 +39,6 @@ public:
     const std::vector<uint32_t>& pixels()const{return complete;}
     const std::vector<uint32_t>& backdrop_pixels()const{return backdrop_complete;}
     const mk5presentation::FighterFrame& fighter_frame()const{return fighter_complete;}
+    const mk5blood::Shade& blood_frame_shade()const{return frame_shade;}   // the last complete frame's
     void SavePpm(const std::filesystem::path&)const;
 };

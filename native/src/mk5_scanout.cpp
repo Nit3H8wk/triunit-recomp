@@ -22,12 +22,16 @@ void Mk5Scanout::line(const Mk5ScanlineEvent& edge,const std::array<uint16_t,32>
     if(2u*(io[2]-io[1])!=width_ || unsigned(io[6]-io[5])!=height_)throw std::runtime_error("MK5 live scanout geometry changed");
     if(edge.vcount==io[6]){
         if(collecting && rows_==height_){
+            for(auto pixel:blood_cover)work[pixel]=blood_shade.Apply(work[pixel]);
+            frame_shade=blood_shade;
             complete=work;
             if(scenery_visible)backdrop_complete=backdrop_work;
             else backdrop_complete.clear();
             ++frames_;last_frame_quanta_=edge.at_quanta;
             if(presentation && presentation->FighterVideo().enabled()){
                 fighter_work.Complete(frames_,fighter_complete);
+                if(fighter_complete.serial)for(auto pixel:fighter_blood)
+                    if(fighter_complete.covered[pixel])fighter_complete.underlay[pixel]=blood_shade.Apply(fighter_complete.underlay[pixel]);
                 // The persistent blood pass can cover actor texels retained on the page.
                 if(fighter_complete.serial)for(auto pixel:blood_cover){
                     fighter_complete.opaque_order[pixel]=UINT64_MAX;
@@ -40,7 +44,7 @@ void Mk5Scanout::line(const Mk5ScanlineEvent& edge,const std::array<uint16_t,32>
         collecting=false;return;
     }
     if(edge.vcount==io[5]){
-        collecting=true;rows_=0;scenery_visible=false;blood_cover.clear();
+        collecting=true;rows_=0;scenery_visible=false;blood_cover.clear();fighter_blood.clear();blood_shade={};
         if(presentation && presentation->FighterVideo().enabled())fighter_work.Begin(width_,height_);
     }
     if(!collecting || edge.vcount<io[5] || edge.vcount>=io[6])return;
@@ -53,7 +57,10 @@ void Mk5Scanout::line(const Mk5ScanlineEvent& edge,const std::array<uint16_t,32>
         const uint16_t color=enabled?memory.palette.at(memory.vram.at(index)&0x7fff):0;
         const auto blood=presentation && enabled?presentation->BloodPixel(index):0;
         work.at(pixel)=blood?blood:expand_rgb(color);
-        if(blood)blood_cover.push_back(pixel);
+        if(blood){
+            blood_cover.push_back(pixel);
+            blood_shade.Cover(presentation->BloodPen(index),presentation->BloodFloor(index),memory.palette.data());
+        }
         if(!backdrop_work.empty()){
             const uint16_t backdrop=enabled?presentation->BackdropPixel(index):0;
             const bool scenery=(backdrop&Mk5LiveVideo::backdrop_owner) && !blood;
@@ -67,6 +74,8 @@ void Mk5Scanout::line(const Mk5ScanlineEvent& edge,const std::array<uint16_t,32>
         fighter_work.Line(presentation->FighterVideo(),rows_,row,col,work.data()+start,
                           backdrop_work.empty()?nullptr:backdrop_work.data()+start,
                           [this](uint16_t pen){return expand_rgb(memory.palette[pen]);},enabled);
+        for(unsigned x=0;x<width_;++x)
+            if(presentation->FighterVideo().Blood(row+((col+x)&511)))fighter_blood.push_back(rows_*width_+x);
     }
     ++rows_;
 }

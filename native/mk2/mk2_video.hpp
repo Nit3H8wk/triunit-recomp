@@ -2,6 +2,7 @@
 #include "mk2_board.hpp"
 #include "mk2_program.hpp"
 #include "../include/mk5_fighter_video.hpp"
+#include "../include/mk5_blood_shade.hpp"
 #include <algorithm>
 #include <map>
 #include <string>
@@ -74,19 +75,25 @@ struct BootVideo {
             blood_pixels[y*width+x]=uint8_t(pixel);
         }
         blood_layer.resize(vram.size());
+        blood_pen.resize(vram.size());
+        blood_floor.resize(vram.size());
     }
     bool BloodEnabled()const { return !blood_layer.empty(); }
     void ClearBlood() {
         blood_stains.clear();
         std::fill(blood_layer.begin(),blood_layer.end(),0);
+        std::fill(blood_pen.begin(),blood_pen.end(),0);
+        std::fill(blood_floor.begin(),blood_floor.end(),0);
         blood_draw.cursor=0;
     }
     void KeepBlood(int16_t x,int16_t y,bool flip,uint16_t palette) {
         if(!BloodEnabled())return;
         // The next object can reuse this slot as soon as the original removes the splash.
-        auto& colors=blood_stains[{x,y,flip}];
+        auto& colors=blood_stains[{x,y,flip}].colors;
         std::copy_n(palette_ram.begin()+(palette&0x7f00),colors.size(),colors.begin());
     }
+    // The palette fades of the program dim the stains in the scanout (mk5_blood_shade.hpp): each stain pixel keeps the
+    // pen of the word it first covers here and that pen's brightness through the palette of this draw.
     void DrawBlood(uint32_t page,uint32_t camera,uint32_t clip_start,uint32_t clip_end,bool visible=true) {
         if(blood_stains.empty())return;
         const unsigned page_x=uint16_t(page), page_y=page>>16;
@@ -96,16 +103,24 @@ struct BootVideo {
         const int camera_x=int16_t(camera),camera_y=int16_t(camera>>16);
         const int left=uint16_t(clip_start),top=clip_start>>16;
         const int right=uint16_t(clip_end),bottom=clip_end>>16;
-        for(const auto& [pose,colors]:blood_stains) {
+        for(auto& [pose,stain]:blood_stains) {
             const auto [origin_x,origin_y,flip]=pose;
             for(int dy=0;dy<11;++dy) {
                 const int y=origin_y-camera_y+dy;
                 if(y<top || y>=bottom || y>=256)continue;
                 for(int dx=0;dx<35;++dx) {
                     const int x=origin_x-camera_x+dx;
-                    const auto shade=blood_pixels[dy*35+(flip?34-dx:dx)];
-                    if(shade && x>=left && x<right && x+int(page_x)<512)
-                        blood_layer[(page_y+y)*512+page_x+x]=colors[shade]|0x8000;
+                    const size_t k=size_t(dy*35+(flip?34-dx:dx));
+                    const auto shade=blood_pixels[k];
+                    if(!shade || x<left || x>=right || x+int(page_x)>=512)continue;
+                    const size_t i=(page_y+y)*512+page_x+x;
+                    if(!stain.pen[k]){
+                        stain.pen[k]=uint16_t(vram[i]|mk5blood::kTaken);
+                        stain.floor[k]=uint8_t(mk5blood::Sum(palette_ram[vram[i]&0x7fff]));
+                    }
+                    blood_layer[i]=stain.colors[shade]|0x8000;
+                    blood_pen[i]=stain.pen[k];
+                    blood_floor[i]=stain.floor[k];
                 }
             }
         }
@@ -114,6 +129,9 @@ struct BootVideo {
         const auto pixel=BloodEnabled()?blood_layer[index]:0;
         return pixel?ExpandRgb555(uint16_t(pixel)):0;
     }
+    // The floor of the stain word at `index` (meaningful where BloodPixel is not 0): pen | kTaken and its brightness then.
+    uint16_t BloodPen(size_t index)const { return blood_pen.empty()?0:blood_pen[index]; }
+    uint8_t BloodFloor(size_t index)const { return blood_floor.empty()?0:blood_floor[index]; }
     void MaskBlood(size_t index,size_t count=1) {
         if(BloodEnabled())std::fill_n(blood_layer.begin()+index,count,0);
     }
@@ -336,14 +354,19 @@ private:
         template<class A> friend void Fields(A& a,BloodDraw& d){a(d.cursor,d.page,d.camera,d.clip_start,d.clip_end,d.visible);}
     } blood_draw{};
     using BloodPalette=std::array<uint16_t,12>;
+    // The kept colours and, per splash pixel, the floor it first covered: pen | kTaken (0 = not drawn yet), Sum then.
+    struct BloodStain { BloodPalette colors{}; std::array<uint16_t,35*11> pen{}; std::array<uint8_t,35*11> floor{};
+        template<class A> friend void Fields(A& a,BloodStain& s){a(s.colors,s.pen,s.floor);} };
     std::array<uint8_t,35*11> blood_pixels{};
-    std::map<std::tuple<int16_t,int16_t,bool>,BloodPalette> blood_stains;
+    std::map<std::tuple<int16_t,int16_t,bool>,BloodStain> blood_stains;
     std::vector<uint16_t> blood_layer;
+    std::vector<uint16_t> blood_pen;    // per video RAM word under a stain: the floor of its splash pixel
+    std::vector<uint8_t> blood_floor;
     // Save-state value fields (mk2_save_state.hpp). Which layers exist is the edition, checked by the file header;
     // blood_pixels is decoded from the program ROM by EnableBlood and stays with the live session.
     template<class A> friend void Fields(A& a,BootVideo& v){
         a(v.palette_ram,v.vram,v.shift_register,v.dma_palette,v.dma_registers,v.backdrop_list,v.world_object_list,
-          v.backdrop,v.fighters,v.fighter_objects,v.draw_queue,v.blood_draw,v.blood_stains,v.blood_layer);
+          v.backdrop,v.fighters,v.fighter_objects,v.draw_queue,v.blood_draw,v.blood_stains,v.blood_layer,v.blood_pen,v.blood_floor);
     }
     static unsigned PaletteOffset(uint32_t address) {
         if (address < 0x01800000 || address > 0x0187fff0 || (address & 15))

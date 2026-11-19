@@ -76,6 +76,8 @@ Mk5LiveVideo::Mk5LiveVideo(const VerifiedMk5GlyphBank& bank,ResetTrace& s,Mk5Mem
         blood_sprite.pixels[i]=uint8_t(pixel);
     }
     blood_layer.resize(m.vram.size());
+    blood_pen.resize(m.vram.size());
+    blood_floor.resize(m.vram.size());
     backdrop.resize(m.vram.size());
     fighters=mk5presentation::FighterSurface(m.vram.size());
     fighters.ClearWith(0,m.vram.size(),[this](size_t pixel){return uint16_t(m.vram[pixel]&0x7fff);});
@@ -155,6 +157,8 @@ void Mk5LiveVideo::ObserveBlood(uint32_t pc,const ResetTrace& s){
     if((pc==0xffc9f010 && word(0x010519d0)==0) || pc==0xffca3d00){
         blood_stains.clear();
         std::fill(blood_layer.begin(),blood_layer.end(),0);
+        std::fill(blood_pen.begin(),blood_pen.end(),0);
+        std::fill(blood_floor.begin(),blood_floor.end(),0);
         return;
     }
     const auto mode=word(0x01051190);
@@ -170,8 +174,12 @@ void Mk5LiveVideo::ObserveBlood(uint32_t pc,const ResetTrace& s){
     const auto frame=word(object+0x180)|(uint32_t(word(object+0x190))<<16);
     if(frame!=blood_sprite.frame)return;
     const bool flip=(word(object+0xe0)&0x10)!=0;
-    blood_stains.emplace(int16_t(word(object+0x90)),int16_t(word(object+0xb0)),flip);
+    const auto area=blood_sprite.pixels.size();
+    blood_stains.try_emplace({int16_t(word(object+0x90)),int16_t(word(object+0xb0)),flip},
+                             BloodStain{std::vector<uint16_t>(area),std::vector<uint8_t>(area)});
 }
+// The program's palette fades dim the stains in the scanout (mk5_blood_shade.hpp): each splash pixel keeps the pen of
+// the word it first covers here and that pen's brightness through the palette of this draw.
 void Mk5LiveVideo::DrawBlood(const ResetTrace& s,bool arena_visible){
     if(blood_stains.empty())return;
     const auto page_x=uint16_t(s.a[5]),page_y=uint16_t(s.a[5]>>16);
@@ -182,16 +190,25 @@ void Mk5LiveVideo::DrawBlood(const ResetTrace& s,bool arena_visible){
     const int left=uint16_t(s.a[14]),top=uint16_t(s.a[14]>>16);
     const int right=uint16_t(s.a[13]),bottom=uint16_t(s.a[13]>>16);
     // Background DMA has finished issuing. Foreground writes mask the layer as they draw.
-    for(const auto& [origin_x,origin_y,flip]:blood_stains){
+    for(auto& [pose,stain]:blood_stains){
+        const auto [origin_x,origin_y,flip]=pose;
         for(int dy=0;dy<blood_sprite.height;++dy){
             const int y=origin_y-camera_y+dy;
             if(y<top || y>=bottom || y>=256)continue;
             for(int dx=0;dx<blood_sprite.width;++dx){
                 const int x=origin_x-camera_x+dx;
                 const int source_x=flip?blood_sprite.width-1-dx:dx;
-                const auto shade=blood_sprite.pixels[dy*blood_sprite.width+source_x];
-                if(shade && x>=left && x<right && x+page_x<512)
-                    blood_layer[(page_y+y)*512+page_x+x]=shade;
+                const size_t k=size_t(dy*blood_sprite.width+source_x);
+                const auto shade=blood_sprite.pixels[k];
+                if(!shade || x<left || x>=right || x+page_x>=512)continue;
+                const size_t i=size_t(page_y+y)*512+size_t(page_x+x);
+                if(!stain.pen[k]){
+                    stain.pen[k]=uint16_t(m.vram[i]|mk5blood::kTaken);
+                    stain.floor[k]=uint8_t(mk5blood::Sum(m.palette[m.vram[i]&0x7fff]));
+                }
+                blood_layer[i]=shade;
+                blood_pen[i]=stain.pen[k];
+                blood_floor[i]=stain.floor[k];
             }
         }
     }

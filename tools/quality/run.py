@@ -471,6 +471,12 @@ def fast(cc, sanitizer, scratch, graphics=False):
             cases.append(("mk2-remastered-blood", ["native/tests/mk2_remastered_blood_tests.cpp",
                           "native/mk2/mk2_program.cpp", "native/src/mk5_program.cpp"],
                           ["-lbcrypt"], [str(mk2_roms)]))
+        mk1_roms = ROOT / "roms/mk1"
+        mk1_manifest = json.loads((ROOT / "tools/mk1/roms-l1.json").read_text(encoding="utf-8"))
+        if all((mk1_roms / row["path"]).is_file() for row in mk1_manifest["roms"]):
+            cases.append(("mk1-remastered-blood", ["native/tests/mk5_remastered_blood_tests.cpp", "native/src/mk5_live_video.cpp",
+                          "native/src/mk5_scanout.cpp", "native/src/mk5_irq.cpp", "native/src/mk5_program.cpp"],
+                          ["-fno-access-control", "-lbcrypt"], [str(mk1_roms)]))
         from tools.mk3 import roms as mk3_roms   # the ROM_LOAD32_BYTE "video" rows (tools/mk3/reference_dma.py)
         mk3_graphics = [(ROOT / "roms/mk3" / row["path"], row["offset_bytes"], row["size"]) for row in mk3_roms.definition() if row["region"] == "video"]
         if mk3_graphics and all(path.is_file() for path, _, _ in mk3_graphics) and (ROOT / "roms/mk3/mk321u54.bin").is_file():

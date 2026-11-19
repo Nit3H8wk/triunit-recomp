@@ -43,6 +43,8 @@ public:
     explicit FighterSurface(size_t pixels=0):opaque_(pixels),rows_(pixels/stride){}
     bool enabled() const {return !rows_.empty();}
     DrawToken Draw(uint64_t owner) const {return {owner};}
+    // The floor blood an actor draw covered at `pixel` (its underlay where a texel covers it), 0 = none.
+    uint32_t Blood(size_t pixel) const {return enabled()?opaque_[pixel].blood:0;}
 
     // Opaque pens use bit 15 for scenery; actor pens use the native palette index.
     void Write(DrawToken& draw,size_t pixel,uint16_t pen,uint32_t covered_blood=0){

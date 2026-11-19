@@ -15,6 +15,11 @@ class Scanout {
     std::vector<uint32_t> work_,complete_;
     std::vector<uint32_t> blood_work_,presentation_;
     std::vector<size_t> blood_cover_;
+    // The floor of this frame's stains (mk5_blood_shade.hpp): their first covered pens through each line's palette,
+    // against their references; stains dim with it at the frame's end (palette fades), never brighten. fighter_blood_: pixels
+    // whose actor underlay is a covered stain.
+    mk5blood::Shade shade_,frame_shade_;
+    std::vector<size_t> fighter_blood_;
     std::vector<uint32_t> backdrop_work_,backdrop_;
     mk5presentation::FighterCapture fighter_work_;
     mk5presentation::FighterFrame fighters_;
@@ -23,7 +28,7 @@ class Scanout {
         auto enabled=s.display_enabled_.to_string();
         a(s.width_,s.height_,s.rows_,s.frames_,s.collecting_,s.scenery_visible_,s.fighter_capture_started_,enabled,
           s.work_,s.complete_,s.blood_work_,s.presentation_,s.blood_cover_,s.backdrop_work_,s.backdrop_,
-          s.fighter_work_,s.fighters_);
+          s.fighter_work_,s.fighters_,s.shade_,s.frame_shade_,s.fighter_blood_);
         if constexpr(A::reading)s.display_enabled_=std::bitset<289>(enabled);
     }
 public:
@@ -36,6 +41,7 @@ public:
     const std::vector<uint32_t>& presentation() const { return remastered_?presentation_:complete_; }
     const std::vector<uint32_t>& backdrop_pixels() const { return backdrop_; }
     const mk5presentation::FighterFrame& fighter_frame() const { return fighters_; }
+    const mk5blood::Shade& blood_shade() const { return frame_shade_; }   // the last complete frame's
     // Sample live memory before DPYADR advances; never rebuild past rows from final VRAM.
     void Line(const BoardBootControls& board, const BootVideo& video) {
         const auto& io=board.io;
@@ -53,12 +59,18 @@ public:
         if (board.vcount==io[6]) {
             if (collecting_ && rows_==height_) {
                 complete_=work_;
-                if(remastered_)presentation_=blood_work_;
+                if(remastered_){
+                    for(const auto pixel:blood_cover_)blood_work_[pixel]=shade_.Apply(blood_work_[pixel]);
+                    presentation_=blood_work_;
+                    frame_shade_=shade_;
+                }
                 if(scenery_visible_)backdrop_=backdrop_work_;
                 else backdrop_.clear();
                 ++frames_;
                 if(fighter_capture_started_){
                     fighter_work_.Complete(frames_,fighters_);
+                    if(fighters_.serial)for(const auto pixel:fighter_blood_)
+                        if(fighters_.covered[pixel])fighters_.underlay[pixel]=shade_.Apply(fighters_.underlay[pixel]);
                     // Persistent blood can cover actor texels retained on the page.
                     if(fighters_.serial)for(const auto pixel:blood_cover_){
                         fighters_.opaque_order[pixel]=UINT64_MAX;
@@ -75,7 +87,7 @@ public:
             if(remastered_ && video.BackdropEnabled())backdrop_work_.resize(work_.size());
             else backdrop_work_.clear();
             fighter_capture_started_=false;
-            blood_cover_.clear();
+            blood_cover_.clear();fighter_blood_.clear();shade_={};
         }
         if (!collecting_ || board.vcount<io[5] || board.vcount>=io[6]) return;
         if (rows_!=unsigned(board.vcount-io[5])) { collecting_=false;return; }
@@ -96,7 +108,7 @@ public:
             if(remastered_) {
                 const auto blood=enabled?video.BloodPixel(index):0;
                 blood_work_[dest]=blood?blood:work_[dest];
-                if(blood)blood_cover_.push_back(dest);
+                if(blood){blood_cover_.push_back(dest);shade_.Cover(video.BloodPen(index),video.BloodFloor(index),video.palette_ram.data());}
                 if(!backdrop_work_.empty()) {
                     const uint16_t pen=enabled?video.BackdropPixel(index):0;
                     const bool scenery=(pen&BootVideo::backdrop_owner) && !blood;
@@ -124,6 +136,8 @@ public:
                     fighter_capture_started_=true;
                 }
                 sample(video.FighterVideo(),rows_,row,column,enabled);
+                for(unsigned x=0;x<width_;++x)
+                    if(video.FighterVideo().Blood(row+((column+x)&511)))fighter_blood_.push_back(size_t(rows_)*width_+x);
             }else display_enabled_[rows_]=enabled;
         }
         ++rows_;
