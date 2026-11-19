@@ -442,7 +442,7 @@ def run(rom_directory,window=False,reference_frames=False,settings=None,audio=Fa
     sources += ["native/mk2/mk2_native_check.cpp","native/mk2/mk2_music.cpp","native/src/mk5_window.cpp","native/src/mk5_audio_output.cpp"]
     files=list(dict.fromkeys(sources+foundation.HEADERS+
         [p for p in foundation.VERIFIERS if Path(p).suffix in ('.py','.json')]+[
-        "native/mk2/mk2_live_host.hpp","native/mk2/mk2_live_limits.hpp","native/mk2/mk2_save_state.hpp","native/mk2/mk2_state_io.hpp","native/mk2/mk2_scanout.hpp","native/include/mk5_window.hpp",
+        "native/mk2/mk2_live_host.hpp","native/mk2/mk2_live_limits.hpp","native/mk2/mk2_save_state.hpp","native/mk2/mk2_state_io.hpp","native/include/mk5_profile_presentation.hpp","native/mk2/mk2_scanout.hpp","native/include/mk5_window.hpp",
         "native/include/mk5_crt.hpp","native/include/mk5_crt_shader.hpp","native/include/mk5_stage_bicubic.hpp",
         "native/include/mk5_scalefx.hpp","native/include/mk5_scalefx_shader.hpp",
         "native/include/mk5_video.hpp","native/include/mk5_smaa.hpp","native/include/mk5_smaa_shader.hpp",

@@ -8,8 +8,9 @@ Checks, all on one build in one scratch tree:
   the `jogo` frontier or the horizon; the `estrito` profile as negative control (strict frontier with its PC);
 - the legal round start tape (tools/mk3/fight_route.tape) applied by --tape at TMS boundaries: the DCS command 0x233D must
   be written at the Original's cycle; negative: the same tape without the Start press must not reach it;
-- CMOS: window runs save the NVRAM to their profile directory (from the seed when empty) and load it back; a profile
-  of the wrong size and a held lock fail closed; headless runs write nothing; the MK1/MK2 profiles and packages, the
+- CMOS: window runs save the NVRAM to their profile directory (from the seed when empty) and load it back, only after
+  the shared D3D12 presentation check (mk5_profile_presentation.hpp); a headless run loads the profile and leaves it
+  unchanged; a profile of the wrong size and a held lock fail closed; the MK1/MK2 profiles and packages, the
   MK3 temporary core profile (kept on disk, unused), both seeds and the default MK3 profile are hashed before and after;
 - Original and Remastered layer 1 (EDITIONS of preview.py) in a window, with the shared GPU pixel validation: per
   frame canonical hashes equal between the editions and to the headless run, presentation settings differ; the
@@ -150,8 +151,11 @@ class PreviewTest(unittest.TestCase):
         self.assertEqual(after,before,'MK1/MK2/MK3-core profiles, seeds or the default MK3 profile changed')
         for e,s in shown.items():
             self.assertTrue(s['summary']['cmos']['profile']);self.assertFalse(s['summary']['cmos']['from_profile'])
+            self.assertEqual((s['summary']['cmos']['saved'],s['summary']['cmos']['refused']),(True,''))
             self.assertEqual(len(saved[e]),49152)
         self.assertTrue(reload['cmos']['from_profile']);self.assertEqual(len(reloaded),49152);self.assertEqual(leftovers,[])
+        self.assertEqual((reload['cmos']['saved'],reload['cmos']['refused']),(False,'no D3D12 presentation (headless session)'))
+        self.assertEqual(reloaded,saved['original'],'a headless session rewrote the profile')
         # Editions.
         hashes={e:[f['prev'] for f in s['frames']] for e,s in shown.items()}
         quiet=all(not s['summary']['inputs']['changes'] for s in shown.values())

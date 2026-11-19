@@ -26,6 +26,7 @@
 //   --dma-census per-producer DMA counts (writer/enqueue PC, display list, scroll word, table routine, graphics bank)
 //   --state-test PLAN  test plan of save states, e.g. save@100,hash@200,load@200,hash@200: each item once, in order, at
 //                the first presented frame >= its number, as F5 (save), F7 (load) or a digest of the state (hash)
+//   --cmos-out FILE  write the final NVRAM image to FILE when the run ended at no frontier (setup: factory seed)
 //   --cmos-profile DIR  load DIR/cmos.bin (the seed when absent) and save the NVRAM there at exit; without it the
 //                seed is used and nothing is written
 // mk3 --input-map prints the Wolf-Unit ports for each key and pad control alone (tools/mk3/test_preview.py).
@@ -39,6 +40,7 @@
 #include "../launcher/launcher_legal.hpp"
 #include "mk5_audio_output.hpp"
 #include "mk5_window.hpp"
+#include "mk5_profile_presentation.hpp"
 #include "mk5_stage_bicubic.hpp"
 #include <chrono>
 #include <filesystem>
@@ -149,7 +151,7 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
     double linger = -1;
     bool window_on = false, audio_on = false, strict = false, hashes = false, remastered = false, census_on = false;
     int watch_dcs = -1;
-    std::wstring tape_file, cmos_dir;
+    std::wstring tape_file, cmos_dir, cmos_out;
     enum class StateRequest { Save, Load, Hash };
     struct PlannedState { StateRequest request; uint64_t frame; };
     std::vector<PlannedState> state_plan;
@@ -166,6 +168,7 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
         else if (a == "--tape" && n + 1 < argc) tape_file = argv[++n];
         else if (a == "--watch-dcs" && n + 1 < argc) watch_dcs = int(std::stoul(mk3host::Narrow(argv[++n]), nullptr, 0) & 0xffff);
         else if (a == "--cmos-profile" && n + 1 < argc) cmos_dir = argv[++n];
+        else if (a == "--cmos-out" && n + 1 < argc) cmos_out = argv[++n];
         else if (a == "--state-test" && n + 1 < argc) {
             std::stringstream list(mk3host::Narrow(argv[++n]));
             for (std::string item; std::getline(list, item, ',');) {
@@ -437,7 +440,26 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
         const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
         if (sink) sink->Drain();
         scan_dcs();
-        if (profile) profile->Save(b.o.cmos);
+        // As MK2: the NVRAM is written only after a session that ended at no translation frontier and that the shared
+        // D3D12 presenter showed (mk5_profile_presentation.hpp); otherwise the profile keeps its previous image.
+        if (!cmos_out.empty() && frontier == "none" && b.dcs_frontier.empty() && !mk3host::ReplaceFileBytes(cmos_out, mk3host::CmosImage(b.o.cmos)))
+            throw std::runtime_error("MK3 --cmos-out write failed");
+        std::string cmos_refused;
+        if (profile) {
+            try {
+                if (frontier != "none" || !b.dcs_frontier.empty()) throw std::runtime_error("the session stopped at a translation frontier");
+                if (!window) throw std::runtime_error("no D3D12 presentation (headless session)");
+                const auto confirm_window = [&] {
+                    const bool running = window->Pump();
+                    window->Pump();   // surface a failure published around the running/close observation
+                    if (!running && !closed) throw std::runtime_error("native profile window closed before successful completion");
+                };
+                confirm_window();
+                ValidateProfilePresentation(window->presentation_json(), closed, window->GraphicsValidationEnabled());
+                confirm_window();   // again after the metrics snapshot, before the durable write
+                profile->Save(b.o.cmos);
+            } catch (const std::exception& e) { cmos_refused = e.what(); }
+        }
 
         std::map<std::string, uint64_t> kinds;
         for (const auto& e : log.order) ++kinds[KindName(e.kind)];
@@ -472,10 +494,10 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
                               (unsigned long long)sink->Submitted(), (unsigned long long)sink->Completed(), (unsigned long long)sink->Underruns(),
                               sink->QueueCapacityMs(), (unsigned long long)sink->MaxProducerGapMs());
         std::printf("},\"inputs\":{\"changes\":%llu,\"pads\":%u},\"tape\":{\"events\":%zu,\"applied\":%zu},\"dcs\":{\"commands\":%llu,\"watch\":%d,\"watch_cycle\":%llu},"
-                    "\"edition\":\"%s\",\"cmos\":{\"profile\":%s,\"from_profile\":%s},\"first_execution\":{",
+                    "\"edition\":\"%s\",\"cmos\":{\"profile\":%s,\"from_profile\":%s,\"saved\":%s,\"refused\":\"%s\"},\"first_execution\":{",
                     (unsigned long long)input_changes, input.pads(), tape.size(), tape_next, (unsigned long long)dcs_commands, watch_dcs,
                     (unsigned long long)watch_cycle, remastered ? "remastered" : "original", profile ? "true" : "false",
-                    cmos_from_profile ? "true" : "false");
+                    cmos_from_profile ? "true" : "false", profile && cmos_refused.empty() ? "true" : "false", cmos_refused.c_str());
         first = true;
         for (const auto& [k, v] : kinds) { std::printf("%s\"%s\":%llu", first ? "" : ",", k.c_str(), (unsigned long long)v); first = false; }
         std::printf("}");

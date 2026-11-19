@@ -52,6 +52,8 @@ private:
     void* lock_;
 };
 
+// The MAME nvram image (24576 LE words = 49152 bytes) of the CMOS words.
+std::vector<uint8_t> CmosImage(const std::vector<uint16_t>& words);
 // Writes `bytes` beside `file` (write-through), then replaces `file` atomically; false (and nothing replaced) on failure.
 bool ReplaceFileBytes(const std::filesystem::path& file, const std::vector<uint8_t>& bytes);
 void SetTitle(const std::wstring& title);   // the Mk5Window of this process (class Mk5TemporalScanout)

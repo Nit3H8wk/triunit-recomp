@@ -174,12 +174,15 @@ std::vector<uint8_t> CmosProfile::Load(const std::vector<uint8_t>& seed, bool& f
     return image;
 }
 void CmosProfile::Save(const std::vector<uint16_t>& words) const {
+    const fs::path file = fs::path(dir_) / L"cmos.bin";
+    Unlinked(file);
+    if (!ReplaceFileBytes(file, CmosImage(words))) throw std::runtime_error("MK3 CMOS profile save failed");
+}
+std::vector<uint8_t> CmosImage(const std::vector<uint16_t>& words) {
     if (words.size() * 2 != kCmosBytes) throw std::runtime_error("MK3 CMOS save requires 24576 words");
     std::vector<uint8_t> image(kCmosBytes);
     for (size_t i = 0; i < words.size(); ++i) { image[2 * i] = uint8_t(words[i]); image[2 * i + 1] = uint8_t(words[i] >> 8); }
-    const fs::path file = fs::path(dir_) / L"cmos.bin";
-    Unlinked(file);
-    if (!ReplaceFileBytes(file, image)) throw std::runtime_error("MK3 CMOS profile save failed");
+    return image;
 }
 bool ReplaceFileBytes(const std::filesystem::path& file, const std::vector<uint8_t>& bytes) {
     const fs::path pending = file.parent_path() / (L".pending-" + std::to_wstring(GetCurrentProcessId()) + L"-" + file.filename().wstring());

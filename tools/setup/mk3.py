@@ -77,14 +77,13 @@ def factory_seed(exe,roms=ROMS):
         (temp/'gfx.txt').write_text(''.join(f'{o} {s} {p}\n' for p,o,s in reference_dma.graphics_rows()),encoding='utf-8')
         (temp/'press.tape').write_text(f'{round(SEED_PRESS*frame)} 0 {0xffff^SEED_HIGH_PUNCH}\n{round(SEED_RELEASE*frame)} 0 {0xffff}\n',
                                        encoding='ascii')
-        (temp/'profile').mkdir()
         env={'PATH':str(q.DEFAULT_CC.parent)+os.pathsep+os.environ['PATH']}
         run=q.command([exe,Path(roms),temp/'cleared.bin',temp/'gfx.txt','--frames',str(SEED_FRAMES),'--tape',temp/'press.tape',
-                       '--cmos-profile',temp/'profile'],temp,cwd=ROOT,env=env,timeout=600)
+                       '--cmos-out',temp/'seed.bin'],temp,cwd=ROOT,env=env,timeout=600)
         summary=next((json.loads(l) for l in reversed(run['stdout'].splitlines()) if l.startswith('{"preview"')),None)
         if not run['passed'] or not summary or summary.get('frontier')!='none' or summary.get('frames')!=SEED_FRAMES:
             raise RuntimeError('MK3 factory seed run failed: '+run['stdout'][-1500:])
-        image=(temp/'profile/cmos.bin').read_bytes()
+        image=(temp/'seed.bin').read_bytes()
     if cleanup.get('exists_after'):raise RuntimeError('MK3 factory seed scratch retained')
     if len(image)!=SEED_BYTES:raise RuntimeError(f'MK3 factory seed has {len(image)} bytes')
     SEED.parent.mkdir(parents=True,exist_ok=True)
