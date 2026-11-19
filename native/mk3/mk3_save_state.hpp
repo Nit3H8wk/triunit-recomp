@@ -9,7 +9,7 @@
 #include "mk5_program.hpp"
 
 namespace mk3 {
-inline constexpr uint32_t kSaveStateVersion = 2;   // 2: the Remastered floor blood
+inline constexpr uint32_t kSaveStateVersion = 3;   // 2: the Remastered floor blood; 3: its floor pens (fades)
 inline constexpr const char* kSaveStateRevision = "mk3 2.1";
 inline constexpr const char* kSaveStateMagic = "TRIUNIT-MK3-STATE";
 static_assert(mk2::state::kBlock<Board::As> && mk2::state::kBlock<VideoTiming::Atto>, "128-bit times are copied as blocks");
@@ -36,7 +36,7 @@ template<class A> void Fields(A& a, HostEvent& e) { a(e.kind, e.write_ns, e.end_
 template<class A> void Fields(A& a, DacBlock& d) { a(d.ns, d.boot, d.cycle, d.address, d.step, d.first, d.count, d.sample_ns, d.arm); }
 template<class A> void Fields(A& a, Scanout& s) {
     a(s.pens, s.frame, s.last_partial_scan, s.frames, s.lines, s.fighter_work, s.fighters, s.backdrop_pens, s.backdrop,
-      s.presentation_pens, s.presentation_floor, s.presentation);
+      s.presentation_pens, s.presentation_floor_pen, s.presentation_floor, s.presentation);
 }
 template<class A> void Fields(A& a, DmaSource& s) { a(s.producer, s.list, s.scroll, s.routine, s.object, s.appender, s.bound); }
 template<class A> void Fields(A& a, DmaQueue& q) { a(q.list, q.scroll, q.routine, q.direct, q.staged, q.appended); }
@@ -44,8 +44,8 @@ template<class A> void Fields(A& a, ObjectBinder& o) { a(o.bound, o.effect_paren
 // FloorBlood::shape is decoded from the graphics ROM and stays with the live session.
 template<class A> void Fields(A& a, FloorBlood::Staged& s) { a(s.x, s.y, s.flip); }
 template<class A> void Fields(A& a, FloorBlood::Pass& p) { a(p.cursor, p.page, p.camera, p.clip_start, p.clip_end, p.shown); }
-template<class A> void Fields(A& a, FloorBlood::Stain& s) { a(s.colors, s.floor); }
-template<class A> void Fields(A& a, FloorBlood& f) { a(f.staged, f.stains, f.layer, f.floor, f.pass); }
+template<class A> void Fields(A& a, FloorBlood::Stain& s) { a(s.colors, s.pen, s.floor); }
+template<class A> void Fields(A& a, FloorBlood& f) { a(f.staged, f.stains, f.layer, f.pens, f.floor, f.pass); }
 template<class A> void Fields(A& a, DmaLayers& l) {
     a(l.queue, l.objects, l.stored, l.under, l.cls, l.fighters, l.draws, l.pixels, l.cpu_words, l.bound_draws, l.now,
       l.token, l.cpu_begin, l.cpu_end, l.blood);

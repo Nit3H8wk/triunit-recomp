@@ -576,26 +576,33 @@ inline int Run() {
             Check(s.frame == canonical.frame && s.pens == canonical.pens, "floor blood: canonical frame and pens without the stain");
             Negative(s.presentation != s.frame, "presented frame equal to the canonical one");
         }
-        // A fade: the palette dims the floor words the stain covers to 45/93 of their brightness, then to black, then
-        // restores them, with no pass in between; Present dims the stain with them (rounded per channel) and shows its
-        // kept colours again, exactly, once they are back.
+        // A fade: the palette dims the floor pen the stain covered to 45/93 of its brightness, then to black, then
+        // restores it, with no pass in between; Present dims the stain with it (rounded per channel) and shows its kept
+        // colours again, exactly, once it is back. A darker pen drawn under the stain later (a shadow) does not dim it.
         {
             Rig g; rig(g); stage(g, kSplashA, 200u << 16 | 120, kPage0, 0); keep(g, kSplashA);
-            for (int dy = 0; dy < FloorBlood::kHeight; ++dy) for (int dx = 0; dx < FloorBlood::kWidth; ++dx) {
-                const size_t i = size_t(200 + dy) * 512 + size_t(120 + dx);
-                g.dma.vram[i] = g.layers.stored[i] = 0x0010;
-            }
-            g.palette[0x0010] = 0x7fff; walk(g, kPage0, 0); g.layers.blood.Pump(kCursor, g.layers.stored, g.layers.palette);
+            const auto under = [&](uint16_t pen) {
+                for (int dy = 0; dy < FloorBlood::kHeight; ++dy) for (int dx = 0; dx < FloorBlood::kWidth; ++dx) {
+                    const size_t i = size_t(200 + dy) * 512 + size_t(120 + dx);
+                    g.dma.vram[i] = g.layers.stored[i] = pen;
+                }
+            };
+            under(0x0010); g.palette[0x0010] = 0x7fff; g.palette[0x0011] = 0x0421;
+            walk(g, kPage0, 0); g.layers.blood.Pump(kCursor, g.layers.stored, g.layers.palette);
             const auto shown = [&] { Scanout s; s.layers = &g.layers; g.Render(s); return s.presentation[At(121, 200)]; };
             const uint16_t kept = uint16_t(0x0421 * shade(g, 1, 0, false) + 0x1000);
-            const auto dim = [](unsigned v) { return (v * 45 + 46) / 93; };   // every stain pixel over word 0010h
+            const auto dim = [](unsigned v) { return (v * 45 + 46) / 93; };   // every stain pixel over pen 0010h
             const uint32_t half = Scanout::Rgb(uint16_t(dim(kept >> 10 & 31) << 10 | dim(kept >> 5 & 31) << 5 | dim(kept & 31)));
             const bool bright = shown() == Scanout::Rgb(kept);
             g.palette[0x0010] = 0x3def; const bool dimmed = shown() == half;
             g.palette[0x0010] = 0; const bool black = shown() == 0;
-            g.palette[0x0010] = 0x7fff;
-            Check(bright && dimmed && black && shown() == Scanout::Rgb(kept), "floor blood: Present dims the stain with the floor it covers and restores it exactly");
-            g.palette[0x0010] = 0x3def; std::fill(g.layers.blood.floor.begin(), g.layers.blood.floor.end(), uint8_t(0));
+            g.palette[0x0010] = 0x7fff; const bool back = shown() == Scanout::Rgb(kept);
+            under(0x0011); walk(g, kPage0, 0); g.layers.blood.Pump(kCursor, g.layers.stored, g.layers.palette);
+            Check(bright && dimmed && black && back && shown() == Scanout::Rgb(kept),
+                  "floor blood: Present dims the stain with its floor pen's palette, restores it exactly, ignores a pen drawn under it");
+            std::fill(g.layers.blood.pens.begin(), g.layers.blood.pens.end(), uint16_t(0x0011 | mk5blood::kTaken));
+            Negative(shown() != Scanout::Rgb(kept), "stain dimmed by a darker pen drawn under it");
+            g.palette[0x0010] = 0x3def; std::fill(g.layers.blood.pens.begin(), g.layers.blood.pens.end(), uint16_t(0));
             Negative(shown() != half, "stain kept bright through a fade");
         }
         // Off the arena: the pass clears its page and draws nothing.

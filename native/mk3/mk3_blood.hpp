@@ -14,12 +14,14 @@
 //   pump pops it, after the scenery. Page @kPage, camera A4, clip A14 (first) / A13 (past the last, the walker's
 //   reject test); arena shown while @kArenaShown != 0.
 // The program's fades (the screen fading to black between rounds, the arena darkening behind a finishing move) rewrite the
-// arena's palette, even while no pass runs, as the stain keeps the colours of its keep: each stain pixel also keeps the
-// brightness (Sum) of the video RAM word it first covered, and the scanout's Present dims every stain of the frame by how
-// much the words they cover have dimmed since, through the palette of that VBLANK (Dim; never brightened). Without a
-// fade the ratio is 1 and the colours are the kept ones, exactly.
+// arena's palette, even while no pass runs, as the stain keeps the colours of its keep: as MK1/MK2 (mk5_blood_shade.hpp),
+// each stain pixel also keeps the pen of the video RAM word it first covered and that pen's brightness then, and the
+// scanout's Present dims every stain of the frame by those same pens through the palette of that VBLANK against their
+// brightness then (never brightened). Without a palette change the ratio is 1 and the colours are the kept ones,
+// exactly, whatever the program draws under the stain later.
 // With the blood DIP off the program never creates the splash, so nothing is kept.
 #pragma once
+#include "mk5_blood_shade.hpp"
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -38,22 +40,26 @@ struct FloorBlood {
     using Colors = std::array<uint16_t, 16>;         // 4-bit frame: palette slot + 0..15
     struct Staged { int16_t x = 0, y = 0; bool flip = false; };   // world position of the first pixel column/row
     struct Pass { uint32_t cursor = 0, page = 0, camera = 0, clip_start = 0, clip_end = 0; bool shown = false; };
-    struct Stain { Colors colors{}; std::array<uint8_t, kWidth * kHeight> floor{}; };   // floor: Sum + 1 of the word first covered
+    // Per splash pixel, the floor it first covered: pen | mk5blood::kTaken (0 = not drawn yet) and its Sum then.
+    struct Stain { Colors colors{}; std::array<uint16_t, kWidth * kHeight> pen{}; std::array<uint8_t, kWidth * kHeight> floor{}; };
 
     std::vector<uint8_t> shape;   // kWidth x kHeight palette indices from the ROM (not state); empty = disabled
     std::unordered_map<uint32_t, Staged> staged;   // splash objects drawn since their creation
     std::map<std::tuple<int16_t, int16_t, bool>, Stain> stains;
     std::vector<uint16_t> layer;   // per video RAM word: RGB555 | 0x8000, 0 = no stain
-    std::vector<uint8_t> floor;    // per video RAM word under a stain: its Stain::floor (0 = not dimmed)
+    std::vector<uint16_t> pens;    // per video RAM word under a stain: its Stain::pen (0 = never dimmed)
+    std::vector<uint8_t> floor;    // and its Stain::floor
     Pass pass;
 
     bool enabled() const { return !shape.empty(); }
     uint16_t At(size_t i) const { return layer.empty() ? 0 : layer[i]; }
+    uint16_t Pen(size_t i) const { return pens.empty() ? 0 : pens[i]; }
     uint8_t Floor(size_t i) const { return floor.empty() ? 0 : floor[i]; }
     void Mask(size_t i) { if (!layer.empty()) layer[i] = 0; }
     void Clear() {
         staged.clear(); stains.clear(); pass.cursor = 0;
-        std::fill(layer.begin(), layer.end(), uint16_t(0)); std::fill(floor.begin(), floor.end(), uint8_t(0));
+        std::fill(layer.begin(), layer.end(), uint16_t(0)); std::fill(pens.begin(), pens.end(), uint16_t(0));
+        std::fill(floor.begin(), floor.end(), uint8_t(0));
     }
 
     // Before every TMS instruction (DmaLayers::Step); ram: main RAM words, palette: palette RAM.
@@ -89,25 +95,19 @@ struct FloorBlood {
         }
     }
     // A DMA popped by the pump with this queue cursor (DmaLayers::Begin): the world pass's first entry composes over
-    // `vram` (the words stored so far, DmaLayers::stored), whose colours through `palette` are the floor references
-    // (null: never dimmed).
+    // `vram` (the words stored so far, DmaLayers::stored), whose pens are the floor references, with their brightness
+    // through `palette` (null: never dimmed).
     void Pump(uint32_t cursor, const std::vector<uint16_t>& vram, const std::vector<uint16_t>* palette) {
         if (!pass.cursor || pass.cursor != cursor) return;
         pass.cursor = 0;
         Draw(pass, vram, palette);
     }
-    static unsigned Sum(uint16_t c) { return (c >> 10 & 31) + (c >> 5 & 31) + (c & 31); }
-    // A stain colour once its floor went from brightness `then` to `now` (Sums).
-    static uint16_t Dim(uint16_t c, uint64_t now, uint64_t then) {
-        if (now >= then) return c;
-        const auto ch = [&](unsigned v) { return uint16_t((v * now + then / 2) / then); };
-        return uint16_t(ch(c >> 10 & 31) << 10 | ch(c >> 5 & 31) << 5 | ch(c & 31));
-    }
     void Draw(const Pass& p, const std::vector<uint16_t>& vram, const std::vector<uint16_t>* palette) {
         const int page_x = uint16_t(p.page), page_y = int(p.page >> 16);
         if (page_y != 0 && page_y != 256) return;
-        if (floor.size() != layer.size()) floor.assign(layer.size(), 0);
+        if (pens.size() != layer.size()) { pens.assign(layer.size(), 0); floor.assign(layer.size(), 0); }
         std::fill_n(layer.begin() + page_y * 512, 256 * 512, uint16_t(0));
+        std::fill_n(pens.begin() + page_y * 512, 256 * 512, uint16_t(0));
         std::fill_n(floor.begin() + page_y * 512, 256 * 512, uint8_t(0));
         if (!p.shown) return;
         const int camera_x = int16_t(p.camera), camera_y = int16_t(p.camera >> 16);
@@ -122,9 +122,12 @@ struct FloorBlood {
                     const size_t k = size_t(dy) * kWidth + size_t(flip ? kWidth - 1 - dx : dx);
                     if (!shape[k] || x < left || x >= right || x + page_x >= 512) continue;
                     const size_t i = size_t(page_y + y) * 512 + size_t(page_x + x);
-                    if (palette && !stain.floor[k]) stain.floor[k] = uint8_t(Sum((*palette)[vram[i] & 0x7fff]) + 1);
+                    if (palette && !stain.pen[k]) {
+                        stain.pen[k] = uint16_t(vram[i] | mk5blood::kTaken);
+                        stain.floor[k] = uint8_t(mk5blood::Sum((*palette)[vram[i] & 0x7fff]));
+                    }
                     layer[i] = uint16_t(stain.colors[shape[k]] | 0x8000);
-                    floor[i] = stain.floor[k];
+                    pens[i] = stain.pen[k]; floor[i] = stain.floor[k];
                 }
             }
         }

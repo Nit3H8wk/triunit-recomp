@@ -19,8 +19,9 @@
 // through the same palette (serial 0 = no fighter layer this frame or a row the capture cannot follow).
 // Floor blood (mk3_blood.hpp): a visible word under a stain of layers->blood is the stain's colour in `presentation`
 // (the frame the Remastered window shows), unflagged in `backdrop` and in the fighters' underlay; `frame` stays canonical.
-// Present dims the frame's stains by the brightness of the canonical pens they cover (the floor words) through the
-// VBLANK palette against their FloorBlood floor references, so the program's palette fades take them along.
+// Present dims the frame's stains by their FloorBlood floor pens through the VBLANK palette against those pens'
+// brightness then (mk5blood::Shade, as MK1/MK2), so the program's palette fades take them along and nothing drawn
+// under a stain later (a shadow) does.
 #pragma once
 #include "mk3_dma_observer.hpp"
 #include "mk3_video.hpp"
@@ -52,8 +53,10 @@ struct Scanout {
     std::vector<uint32_t> row_pens = std::vector<uint32_t>(kFrameWidth), row_back = std::vector<uint32_t>(kFrameWidth);
     std::vector<uint32_t> backdrop_pens, backdrop;   // pen | DmaLayers::kScenery; 0x00RRGGBB | kSceneryRgb (visible area)
     std::vector<uint32_t> presentation_pens, presentation;   // visible area: pen or FloorBlood::kMark | RGB555; 0x00RRGGBB
-    std::vector<uint8_t> presentation_floor;   // visible area: FloorBlood floor reference of a stained pixel
+    std::vector<uint16_t> presentation_floor_pen;   // visible area: FloorBlood floor pen and brightness of a stained pixel
+    std::vector<uint8_t> presentation_floor;
     std::vector<uint16_t> row_blood = std::vector<uint16_t>(kWidth);
+    std::vector<uint16_t> row_floor_pen = std::vector<uint16_t>(kWidth);
     std::vector<uint8_t> row_floor = std::vector<uint8_t>(kWidth);
     static constexpr uint32_t kSceneryRgb = 0x80000000u;   // mk5stage::scenery
 
@@ -85,7 +88,8 @@ struct Scanout {
                 std::fill(row_blood.begin(), row_blood.end(), uint16_t(0));
                 for (int x = heblnk, c = int(col); x < hsblnk; ++x, ++c) {
                     back[x] = layers->Backdrop(base + (c & 0x1ff), src[c & 0x1ff]);
-                    row_blood[x] = layers->blood.At(base + (c & 0x1ff)); row_floor[x] = layers->blood.Floor(base + (c & 0x1ff));
+                    row_blood[x] = layers->blood.At(base + (c & 0x1ff)); row_floor_pen[x] = layers->blood.Pen(base + (c & 0x1ff));
+                    row_floor[x] = layers->blood.Floor(base + (c & 0x1ff));
                     if (row_blood[x]) back[x] = FloorBlood::kMark | (row_blood[x] & 0x7fffu);
                 }
             }
@@ -100,12 +104,13 @@ struct Scanout {
             if (top == kTop) fighter_work.Begin(kFrameWidth, kFrameHeight);
             if (!enabled) std::fill(row_blood.begin(), row_blood.end(), uint16_t(0));
             if (presentation_pens.empty()) presentation_pens.assign(frame.size(), kBlackPen);
-            if (presentation_floor.empty()) presentation_floor.assign(frame.size(), 0);
+            if (presentation_floor.empty()) { presentation_floor_pen.assign(frame.size(), 0); presentation_floor.assign(frame.size(), 0); }
             for (int x = 0; x < kFrameWidth; ++x) {
                 const uint16_t stain = row_blood[x + kLeft];
                 row_pens[x] = stain ? FloorBlood::kMark | (stain & 0x7fffu) : dest[x + kLeft];
                 row_back[x] = stain ? row_pens[x] : (back[x + kLeft] & 0xffff) | (back[x + kLeft] & DmaLayers::kScenery ? kSceneryRgb : 0);
                 presentation_pens[size_t(top - kTop) * kFrameWidth + x] = row_pens[x];
+                presentation_floor_pen[size_t(top - kTop) * kFrameWidth + x] = stain ? row_floor_pen[x + kLeft] : uint16_t(0);
                 presentation_floor[size_t(top - kTop) * kFrameWidth + x] = stain ? row_floor[x + kLeft] : uint8_t(0);
             }
             layers->Flush();
@@ -124,17 +129,12 @@ struct Scanout {
         if (layers) {
             if (backdrop_pens.empty()) backdrop_pens.assign(pens.size(), kBlackPen);
             if (presentation_pens.empty()) presentation_pens.assign(frame.size(), kBlackPen);
-            if (presentation_floor.empty()) presentation_floor.assign(frame.size(), 0);
-            uint64_t now = 0, then = 0;   // the floor under this frame's stains: now (VBLANK palette) and at its references
-            for (int y = 0; y < kFrameHeight; ++y)
-                for (int x = 0; x < kFrameWidth; ++x) {
-                    const size_t i = size_t(y) * kFrameWidth + size_t(x);
-                    if (!(presentation_pens[i] & FloorBlood::kMark) || !presentation_floor[i]) continue;
-                    const uint16_t pen = pens[size_t(y + kTop) * kWidth + size_t(x + kLeft)];
-                    now += pen == kBlackPen ? 0 : FloorBlood::Sum(palette[pen]); then += presentation_floor[i] - 1u;
-                }
+            if (presentation_floor.empty()) { presentation_floor_pen.assign(frame.size(), 0); presentation_floor.assign(frame.size(), 0); }
+            mk5blood::Shade shade;   // this frame's stains: their floor pens through the VBLANK palette and then
+            for (size_t i = 0; i < frame.size(); ++i)
+                if (presentation_pens[i] & FloorBlood::kMark) shade.Cover(presentation_floor_pen[i], presentation_floor[i], palette.data());
             const auto rgb = [&](uint32_t pen) {
-                return pen & FloorBlood::kMark ? Rgb(FloorBlood::Dim(uint16_t(pen & 0x7fff), now, then))
+                return pen & FloorBlood::kMark ? Rgb(mk5blood::Dim(uint16_t(pen & 0x7fff), shade.now, shade.then))
                                                : (pen & 0xffff) == kBlackPen ? 0 : Rgb(palette[pen & 0x7fff]);
             };
             presentation.resize(frame.size());
