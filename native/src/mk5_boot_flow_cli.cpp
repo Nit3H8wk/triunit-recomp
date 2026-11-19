@@ -4,6 +4,7 @@
 #include "mk5_window.hpp"
 #include "mk5_audio_link.hpp"
 #include "mk5_save_state.hpp"
+#include "mk5_profile_presentation.hpp"
 #include <fstream>
 #include <iostream>
 #include <set>
@@ -154,7 +155,7 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered,Mk5StateHost host){
         uint64_t before=s.reference_cycles;std::string stop="boot-input";BootDiState di;TaskBodyResult body,boot;bool body_executed=false;
         TaskBodyResult main;bool main_executed=false;uint64_t main_cycles=0,main_instructions=0,main_yields=0,main_loops=0;size_t main_calls=0,dma_commands=0,dma_completions=0;uint64_t drawn_pixels=0,shift_loads=0,shift_stores=0;
         uint64_t scanout_frames=0,scanout_quanta=0;unsigned scanout_width=0,scanout_height=0;
-        uint64_t window_frames=0,input_events=0;bool window_presented=false,cmos_saved=false;std::string window_stop,window_presentation="null";
+        uint64_t window_frames=0,input_events=0;bool window_presented=false,cmos_saved=false,cmos_presented=false;std::string window_stop,window_presentation="null",cmos_refused;
         std::vector<Mk5IrqEntry> entries;uint64_t elapsed=0;size_t scanlines=0;std::array<uint16_t,32> io{};Mk5DiagnosticTrim discarded;
         {
             Mk5IrqController irq(p,s,m);Mk5TaskBodyRunner runner(p,f,m,irq,di);
@@ -250,6 +251,22 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered,Mk5StateHost host){
                     const auto& v=runner.Video();dma_commands=discarded.dma+v.commands.size();dma_completions=discarded.completions+v.completions.size();drawn_pixels=v.pixels_written;shift_loads=v.shift_loads;shift_stores=v.shift_stores;
                     if(!window_stop.empty())stop=window_stop;
                     if(window){window_frames=window->frames();input_events=window->input_events();window_presented=window_frames!=0;window_presentation=window->presentation_json();}
+                    // As MK2 and MK3: the NVRAM is written only after the shared D3D12 presenter showed this session
+                    // (mk5_profile_presentation.hpp), checked while the window lives; otherwise the profile keeps its image.
+                    if(window && !o.cmos_output.empty() && (window_stop=="window-closed" || window_stop=="window-frame-limit")){
+                        const bool closed=window_stop=="window-closed";
+                        try{
+                            const auto confirm_window=[&]{
+                                const bool running=window->Pump();
+                                window->Pump();   // surface a failure published around the running/close observation
+                                if(!running && !closed)throw std::runtime_error("native profile window closed before successful completion");
+                            };
+                            confirm_window();
+                            ValidateProfilePresentation(window->presentation_json(),closed,window->GraphicsValidationEnabled());
+                            confirm_window();   // again after the metrics snapshot, before the durable write
+                            cmos_presented=true;
+                        }catch(const std::exception& e){cmos_refused=e.what();}
+                    }
                     if(screen){scanout_frames=screen->frames();scanout_quanta=screen->last_frame_quanta();scanout_width=screen->width();scanout_height=screen->height();if(!o.scanout_ppm.empty())screen->SavePpm(o.scanout_ppm);}
                 }
             }
@@ -257,7 +274,9 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered,Mk5StateHost host){
             if(irq.Started())before=s.reference_cycles-irq.elapsed_quanta()/16;
             entries=irq.entries();elapsed=irq.elapsed_quanta();scanlines=discarded.scanlines+irq.scanlines().size();io=irq.io();
         }
-        if(!o.cmos_output.empty() && (stop=="window-closed" || stop=="window-frame-limit")){SaveMk5CmosSnapshot(o.cmos_output,f.cmos);cmos_saved=true;}
+        if(!o.cmos_output.empty() && cmos_presented && (stop=="window-closed" || stop=="window-frame-limit")){SaveMk5CmosSnapshot(o.cmos_output,f.cmos);cmos_saved=true;}
+        else if(!o.cmos_output.empty() && cmos_refused.empty())cmos_refused="the session did not end at the window (stop: "+stop+")";
+        if(!cmos_refused.empty())std::cerr<<"MK1 CMOS not saved: "<<cmos_refused<<'\n';
         std::cout<<"{\"scope\":\""<<(o.visual?"mk5-visual":o.decompressor?"mk5-decompressor":o.main_loop?"mk5-main-loop":o.task_body?"mk5-task-body":"mk5-boot-flow")<<"\",\"program_sha256\":\""<<p.sha256<<"\",\"stop\":\""<<stop<<"\",\"next_original_pc\":"<<s.next_original_pc<<",\"a\":";array(s.a);
         std::cout<<",\"status\":"<<s.status<<",\"reference_model_cycles\":"<<s.reference_cycles<<",\"new_cycles\":"<<s.reference_cycles-before
             <<",\"epoch\":{\"origin\":\"explicit-host-snapshot-at-first-eint\",\"initial_pending\":"<<o.pending<<",\"next_scanline\":"<<o.next_line<<",\"quanta_to_next\":"<<o.phase<<",\"quantum_ns\":10,\"initial_dpyadr\":\"prefix-DPYSTRT\"},\"elapsed_quanta\":"<<elapsed<<",\"scanline_events\":"<<scanlines<<",\"io\":[";
@@ -276,7 +295,10 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered,Mk5StateHost host){
             std::cout<<",\"coin_start\":{\"credits\":"<<unsigned(uint8_t(f.cmos.at(270)))<<",\"mode\":"<<word(0x01051190)<<",\"p1\":"<<word(0x01051200)<<",\"p2\":"<<word(0x010514e0)<<",\"p1_character\":"<<word(0x01051290)<<",\"p2_character\":"<<word(0x01051570)<<",\"raw_stack_010fffd0\":"<<raw_stack_words<<'}';
         }
         if(o.visual)std::cout<<",\"window\":{\"frames\":"<<window_frames<<",\"input_events\":"<<input_events<<",\"controls_connected\":true,\"presentation\":"<<window_presentation<<"}";
-        if(!o.cmos_output.empty())std::cout<<",\"cmos_saved\":"<<(cmos_saved?"true":"false");
+        if(!o.cmos_output.empty()){
+            std::cout<<",\"cmos_saved\":"<<(cmos_saved?"true":"false");
+            if(!cmos_saved){std::cout<<",\"cmos_refused\":\"";for(const char c:cmos_refused)std::cout<<(c=='"'||c=='\\'?'\'':c);std::cout<<'"';}
+        }
         if(o.visual)std::cout<<",\"diagnostic_history\":{\"compacted\":true,\"discarded_writes\":"<<discarded.writes<<",\"discarded_returns\":"<<discarded.returns<<",\"discarded_cmos_records\":"<<discarded.cmos<<",\"discarded_irq_entries\":"<<discarded.irqs<<",\"discarded_scanlines\":"<<discarded.scanlines<<",\"retained_irq_entries\":"<<entries.size()<<",\"scope\":\"host history only; live CPU/memory/devices unchanged\"}";
         if(o.decompressor){
             std::vector<uint8_t> live_cmos;for(auto word:f.cmos){live_cmos.push_back(uint8_t(word));live_cmos.push_back(uint8_t(word>>8));}

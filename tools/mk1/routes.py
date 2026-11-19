@@ -61,10 +61,10 @@ def sources(scratch,exclude=EXCLUDE):
     return [scratch/'route-probe.cpp',scratch/'mk5_scanout.cpp']+[ROOT/p for p in objects if Path(p).stem not in exclude and Path(p).stem!='mk5_scanout']
 
 
-def build(scratch,srcs=None):
+def build(scratch,srcs=None,libs=()):
     from tools.quality import cpp_build
     exe=scratch/'route-probe.exe';t=time.perf_counter()
-    b=cpp_build.build(q.DEFAULT_CC,FLAGS,srcs or sources(scratch),['-lbcrypt','-luser32','-lwinmm'],exe,scratch,
+    b=cpp_build.build(q.DEFAULT_CC,FLAGS,srcs or sources(scratch),['-lbcrypt','-luser32','-lwinmm',*libs],exe,scratch,
                       env=dict(PATH=str(q.DEFAULT_CC.parent)),timeout=3600,compile_from_scratch=True)
     if not b['passed']:raise RuntimeError('route probe build failed: '+b.get('stdout','')[-2000:])
     return exe,round(time.perf_counter()-t,3)

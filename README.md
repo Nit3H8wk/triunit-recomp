@@ -177,9 +177,9 @@ Mortal Kombat 3 is next.
   back the CMOS of that moment. A Remastered state of Mortal Kombat or Mortal
   Kombat II keeps its video layers and music mix, and loads only with the same
   music files in `custom_audio/<game>/`.
-- **Mortal Kombat 3 progress** is written to its CMOS profile only after a
-  session the D3D12 window showed and that ended at no translation frontier, as
-  Mortal Kombat II does.
+- **Progress is written to the CMOS profile** only after a session the D3D12
+  window showed and that ended at no translation frontier, in all three games;
+  otherwise the profile keeps its previous image.
 
 ## Editions
 
