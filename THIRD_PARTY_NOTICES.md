@@ -63,7 +63,9 @@ packaging as `native/runtime/LICENSE-audio.txt`) and
   upstream commit was not recorded when the files were imported.
 - Local changes (save states): `save_restore` also keeps the noise LFO waveform, the
   operator caches and the engine's prepare bookkeeping, and no longer invalidates the
-  caches after a restore. Marked `TriUnit:` in `ymfm_opm.cpp` and `ymfm_fm.ipp`.
+  caches after a restore. `opm_registers::write` silences a false `-Wstringop-overflow`
+  from g++ 16.2 (the index comes from the 8-bit address register). Marked `TriUnit:` in
+  `ymfm_opm.cpp` and `ymfm_fm.ipp`.
 - License: BSD-3-Clause, Copyright (c) 2021, Aaron Giles.
   Text: `native/audio/ymfm/LICENSE` (identical copy for packaging:
   `native/runtime/LICENSE-ymfm.txt`).

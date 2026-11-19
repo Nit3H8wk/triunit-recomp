@@ -148,12 +148,21 @@ bool opm_registers::write(uint16_t index, uint8_t data, uint32_t &channel, uint3
 {
 	assert(index < REGISTERS);
 
+	// TriUnit: g++ 16.2 reports offset 256 here (-Wstringop-overflow); the only caller passes the 8-bit address
+	// register (ym2151::m_address), so the index never passes 0xff.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
 	// LFO AM/PM depth are written to the same register (0x19);
 	// redirect the PM depth to an unused neighbor (0x1a)
 	if (index == 0x19)
 		m_regdata[index + bitfield(data, 7)] = data;
 	else if (index != 0x1a)
 		m_regdata[index] = data;
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 	// handle writes to the key on index
 	if (index == 0x08)
