@@ -61,6 +61,9 @@ packaging as `native/runtime/LICENSE-audio.txt`) and
   `ymfm_opm.cpp`, `ymfm_opm.h`, `ymfm_ssg.cpp`, `ymfm_ssg.h`).
 - Origin: ymfm by Aaron Giles, https://github.com/aaronsgiles/ymfm. The
   upstream commit was not recorded when the files were imported.
+- Local changes (save states): `save_restore` also keeps the noise LFO waveform, the
+  operator caches and the engine's prepare bookkeeping, and no longer invalidates the
+  caches after a restore. Marked `TriUnit:` in `ymfm_opm.cpp` and `ymfm_fm.ipp`.
 - License: BSD-3-Clause, Copyright (c) 2021, Aaron Giles.
   Text: `native/audio/ymfm/LICENSE` (identical copy for packaging:
   `native/runtime/LICENSE-ymfm.txt`).

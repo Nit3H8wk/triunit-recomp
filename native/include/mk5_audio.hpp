@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+namespace mk2::state {struct Writer;struct Reader;}
 namespace mk5audio {
 struct Cpu6809State {
  uint16_t pc=0,s=0,u=0,x=0,y=0; uint8_t a=0,b=0,dp=0,cc=0x50;
@@ -14,6 +15,10 @@ struct AudioEvent {uint64_t cycle;uint16_t pc,address;uint8_t value,bank;bool wr
 struct AudioCommand {uint64_t requested_quanta,effective_cycle;uint16_t value;};
 class WilliamsAudio {
  struct Impl;std::unique_ptr<Impl> impl;
+ // Save states (mk5_audio.cpp): the 6809, its RAM, the YM2151, OKI, DAC, latches, schedulers and the host
+ // resamplers and music mix. ROMs and the user's tracks stay with the live object.
+ friend void Fields(mk2::state::Writer&,WilliamsAudio&);
+ friend void Fields(mk2::state::Reader&,WilliamsAudio&);
 public:
  WilliamsAudio(std::vector<uint8_t> u3,std::vector<uint8_t> u12,std::vector<uint8_t> u13);
  ~WilliamsAudio();
@@ -33,6 +38,8 @@ public:
  void EnableRemasteredMusic(const std::filesystem::path& directory);
  const std::vector<int16_t>& PresentationPcm()const;
  std::string RemasteredDiagnostics()const;
+ // Empty in the Original edition; the loaded tracks' identity in the Remastered one.
+ std::string MusicFingerprint()const;
  // Caller must consume/compare these diagnostic records before discarding.
  // This never resets the audio CPU, RAM, chips, clocks, bank or interrupt lines.
  void DiscardDiagnostics();

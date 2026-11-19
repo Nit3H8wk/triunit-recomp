@@ -4,6 +4,7 @@
 #include "williams_resampler.hpp"
 #include "mk5_audio_time.hpp"
 #include "mk5_remastered_music.hpp"
+#include "../mk2/mk2_state_io.hpp"
 #include <algorithm>
 #include <sstream>
 #include <stdexcept>
@@ -304,6 +305,30 @@ void WilliamsAudio::EnableRemasteredMusic(const std::filesystem::path& directory
 const std::vector<int16_t>& WilliamsAudio::PresentationPcm()const{return impl->presentation_pcm;}
 std::string WilliamsAudio::RemasteredDiagnostics()const{if(!impl->remastered)return "\"music_mode\":\"original\",\"output_channels\":1";const auto& m=*impl->remastered;return "\"music_mode\":\"remastered\",\"output_channels\":2,\"remastered_starts\":"+std::to_string(m.Starts())+",\"remastered_frames\":"+std::to_string(m.Rendered())+",\"remastered_clipped\":"+std::to_string(m.Clipped())+",\"remastered_active_command\":"+std::to_string(m.ActiveCommand())+",\"remastered_loops\":"+std::to_string(m.Loops())+",\"remastered_finishes\":"+std::to_string(m.Finishes())+",\"remastered_commands\":"+m.CommandsJson();}
 void WilliamsAudio::DiscardDiagnostics(){impl->events.clear();impl->commands.clear();impl->pcm.clear();impl->presentation_pcm.clear();}
+std::string WilliamsAudio::MusicFingerprint()const{return impl->remastered?impl->remastered->Fingerprint():std::string{};}
+template<class A> void Fields(A& a,Cpu6809State& c){a(c.pc,c.s,c.u,c.x,c.y,c.a,c.b,c.dp,c.cc,c.cycles,c.instructions,c.irq_entries,c.firq_entries);}
+template<class A> void Fields(A& a,AudioEvent& e){a(e.cycle,e.pc,e.address,e.value,e.bank,e.write);}
+template<class A> void Fields(A& a,AudioCommand& c){a(c.requested_quanta,c.effective_cycle,c.value);}
+template<class A> void Fields(A& a,YmTime& t){a(t.cycle,t.fraction);}
+template<class A,class Impl> static void AudioFields(A& a,Impl& s){
+ a(s.c,s.ram,s.hidden,s.samples,s.oki,s.presentation_pcm,s.effects_fm_left,s.effects_fm_right,s.effects_dac,s.dac_music,
+   s.events,s.commands,s.pcm,s.bank,s.latch,s.talkback,s.dac,s.irq,s.firq,s.reset,s.frontier,s.reset_vector_pending,
+   s.source_pc,s.requested,s.chip_cycle,s.pcm_phase,s.bus_cycle,s.output_samples,s.fm_stream,s.fm_right_stream,s.oki_stream,
+   s.dac_stream,s.timers,s.timer_origin,s.busy_end,s.fm_sample,s.oki_sample,s.completed_accesses,s.access_count,
+   s.access_cursor,s.instruction_start,s.instruction_bank,s.interrupt_kind,s.horizon,s.pending_instruction,s.replaying,
+   s.shared,s.direct_history,s.cpu_running,s.mode_pending,s.check_pending,s.mode_data,s.base_time,s.mode_time,s.check_time,
+   s.raster_time,s.stream_time,s.clear_time,s.boost_end,s.main_requested,s.event_sequence,s.mode_sequence,s.check_sequence,
+   s.shared_timers,s.shared_timer_origin,s.shared_busy_end,s.timer_sequence,s.command_pending,s.pending_value,s.pending_quanta,
+   s.command_sequence,s.command_time);
+ // YM2151: ymfm's own save_restore (extended for exact restores, THIRD_PARTY_NOTICES.md).
+ std::vector<uint8_t> ym;
+ if constexpr(!A::reading){ymfm::ymfm_saved_state state(ym,true);s.ym.save_restore(state);}
+ a(ym);
+ if constexpr(A::reading){ymfm::ymfm_saved_state state(ym,false);s.ym.save_restore(state);}
+ if(s.remastered)a(*s.remastered);
+}
+void Fields(mk2::state::Writer& a,WilliamsAudio& w){AudioFields(a,*w.impl);}
+void Fields(mk2::state::Reader& a,WilliamsAudio& w){AudioFields(a,*w.impl);}
 uint8_t WilliamsAudio::Bank()const{return impl->bank;}uint8_t WilliamsAudio::Talkback()const{return impl->talkback;}
 std::string WilliamsAudio::Frontier()const{if(!impl->frontier)return "";std::ostringstream s;s<<unsigned(impl->bank)<<':'<<std::hex<<impl->c.pc;return s.str();}
 }

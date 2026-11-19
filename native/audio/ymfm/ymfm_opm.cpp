@@ -106,6 +106,8 @@ void opm_registers::save_restore(ymfm_saved_state &state)
 	state.save_restore(m_noise_state);
 	state.save_restore(m_noise_lfo);
 	state.save_restore(m_regdata);
+	// TriUnit: the noise LFO waveform is written while clocking, so it is state too (save states).
+	state.save_restore(m_lfo_waveform[3]);
 }
 
 

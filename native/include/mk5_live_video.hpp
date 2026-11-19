@@ -28,6 +28,11 @@ class Mk5LiveVideo {
     mk5presentation::FighterSurface fighters;
     mk5presentation::FighterSlots fighter_objects;
     uint32_t held_prop=0;
+    // Save states: gfx and blood_sprite come from the ROMs and stay with the live object.
+    template<class A> friend void Fields(A& a,Mk5LiveVideo& v){
+        a(v.regs,v.due,v.pending,v.data_bank,v.blood_stains,v.blood_layer,v.backdrop,v.fighters,v.fighter_objects,v.held_prop,
+          v.commands,v.completions,v.pixels_written,v.shift_loads,v.shift_stores);
+    }
     void DrawBlood(const ResetTrace&, bool arena_visible);
     bool IsBackdropMode()const;
     bool IsBackdropDma(uint32_t caller)const;

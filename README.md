@@ -171,12 +171,15 @@ Mortal Kombat 3 is next.
   scores through the game's own routine.
 - **Saved progress.** Each game keeps its own CMOS profile (settings and high
   scores) between sessions, as the cabinet does.
-- **Save states (Mortal Kombat II and Mortal Kombat 3, both editions).**
-  <kbd>F5</kbd> saves the whole machine and <kbd>F7</kbd> loads it, in memory
-  and in `saves/<game>/<program SHA-256>/`, one slot per edition; loading also
-  brings back the CMOS of that moment. A Mortal Kombat II Remastered state keeps
-  its video layers and music mix, and loads only with the same music files in
-  `custom_audio/mk2/`.
+- **Save states (all three games, both editions).** <kbd>F5</kbd> saves the
+  whole machine and <kbd>F7</kbd> loads it, in memory and in
+  `saves/<game>/<program SHA-256>/`, one slot per edition; loading also brings
+  back the CMOS of that moment. A Remastered state of Mortal Kombat or Mortal
+  Kombat II keeps its video layers and music mix, and loads only with the same
+  music files in `custom_audio/<game>/`.
+- **Mortal Kombat 3 progress** is written to its CMOS profile only after a
+  session the D3D12 window showed and that ended at no translation frontier, as
+  Mortal Kombat II does.
 
 ## Editions
 

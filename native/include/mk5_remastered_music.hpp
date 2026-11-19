@@ -12,6 +12,13 @@ class RemasteredMusic {
  std::vector<Slot> tracks;
  std::array<uint64_t,32> commands{};
  int active=-1;uint64_t position=0,limit=0,starts=0,rendered=0,clipped=0,loops=0,finishes=0;unsigned loaded=0;
+ std::string fingerprint;   // the loaded slots (presence, window, loop, gain, PCM): binds a save state to them
+ // Save states: the tracks are reloaded from the user's files; `active` indexes them.
+ template<class A> friend void Fields(A& a,RemasteredMusic& m){
+  a(m.commands,m.active,m.position,m.limit,m.starts,m.rendered,m.clipped,m.loops,m.finishes);
+  if(m.active<-1 || m.active>=int(m.tracks.size()) || (m.active>=0 && m.limit>m.tracks[size_t(m.active)].pcm.size()/2))
+   throw std::runtime_error("MK1 save state music names an absent track position");
+ }
 public:
  explicit RemasteredMusic(const std::filesystem::path& directory);
  void Command(uint16_t value);
@@ -22,5 +29,6 @@ public:
  uint64_t Loops()const{return loops;}uint64_t Finishes()const{return finishes;}
  uint64_t Starts()const{return starts;}uint64_t Rendered()const{return rendered;}
  uint64_t Clipped()const{return clipped;}
+ const std::string& Fingerprint()const{return fingerprint;}
 };
 }

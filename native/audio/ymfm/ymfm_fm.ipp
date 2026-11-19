@@ -416,6 +416,23 @@ void fm_operator<RegisterType>::save_restore(ymfm_saved_state &state)
 	state.save_restore(m_ssg_inverted);
 	state.save_restore(m_key_state);
 	state.save_restore(m_keyon_live);
+
+	// TriUnit: the cache as the last prepare() left it, so a restore clocks exactly as the saved engine would. Only
+	// the waveform pointer is rebound, to this engine's own table.
+	state.save_restore(m_cache.phase_step);
+	state.save_restore(m_cache.total_level);
+	state.save_restore(m_cache.block_freq);
+	state.save_restore(m_cache.detune);
+	state.save_restore(m_cache.multiple);
+	state.save_restore(m_cache.eg_sustain);
+	state.save_restore(m_cache.eg_rate);
+	state.save_restore(m_cache.eg_shift);
+	if (!state.saving())
+	{
+		opdata_cache fresh;
+		m_regs.cache_operator_data(m_choffs, m_opoffs, fresh);
+		m_cache.waveform = fresh.waveform;
+	}
 }
 
 
@@ -1254,6 +1271,10 @@ void fm_engine_base<RegisterType>::save_restore(ymfm_saved_state &state)
 	state.save_restore(m_timer_running[0]);
 	state.save_restore(m_timer_running[1]);
 	state.save_restore(m_total_clocks);
+	// TriUnit: the prepare() bookkeeping, restored exactly instead of invalidating the caches (save states).
+	state.save_restore(m_active_channels);
+	state.save_restore(m_modified_channels);
+	state.save_restore(m_prepare_count);
 
 	// save the register/family data
 	m_regs.save_restore(state);
@@ -1265,9 +1286,6 @@ void fm_engine_base<RegisterType>::save_restore(ymfm_saved_state &state)
 	// save operator data
 	for (uint32_t opnum = 0; opnum < OPERATORS; opnum++)
 		m_operator[opnum]->save_restore(state);
-
-	// invalidate any caches
-	invalidate_caches();
 }
 
 

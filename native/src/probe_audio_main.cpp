@@ -65,7 +65,7 @@ int wmain(int argc,wchar_t**argv){try{
  // D5: master gain after the mix, before the user volume (WaveOutSink); the canonical PCM above is unchanged.
  mk5audio::HostGain host_gain(remastered?mk5audio::master_db::mk1_remastered:mk5audio::master_db::mk1_original);std::vector<int16_t> gained;
  mk5audio::SetGameAudioConsumer([&](const int16_t* data,size_t count){if(remastered){const auto& p=audio.Pcm();const size_t frames=count/2;pcm_diagnostics.observe(p.data()+p.size()-frames,frames,audio);}else pcm_diagnostics.observe(data,count,audio);gained.resize(count);host_gain.Process(data,gained.data(),count,remastered?2:1);output.Push(gained.data(),count);});
- int result=Mk5BootFlowCli(argc,argv,remastered);output.Drain();pcm_diagnostics.flush();
+ int result=Mk5BootFlowCli(argc,argv,remastered,{&audio,&host_gain});output.Drain();pcm_diagnostics.flush();
  const auto counts=mk5audio::GameAudioDiagnosticCounts();
  std::cout<<"{\"audio\":\"original-Williams-ADPCM\",\"native_6809\":true,\"command_count\":"<<counts.commands<<",\"pcm_48k_s16_mono\":"<<counts.samples<<",\"submitted\":"<<output.Submitted()<<",\"completed\":"<<output.Completed()<<",\"underruns\":"<<output.Underruns();std::cout<<","<<audio.RemasteredDiagnostics();std::cout<<",\"host_gain_db\":"<<20*std::log10(host_gain.Gain())<<",\"host_limited\":"<<host_gain.Limited()<<",\"host_clipped\":"<<host_gain.Clipped();std::cout<<",\"host_audio_capacity_ms\":"<<output.QueueCapacityMs()<<",\"host_audio_startup_ms\":"<<output.StartupReserveMs()<<",\"max_producer_gap_ms\":"<<output.MaxProducerGapMs();pcm_diagnostics.write(std::cout);std::cout<<",\"sound_frontier\":\""<<audio.Frontier()<<"\",\"physical_status_verified\":false,\"human_listening_verified\":false}\n";
  return result;

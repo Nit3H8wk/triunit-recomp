@@ -3,6 +3,7 @@
 namespace mk5audio {
 class Adpcm {
  int signal_=0,step_=0;
+ template<class A> friend void Fields(A& a,Adpcm& d){a(d.signal_,d.step_);}
 public:
  void Reset();
  int16_t Clock(uint8_t nibble);
@@ -17,16 +18,19 @@ public:
 namespace mk5audio {
 class WilliamsSamples {
  std::vector<uint8_t> u12_,u13_; uint8_t bank_=0;
+ template<class A> friend void Fields(A& a,WilliamsSamples& s){a(s.bank_);}   // the ROMs stay
 public:
  WilliamsSamples(std::vector<uint8_t> u12,std::vector<uint8_t> u13);
  void SelectBank(uint8_t value);
  uint8_t Read(uint32_t address)const;
  uint8_t bank()const{return bank_;}
 };
-struct Voice {bool playing=false;uint32_t base=0,position=0,count=0;uint8_t volume=0;Adpcm adpcm;};
+struct Voice {bool playing=false;uint32_t base=0,position=0,count=0;uint8_t volume=0;Adpcm adpcm;
+ template<class A> friend void Fields(A& a,Voice& v){a(v.playing,v.base,v.position,v.count,v.volume,v.adpcm);}};
 class Oki6295 {
  const WilliamsSamples& samples_;std::array<Voice,4> voices_{};int pending_=-1;
  uint32_t clock_hz_,divisor_;uint64_t phase_=0,generated_=0;
+ template<class A> friend void Fields(A& a,Oki6295& o){a(o.voices_,o.pending_,o.phase_,o.generated_);}   // clock: configuration
 public:
  explicit Oki6295(const WilliamsSamples&,uint32_t clock_hz=1000000,bool pin7_high=true);
  void Write(uint8_t data);

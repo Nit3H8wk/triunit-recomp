@@ -35,6 +35,9 @@ class Mk5IrqController {
     bool started_=true;
     uint32_t requested_=0;
     void validate_epoch(uint32_t quanta_to_next);
+    template<class A> friend void Fields(A& a,Mk5IrqController& c){   // save states; the observer stays bound
+        a(c.io_,c.next_scanline_,c.elapsed_,c.next_edge_,c.line_quanta_,c.started_,c.requested_,c.entries_,c.scanlines_);
+    }
     std::vector<Mk5IrqEntry> entries_;
     std::vector<Mk5ScanlineEvent> scanlines_;
     std::function<void(const Mk5ScanlineEvent&,const std::array<uint16_t,32>&)> scanline_observer_;

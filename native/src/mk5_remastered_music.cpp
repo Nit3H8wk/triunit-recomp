@@ -2,6 +2,8 @@
 #include "../runtime/remastered_music_manifest.hpp"
 #include "../audio/custom_audio.hpp"
 #include <algorithm>
+#include <cstdio>
+#include <cstring>
 #include <sstream>
 namespace mk5audio {
 RemasteredMusic::RemasteredMusic(const std::filesystem::path& directory){
@@ -13,6 +15,17 @@ RemasteredMusic::RemasteredMusic(const std::filesystem::path& directory){
   if(track){t.pcm=std::move(track->pcm);t.begin=track->begin;t.end=track->end;t.loop=track->loop;
    t.repeat_begin=track->repeat_end?track->repeat_begin:track->begin;t.repeat_end=track->repeat_end?track->repeat_end:track->end;t.gain=.125f*track->gain;++loaded;}
  }
+ // 64-bit FNV-1a over every slot's presence, window, loop, gain and PCM (four samples per word), once at the load.
+ uint64_t hash=0xcbf29ce484222325ull;
+ const auto mix=[&hash](uint64_t value){hash=(hash^value)*0x100000001b3ull;};
+ for(const auto& t:tracks){
+  uint32_t gain;std::memcpy(&gain,&t.gain,sizeof gain);
+  for(const uint64_t value:{uint64_t(t.pcm.size()),t.begin,t.end,t.repeat_begin,t.repeat_end,uint64_t(t.loop),uint64_t(gain)})mix(value);
+  size_t n=0;
+  for(uint64_t word;n+4<=t.pcm.size();n+=4){std::memcpy(&word,t.pcm.data()+n,sizeof word);mix(word);}
+  for(;n<t.pcm.size();++n)mix(uint16_t(t.pcm[n]));
+ }
+ char text[17];std::snprintf(text,sizeof text,"%016llx",static_cast<unsigned long long>(hash));fingerprint=text;
 }
 void RemasteredMusic::Command(uint16_t value){
  if(!(value&0x100)){active=-1;position=0;return;}

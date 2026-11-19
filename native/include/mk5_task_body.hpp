@@ -61,6 +61,15 @@ class Mk5TaskBodyRunner {
     bool data_bank=false;uint16_t dma_palette=0;
     Mk5Protection protection;
     Mk5SoundStatus sound_status;
+    // Save states (mk5_save_state.hpp): the machine this runner drives (memories, board, DI, IRQ controller, video) and
+    // its own value fields. inputs, result and remaining are rewritten by every call; references stay bound.
+    template<class A> friend void Fields(A& a,Mk5TaskBodyRunner& r){
+        if(!r.video)throw std::logic_error("MK1 save state requires the attached video");
+        a(r.m,r.f,r.di,r.irq,r.expected_pc,r.expected_sp,r.instruction_next,r.expected_cycles,r.immediate_irq,r.completed,
+          r.boot_mode,r.booted,r.main_mode,r.main_started,r.subroutine,r.subroutine_sp,r.boot_graph,r.last_pre_pc,
+          r.graph_steps,r.main_di_target,r.main_di_limit,*r.video,r.active_handler,r.cmos_write_enabled,r.data_bank,
+          r.dma_palette,r.protection,r.sound_status);
+    }
     void video_update();
     bool uncounted()const{return subroutine || (active_handler && !main_mode && !boot_mode);}
     void guard()const;

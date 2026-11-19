@@ -18,6 +18,7 @@ class Mk5Protection {
         0x16,0x2d,0x1a,0x34,0x28,0x10,0x21,0x03,0xff
     };
     size_t index=0;
+    template<class A> friend void Fields(A& a,Mk5Protection& p){a(p.index);}
 public:
     void Write(uint16_t data){
         const uint8_t first=uint8_t((data>>9)&63);

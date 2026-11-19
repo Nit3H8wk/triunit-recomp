@@ -17,12 +17,17 @@ class Mk5Scanout {
     mk5presentation::FighterCapture fighter_work;
     mk5presentation::FighterFrame fighter_complete;
     void line(const Mk5ScanlineEvent&,const std::array<uint16_t,32>&);
+    template<class A> friend void Fields(A& a,Mk5Scanout& s){   // save states, the partial frame included
+        a(s.width_,s.height_,s.rows_,s.frames_,s.last_frame_quanta_,s.collecting,s.scenery_visible,s.work,s.complete,
+          s.backdrop_work,s.backdrop_complete,s.blood_cover,s.fighter_work,s.fighter_complete);
+    }
 public:
     Mk5Scanout(Mk5IrqController&,const Mk5MemoryBuffers&,const Mk5LiveVideo* presentation=nullptr);
     ~Mk5Scanout(){irq.ClearScanlineObserver();}
     Mk5Scanout(const Mk5Scanout&)=delete;
     Mk5Scanout& operator=(const Mk5Scanout&)=delete;
     unsigned width()const{return width_;}unsigned height()const{return height_;}
+    bool Remastered()const{return presentation!=nullptr;}
     uint64_t frames()const{return frames_;}uint64_t last_frame_quanta()const{return last_frame_quanta_;}
     const std::vector<uint32_t>& pixels()const{return complete;}
     const std::vector<uint32_t>& backdrop_pixels()const{return backdrop_complete;}

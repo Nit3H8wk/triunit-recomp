@@ -3,6 +3,8 @@
 #include "mk5_scanout.hpp"
 #include "mk5_window.hpp"
 #include "mk5_audio_link.hpp"
+#include "mk5_save_state.hpp"
+#include <fstream>
 #include <iostream>
 #include <set>
 #include <sstream>
@@ -121,7 +123,7 @@ public:
     }
 };
 }
-int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered){
+int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered,Mk5StateHost host){
     int error=2;
     try{
         auto o=parse(argc,argv);LiveStatus live_status(o.live_status);auto p=LoadMk5Program(o.roms);auto c=o.cmos.empty()?std::vector<uint16_t>(8192):LoadMk5CmosSnapshot(o.cmos);
@@ -183,6 +185,30 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered){
                     std::unique_ptr<Mk5Scanout> screen;
                     if(o.decompressor)screen=std::make_unique<Mk5Scanout>(irq,m,blood_decals?&runner.Video():nullptr);
                     std::unique_ptr<Mk5Window> window;uint64_t shown_frame=0;auto active_base=o.body.active_di;
+                    // F5/F7: one slot per edition, in memory and in saves/mk1/<program sha>/, between two ContinueMain calls.
+                    const auto slot_path=std::filesystem::path(L"saves/mk1")/kMk5ProgramSha256/(remastered?L"slot1-remastered.state":L"slot1.state");
+                    std::vector<uint8_t> slot;
+                    const auto state_request=[&](Mk5Window::StateRequest request){
+                        const Mk5LiveSession live{runner,*screen,*host.audio,*host.gain};
+                        if(request==Mk5Window::StateRequest::Save){
+                            slot=Mk5SaveLiveState(live);
+                            std::error_code error;std::filesystem::create_directories(slot_path.parent_path(),error);
+                            auto pending=slot_path;pending+=L".tmp";
+                            {std::ofstream file(pending,std::ios::binary|std::ios::trunc);file.write(reinterpret_cast<const char*>(slot.data()),std::streamsize(slot.size()));if(!file)error=std::make_error_code(std::errc::io_error);}
+                            if(error || !MoveFileExW(pending.c_str(),slot_path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))
+                                std::cerr<<"MK1 save state kept in memory only: cannot write "<<slot_path.generic_string()<<'\n';
+                            else std::cerr<<"MK1 state saved: "<<slot_path.generic_string()<<" ("<<slot.size()<<" bytes)\n";
+                            return;
+                        }
+                        auto bytes=slot;
+                        try{
+                            if(bytes.empty()){std::ifstream file(slot_path,std::ios::binary);if(!file)throw std::runtime_error("no saved state");bytes.assign(std::istreambuf_iterator<char>(file),{});}
+                            mk5state::CheckLiveState(bytes,mk5state::LiveIdentity(live));
+                        }catch(const std::exception& e){std::cerr<<"MK1 save state not loaded: "<<e.what()<<'\n';return;}
+                        Mk5LoadLiveState(bytes,live);
+                        shown_frame=screen->frames();   // the restored frame counter; present from the next frame on
+                        std::cerr<<"MK1 state loaded from "<<(slot.empty()?slot_path.generic_string():std::string("memory"))<<'\n';
+                    };
                     // Keep the producer responsive while reaching the first
                     // decompressed frame as well as after window activation.
                     if(o.visual)o.body.instruction_budget=10000;
@@ -191,7 +217,7 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered){
                         if(o.visual && !window && call>=20000){window_stop="window-start-budget";break;}
                         if(window){if(!window->Pump()){window_stop="window-closed";break;}o.body.active_di=window->Inputs(*active_base);}
                         main=runner.ContinueMain(o.body,o.main_di_limit);main_executed=true;++main_calls;main_cycles+=main.reference_cycles;main_instructions+=main.instruction_count;main_yields+=main.yields;main_loops+=main.main_loops;
-                        if(o.visual && main.stop==TaskBodyStop::DecompressorComplete){window=std::move(prepared_window);o.body.stop_after_decompression=false;o.body.instruction_budget=10000;shown_frame=screen->frames();continue;}
+                        if(o.visual && main.stop==TaskBodyStop::DecompressorComplete){window=std::move(prepared_window);window->TakeStateRequests();/* drop keys pressed while loading */o.body.stop_after_decompression=false;o.body.instruction_budget=10000;shown_frame=screen->frames();continue;}
                         if(window && screen->frames()>shown_frame){
                             if(live_status.Enabled()){
                                 auto word=[&](uint32_t address){return m.ram.at((address-0x01000000u)/16);};
@@ -205,7 +231,9 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered){
                                             screen->backdrop_pixels(),screen->fighter_frame());
                             shown_frame=screen->frames();if(o.window_frames && window->frames()>=o.window_frames){window_stop="window-frame-limit";break;}
                         }
-                        if(window){const auto trim=runner.CompactDiagnostics();discarded.writes+=trim.writes;discarded.returns+=trim.returns;discarded.cmos+=trim.cmos;discarded.irqs+=trim.irqs;discarded.scanlines+=trim.scanlines;discarded.dma+=trim.dma;discarded.completions+=trim.completions;mk5audio::TrimGameAudioDiagnostics();}
+                        if(window){const auto trim=runner.CompactDiagnostics();discarded.writes+=trim.writes;discarded.returns+=trim.returns;discarded.cmos+=trim.cmos;discarded.irqs+=trim.irqs;discarded.scanlines+=trim.scanlines;discarded.dma+=trim.dma;discarded.completions+=trim.completions;mk5audio::TrimGameAudioDiagnostics();
+                            if(host.audio && host.gain && screen && (main.stop==TaskBodyStop::Budget || main.stop==TaskBodyStop::DiLimit))
+                                for(const auto request:window->TakeStateRequests())state_request(request);}
                         if(main.stop!=TaskBodyStop::Budget && !(o.decompressor && main.stop==TaskBodyStop::DiLimit))break;
                     }
                     switch(main.stop){
