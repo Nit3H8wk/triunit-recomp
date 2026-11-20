@@ -131,8 +131,9 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
     const auto source_samples=[&]{return music?music->SourceSamples():audio->SourceSamples();};
     const auto output_samples=[&]{return music?music->OutputSamples():audio->OutputSamples();};
     mk2::Scanout scanout(remastered && show_window);
-    // Widescreen W0 debug view (MK2_WIDE=1): per frame, FNV-1a of the 512 VRAM columns, of their visible centre and of
-    // the scanout's own frame; MK2_WIDE_DUMP=<frame,...> adds those frames' 512 columns as hex RGB.
+    // Widescreen W0/W1 debug view (MK2_WIDE=1): per frame, FNV-1a of the 512 columns (margins from the shadow drawer), of
+    // their visible centre and of the scanout's own frame, and the shadow passes left incomplete so far;
+    // MK2_WIDE_DUMP=<frame,...> adds those frames' 512 columns as hex RGB.
     const bool wide=std::getenv("MK2_WIDE")!=nullptr;std::set<uint64_t> wide_dump;
     if(wide){
         scanout.EnableWide();
@@ -187,8 +188,8 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
             uint64_t all=0xcbf29ce484222325ull,centre=all,plain=all;
             for(size_t i=0;i<w.size();++i){all=(all^w[i])*0x100000001b3ull;if(i%n>=margin&&i%n<margin+width)centre=(centre^w[i])*0x100000001b3ull;}
             for(const uint32_t v:scanout.pixels())plain=(plain^v)*0x100000001b3ull;
-            std::printf("{\"wide\":%llu,\"all\":\"%016llx\",\"centre\":\"%016llx\",\"plain\":\"%016llx\"",(unsigned long long)scanout.frames(),
-                        (unsigned long long)all,(unsigned long long)centre,(unsigned long long)plain);
+            std::printf("{\"wide\":%llu,\"all\":\"%016llx\",\"centre\":\"%016llx\",\"plain\":\"%016llx\",\"faults\":%llu,\"empty\":%llu",(unsigned long long)scanout.frames(),
+                        (unsigned long long)all,(unsigned long long)centre,(unsigned long long)plain,(unsigned long long)live_video.margin_faults,(unsigned long long)scanout.wide_empty());
             if(wide_dump.count(scanout.frames())){std::printf(",\"rgb\":\"");for(const uint32_t v:w)std::printf("%06x",unsigned(v&0xffffff));std::printf("\"");}
             std::printf("}\n");
         }
@@ -220,7 +221,9 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
     // Generated closure from the reset vector to the route's delivery boundary (mk2_executor.hpp).
     mk2::GeneratedBoot generated(program,*machine,(load_cmos||direct_profile)?&cmos_image:nullptr,
         test_switch?mk2::kTestSwitchDsw:dsw_word);
-    if(remastered && show_window) generated.OnVideoReady([&](mk2::BootVideo& video) {
+    if((remastered && show_window) || wide) generated.OnVideoReady([&](mk2::BootVideo& video) {
+        if(wide)video.EnableMargins();   // W1: the shadow drawer's margin columns
+        if(!(remastered && show_window))return;
         video.EnableBlood(program);
         if(!test_switch){
             video.EnableBackdrop();

@@ -164,11 +164,14 @@ struct BootVideo {
         if (offset <= 15) return dma_registers[offset];
         throw std::runtime_error("MK2 DMA register outside qualified video initialization");
     }
-    unsigned StartDma(uint16_t command, BoardBootControls& board, const std::vector<uint8_t>& graphics,
-                      bool scenery=false,uint64_t fighter=0) {
+    // The board's DMA over registers r (the destination clip in r12/r13 and r16/r17) and the palette register: every pixel
+    // goes to put(index, pen, write), first with write false (the whole draw is validated before any change), then true;
+    // between() runs between the passes. Returns the pixels the DMA timing charges.
+    template<class Put,class Between>
+    static unsigned Render(uint16_t command,const std::array<uint16_t,18>& r,uint16_t palette_register,
+                           const std::vector<uint8_t>& graphics,Put&& put,Between&& between) {
         // Measured commands plus the pinned finite unscaled sets below.
         // Validate the whole draw before framebuffer mutation.
-        const auto& r=dma_registers;
         const bool fill=(command&15)==12;
         const bool opaque_copy=command==0x8423;
         bool known=opaque_copy;
@@ -221,27 +224,12 @@ struct BootVideo {
         const bool skip=command&0x80, flip=command&0x10;
         const unsigned width=r[6]&0x3ff,height=r[7]&0x3ff;
         const unsigned startskip=command&0x40?r[0]&0xff:0, endskip=command&0x40?r[0]>>8:r[0];
-        const unsigned palette=dma_palette&0x7f00;
+        const unsigned palette=palette_register&0x7f00;
         uint32_t source=fill?0:r[2]|(uint32_t(r[3])<<16);
         if(source>=0xf8000000) source-=0xf8000000;
         if(source>=0x10000000) throw std::runtime_error("MK2 pair DMA source outside graphics mapping");
         auto extract=[&](uint32_t bit,unsigned bits) {
             return ((unsigned(graphics.at(bit/8))|(unsigned(graphics.at(bit/8+1))<<8))>>(bit&7))&bits;
-        };
-        auto draw=fighters.Draw(fighter);
-        const auto prepare_fighter_surface=[&]{
-            if(!fighter || !fighters_enabled || fighters.enabled())return;
-            fighters=mk5presentation::FighterSurface(vram.size());
-            fighters.ClearWith(0,vram.size(),[this](size_t pixel){
-                const auto tag=BackdropEnabled()?backdrop[pixel]&backdrop_owner:0;
-                return uint16_t((vram[pixel]&0x7fff)|tag);
-            });
-        };
-        const auto present_pixel=[&](size_t index){
-            fighters.Write(draw,index,uint16_t(vram[index]|(scenery?backdrop_owner:0)),
-                           fighter?BloodPixel(index):0);
-            MaskBlood(index);
-            UpdateBackdrop(index,scenery);
         };
         if(scaled) {
             // D002 and E002 share the uncompressed scaler for nonzero pixels.
@@ -255,18 +243,13 @@ struct BootVideo {
                     for(int ix=0;ix<end;ix+=int(xstep),sx=(sx+1)&0x3ff) {
                         if(sx<(r[16]&0x3ff) || sx>(r[17]&0x3ff)) continue;
                         const auto pixel=extract(row_bit+unsigned(ix>>8)*bpp,mask);
-                        if(pixel && write) {
-                            const auto index=sy*512+sx;
-                            vram.at(index)=uint16_t(palette|pixel);
-                            present_pixel(index);
-                        }
+                        if(pixel)put(size_t(sy)*512+sx,uint16_t(palette|pixel),write);
                     }
                 }
             };
             render_scaled(false);
-            prepare_fighter_surface();
+            between();
             render_scaled(true);
-            board.dma_command=command;board.io[18]&=uint16_t(~2);
             return ((width<<8)/xstep)*((height<<8)/ystep);
         }
         auto render=[&](bool write) {
@@ -287,14 +270,8 @@ struct BootVideo {
                     for(;int(ix)<end;++ix,sx=(flip?sx-1:sx+1)&0x3ff,bit+=bpp) {
                         if(sx<(r[16]&0x3ff) || sx>(r[17]&0x3ff)) continue;
                         const auto pixel=fill?0u:extract(bit,mask);
-                        if(fill || opaque_copy || pixel) {
-                            const auto index=sy*512+sx;
-                            auto& dest=vram.at(index);
-                            if(write) {
-                                dest=uint16_t(palette|(fill || (command&15)==8?r[9]&0xff:pixel));
-                                present_pixel(index);
-                            }
-                        }
+                        if(fill || opaque_copy || pixel)
+                            put(size_t(sy)*512+sx,uint16_t(palette|(fill || (command&15)==8?r[9]&0xff:pixel)),write);
                     }
                 }
                 if(skip) {
@@ -304,10 +281,56 @@ struct BootVideo {
             }
         };
         render(false);
-        prepare_fighter_surface();
+        between();
         render(true);
-        board.dma_command=command; board.io[18]&=uint16_t(~2);
         return width*height;
+    }
+
+    unsigned StartDma(uint16_t command, BoardBootControls& board, const std::vector<uint8_t>& graphics,
+                      bool scenery=false,uint64_t fighter=0) {
+        auto draw=fighters.Draw(fighter);
+        const auto prepare_fighter_surface=[&]{
+            if(!fighter || !fighters_enabled || fighters.enabled())return;
+            fighters=mk5presentation::FighterSurface(vram.size());
+            fighters.ClearWith(0,vram.size(),[this](size_t pixel){
+                const auto tag=BackdropEnabled()?backdrop[pixel]&backdrop_owner:0;
+                return uint16_t((vram[pixel]&0x7fff)|tag);
+            });
+        };
+        const auto present_pixel=[&](size_t index){
+            fighters.Write(draw,index,uint16_t(vram[index]|(scenery?backdrop_owner:0)),
+                           fighter?BloodPixel(index):0);
+            MaskBlood(index);
+            UpdateBackdrop(index,scenery);
+        };
+        const auto pixels=Render(command,dma_registers,dma_palette,graphics,[&](size_t index,uint16_t pen,bool write){
+            auto& dest=vram.at(index);
+            if(write){dest=pen;present_pixel(index);}
+        },[&]{prepare_fighter_surface();});
+        board.dma_command=command; board.io[18]&=uint16_t(~2);
+        return pixels;
+    }
+    // Widescreen W1: the margin columns (VRAM x 0..55 and 456..511) as the shadow drawer's DMA entries draw them
+    // (mk2_task_batch.cpp), kNoArt where none did since the page's frame began. Not in save states (shortcut, until W4).
+    static constexpr uint16_t kNoArt=0xffff;
+    uint64_t margin_faults=0;   // shadow passes left incomplete (an outside PC, a write outside RAM, a refused DMA)
+    void EnableMargins(){margin_.assign(vram.size(),kNoArt);}
+    bool MarginsEnabled()const{return !margin_.empty();}
+    uint16_t MarginPixel(size_t index)const{return margin_[index];}
+    static bool MarginColumn(size_t index){const auto x=index&511;return x<56||x>=456;}
+    void ClearMargins(unsigned page_row){
+        for(size_t y=page_row;y<page_row+256&&y<512;++y)for(size_t x=0;x<512;++x)if(MarginColumn(y*512+x))margin_[y*512+x]=kNoArt;
+    }
+    // One staged entry (r0..r11 as the queue holds them) with the board's current clip; false when the board's DMA would
+    // refuse it (it then draws nothing).
+    bool MarginEntry(const std::array<uint16_t,12>& entry,const std::vector<uint8_t>& graphics){
+        auto r=dma_registers;std::copy(entry.begin(),entry.end(),r.begin());
+        try{
+            Render(entry[1],r,entry[8],graphics,[&](size_t index,uint16_t pen,bool write){
+                if(write&&index<margin_.size()&&MarginColumn(index))margin_[index]=pen;
+            },[]{});
+        }catch(const std::runtime_error&){return false;}
+        return true;
     }
     std::array<uint16_t, 18> DmaRegisters(const BoardBootControls& board) const {
         auto result = dma_registers;
@@ -340,7 +363,7 @@ struct BootVideo {
             : uint16_t((vram[offset] >> 8) | (vram[offset + 1] & 0xff00));
     }
 private:
-    std::vector<uint16_t> backdrop;
+    std::vector<uint16_t> backdrop,margin_;
     bool fighters_enabled=false;
     mk5presentation::FighterSurface fighters;
     mk5presentation::FighterSlots fighter_objects;

@@ -173,8 +173,8 @@ class TrainingTests(unittest.TestCase):
 
 
 class WideCaptureTests(unittest.TestCase):
-    """Widescreen W0 over the translated first-fight route: the 512-column capture leaves the frames shown unchanged,
-    and its visible centre is the scanout's own frame in every frame."""
+    """Widescreen W0/W1 over the translated first-fight route: the 512-column capture and the shadow drawer behind its
+    margins leave the frames shown unchanged, and the capture's visible centre is the scanout's own frame in every frame."""
     @unittest.skipUnless((q.ROOT/'roms/mk2').is_dir(),'requires authenticated ROMs')
     def test_centre_is_the_frame_and_capture_is_read_only(self):
         run.verify_roms(q.ROOT/'roms/mk2')
@@ -192,13 +192,17 @@ class WideCaptureTests(unittest.TestCase):
                 if wide:flags['MK2_WIDE']='1'
                 result=q.command([exe,q.ROOT/'roms/mk2','--window','--through','first-fight'],scratch,cwd=scratch,timeout=600,
                                  output_limit=8<<20,env=dict(env,**flags))
-                return result['stdout']
-            off,on=session(False),session(True)
+                return result['stdout'],result['wall_seconds']
+            (off,off_s),(on,on_s)=session(False),session(True)
             self.assertEqual(lines(on,'present'),lines(off,'present'),'the capture changed a shown frame')
             wide=lines(on,'wide');self.assertGreater(len(wide),100,len(wide))
             self.assertEqual([w['centre'] for w in wide],[w['plain'] for w in wide],'the visible centre differs from the frame')
             self.assertEqual(len(wide),len(lines(on,'present')),'one capture per shown frame')
-            print('frames',len(wide))
+            # W1: the shadow drawer ran without a fault, and its margins hold art in most fight frames.
+            self.assertEqual(wide[-1]['faults'],0,'a shadow drawer pass was left incomplete')
+            margin=2*56*254;covered=[w for w in wide if w['empty']<margin//4]
+            print('seconds without/with',round(off_s,2),round(on_s,2),'frames',len(wide),'frames with at least 3/4 of the margins drawn',len(covered),
+                  'empty margin pixels (min/median/max)',sorted(w['empty'] for w in wide)[::len(wide)//4])
         self.assertFalse(cleanup['exists_after'])
 
 

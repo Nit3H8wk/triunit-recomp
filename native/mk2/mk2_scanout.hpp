@@ -23,9 +23,9 @@ class Scanout {
     std::vector<uint32_t> backdrop_work_,backdrop_;
     mk5presentation::FighterCapture fighter_work_;
     mk5presentation::FighterFrame fighters_;
-    // Widescreen W0: every VRAM column of each line, the visible ones at the centre. Raw colours of the original scanout,
-    // a debug view; not in save states (shortcut: the first frame after a load mixes both, until W4 carries it).
-    bool wide_on_=false;std::vector<uint32_t> wide_work_,wide_;
+    // Widescreen W0/W1: every VRAM column of each line, the visible ones at the centre, the margins from the shadow drawer
+    // when it runs (BootVideo::EnableMargins). Raw colours of the original scanout, a debug view; not in save states (shortcut: the first frame after a load mixes both, until W4 carries it).
+    bool wide_on_=false;std::vector<uint32_t> wide_work_,wide_;uint64_t wide_empty_work_=0,wide_empty_=0;
     // Save-state value fields; remastered_ is the edition, checked by the file header.
     template<class A> friend void Fields(A& a,Scanout& s){
         auto enabled=s.display_enabled_.to_string();
@@ -48,6 +48,7 @@ public:
     static constexpr unsigned kWideWidth=512;   // a VRAM line
     void EnableWide(){wide_on_=true;}
     const std::vector<uint32_t>& wide_pixels() const { return wide_; }   // kWideWidth x height(), the last complete frame
+    uint64_t wide_empty() const { return wide_empty_; }   // its margin pixels the shadow drawer left without art
     // Sample live memory before DPYADR advances; never rebuild past rows from final VRAM.
     void Line(const BoardBootControls& board, const BootVideo& video) {
         const auto& io=board.io;
@@ -66,7 +67,7 @@ public:
         if (board.vcount==io[6]) {
             if (collecting_ && rows_==height_) {
                 complete_=work_;
-                if(wide_on_)wide_=wide_work_;
+                if(wide_on_){wide_=wide_work_;wide_empty_=wide_empty_work_;}
                 if(remastered_){
                     for(const auto pixel:blood_cover_)blood_work_[pixel]=shade_.Apply(blood_work_[pixel]);
                     presentation_=blood_work_;
@@ -91,7 +92,7 @@ public:
             collecting_=false;return;
         }
         if (board.vcount==io[5]) {
-            collecting_=true;rows_=0;scenery_visible_=false;
+            collecting_=true;rows_=0;scenery_visible_=false;wide_empty_work_=0;
             if(remastered_ && video.BackdropEnabled())backdrop_work_.resize(work_.size());
             else backdrop_work_.clear();
             fighter_capture_started_=false;
@@ -128,8 +129,13 @@ public:
         }
         if(wide_on_){
             const unsigned margin=(kWideWidth-width_)/2;
-            for(unsigned x=0;x<kWideWidth;++x)
-                wide_work_[size_t(rows_)*kWideWidth+x]=enabled?ExpandRgb555(video.palette_ram[video.vram[row+((column+x-margin)&511)]&0x7fff]):0xff000000;
+            // W1: the margin columns come from the shadow drawer's layer when it runs (black where it drew nothing).
+            for(unsigned x=0;x<kWideWidth;++x){
+                const auto index=row+((column+x-margin)&511);
+                const uint16_t pen=video.MarginsEnabled()&&BootVideo::MarginColumn(index)?video.MarginPixel(index):video.vram[index];
+                wide_empty_work_+=pen==BootVideo::kNoArt;
+                wide_work_[size_t(rows_)*kWideWidth+x]=enabled&&pen!=BootVideo::kNoArt?ExpandRgb555(video.palette_ram[pen&0x7fff]):0xff000000;
+            }
         }
         if(remastered_ && video.FightersEnabled()){
             if(video.FighterVideo().enabled()){

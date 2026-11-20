@@ -91,6 +91,7 @@ public:
     bool CanSuspend() const { return !recording_interrupt_ && !dma_line_event_; }
     void Finish(uint32_t next, unsigned cost, bool host_write = false, uint16_t value = 0,
                 bool input_line_event = false) {
+        if (shadow) { s.next_pc = next; return; }
         last_instruction_pc_ = s.next_pc; last_instruction_cycles_ = s.cycles;
         s.next_pc = next; s.cycles += cost; ++s.instructions;
         const auto completed = machine.DmaCompletions();
@@ -265,7 +266,12 @@ public:
     void Exchange(unsigned reg) {
         const auto target = s.b.at(reg); s.b[reg] = s.next_pc + 16; Finish(target, 2);
     }
+    // Widescreen W1 shadow drawer (mk2_task_batch.cpp): the generated list drawer runs a second time with the clip widened
+    // to the 512 VRAM columns. Its main RAM writes are journaled and undone after it, any other write only marks the pass
+    // faulty, no cycle or instruction is counted, no hook runs, and the DMA entries it stages draw the margin columns.
+    bool shadow=false,shadow_fault=false;std::vector<std::pair<size_t,uint16_t>> shadow_journal;
     void Record(char kind, uint32_t address, uint16_t value) {
+        if (shadow) return;
         if (out.observe_history) out.bus.push_back({recording_interrupt_ ? last_instruction_pc_ : s.next_pc, address, value,
                            recording_interrupt_ ? last_instruction_cycles_ : s.cycles, kind});
     }
@@ -331,6 +337,13 @@ public:
     }
     void Write16(uint32_t address, uint16_t value, unsigned dma_start_offset = 0) {
         if (address & 15) throw std::runtime_error("MK2 boot word write is unaligned");
+        if (shadow) {
+            if (address >= 0x01000000 && address <= 0x013ffff0) {
+                auto& word=out.main_ram.at((address-0x01000000)/16);
+                shadow_journal.emplace_back((address-0x01000000)/16,word);word=value;
+            } else shadow_fault=true;
+            return;
+        }
         if (address >= 0xff800000 || (address >= 0x1f800000 && address <= 0x1ffffff0)) {
             if(program.bytes.size()!=0x100000)
                 throw std::runtime_error("MK2 program ROM write requires the complete mapped region");
@@ -424,6 +437,7 @@ public:
             return;
         }
         Write16(address, uint16_t(value),dma_start_offset); Write16(address + 16, uint16_t(value >> 16),dma_start_offset);
+        if (shadow) return;
         if (address >= 0x01000000 && address <= 0x013fffe0) s.ram[address] = value;
         if(address==0x01060220 || address==0x01060df0)out.video.BindFighter(value);
         else if(address==0x01060130 && out.video.FightersEnabled()){
@@ -471,6 +485,7 @@ public:
     void Push(uint32_t value) { s.a[15] -= 32; Write32(s.a[15], value); }
     uint32_t Pop() { const auto value = Read32(s.a[15]); s.a[15] += 32; return value; }
     void Call(uint32_t target, uint32_t return_pc, unsigned cost) {
+        if(shadow){Push(return_pc);Finish(target & ~uint32_t(15), cost);return;}
         if(target==0xff808a40 && out.video.BackdropEnabled())out.video.ResetDrawQueue();
         uint32_t child=0,parent=0;
         if(out.video.FightersEnabled()){
@@ -789,8 +804,14 @@ public:
     void Mmtm(uint16_t mask, uint32_t next, bool bank_b = false, unsigned base = 15) {
         if (base > 15)
             throw std::runtime_error("MK2 boot MMTM address register is not translated");
+        // The shadow drawer's staged entry: A12 r0/r1, A11 r2/r3, A10 r4/r5, A9 r6/r7, A8 r8/r9, A6 r10/r11.
+        if(shadow && s.next_pc==0xff804410){
+            std::array<uint16_t,12> entry{};const unsigned regs[6]={12,11,10,9,8,6};
+            for(unsigned k=0;k<6;++k){entry[2*k]=uint16_t(s.a[regs[k]]);entry[2*k+1]=uint16_t(s.a[regs[k]]>>16);}
+            if(!out.video.MarginEntry(entry,program.graphics))shadow_fault=true;
+        }
         // The IRQ drains six dwords per object and reaches the command at this cursor.
-        if(out.video.BackdropEnabled() &&
+        if(!shadow && out.video.BackdropEnabled() &&
            (s.next_pc==0xff804410 || s.next_pc==0xff805390 || s.next_pc==0xff800490)){
             const auto owner=s.next_pc==0xff804410?FighterOwner():0;
             out.video.StageDraw(s.a[1]-0xc0,{s.next_pc==0xff804410 && out.video.backdrop_list && !owner,owner});

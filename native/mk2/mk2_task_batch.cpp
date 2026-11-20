@@ -138,33 +138,61 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
     const auto watchdog_start=live_host ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const auto first_instruction = s.instructions;
     const uint32_t end_pc = coin_queue ? 0xff8119b0 : 0xff80dd30;
+    // Widescreen W1 (BootOps::shadow): CPU state around the shadow drawer, which never reaches the loop's guards.
+    std::tuple<decltype(s.a),decltype(s.b),decltype(s.status)> shadow_saved{};bool shadow_skip=false;uint64_t shadow_steps=0;
+    constexpr uint64_t kShadowSteps=4000000;
     while (live_host ? s.cycles<end_cycle :
            s.next_pc != end_pc || (host_controls ? s.cycles<end_cycle : s.cycles!=end_cycle)) {
-        if(live_host && ((s.instructions-first_instruction)&1023)==0 &&
-           std::chrono::steady_clock::now()-watchdog_start>std::chrono::milliseconds(live_detail::kChunkWallTimeoutMs))
-            throw std::runtime_error("MK2 live chunk wall-clock watchdog expired");
-        if (s.cycles >= (host_controls ? (live_host ? machine.LiveHostDeadline() : first_fight_stages.back().end) : end_cycle) ||
-            s.instructions - first_instruction >= instruction_count)
-            throw std::runtime_error("MK2 batch exceeded measured cooperative horizon");
-        if ((s.status & 0x00200000) && (s.board.io[17] & s.board.io[18])) {
-            try { if (coin_pair || start_wait || next_wait || prestart_wait || start_input || start_release || selection || first_fight) o.PendingInterrupt(); else o.DisplayInterrupt(); }
-            catch(const std::exception& error) {
-                throw std::runtime_error(std::string(error.what())+"; PC "+std::to_string(s.next_pc)+
-                    "; cycle "+std::to_string(s.cycles)+"; status "+std::to_string(s.status)+
-                    "; pending "+std::to_string(s.board.io[18]));
+        // At the drawer's call for a list with the arcade clip, run it once more with the clip over the 512 VRAM columns
+        // (-56..456), its interrupt kick skipped (FF804440..FF804500); then undo it and run the real call.
+        if(o.shadow){
+            if(s.next_pc==0xff804440)s.next_pc=0xff804510;
+            const bool outside=s.next_pc!=0xff805040&&(s.next_pc<0xff804000||s.next_pc>0xff8045c0);
+            if(s.next_pc==0xff805040||outside||++shadow_steps>kShadowSteps){
+                if(s.next_pc!=0xff805040)o.shadow_fault=true;
+                for(auto it=o.shadow_journal.rbegin();it!=o.shadow_journal.rend();++it)o.out.main_ram[it->first]=it->second;
+                o.shadow_journal.clear();std::tie(s.a,s.b,s.status)=shadow_saved;s.next_pc=0xff805020;
+                o.shadow=false;shadow_skip=true;o.out.video.margin_faults+=o.shadow_fault;
+                continue;
+            }
+        }else if(s.next_pc==0xff805020 && o.out.video.MarginsEnabled()){
+            if(shadow_skip)shadow_skip=false;
+            else if(s.a[14]==0 && s.a[13]==0x00fe0190){
+                shadow_saved={s.a,s.b,s.status};shadow_steps=0;o.shadow=true;o.shadow_fault=false;
+                s.a[14]=0x0000ffc8;s.a[13]=0x00fe01c8;
             }
         }
-        if (result.observe_history) {
-            std::array<uint64_t, 34> row{s.next_pc, s.status, s.cycles};
-            for (unsigned n = 0; n < 16; ++n) row[3+n] = s.a[n];
-            for (unsigned n = 0; n < 15; ++n) row[19+n] = s.b[n];
-            result.cpu_trace.push_back(row);
+        if(!o.shadow){
+            if(live_host && ((s.instructions-first_instruction)&1023)==0 &&
+               std::chrono::steady_clock::now()-watchdog_start>std::chrono::milliseconds(live_detail::kChunkWallTimeoutMs))
+                throw std::runtime_error("MK2 live chunk wall-clock watchdog expired");
+            if (s.cycles >= (host_controls ? (live_host ? machine.LiveHostDeadline() : first_fight_stages.back().end) : end_cycle) ||
+                s.instructions - first_instruction >= instruction_count)
+                throw std::runtime_error("MK2 batch exceeded measured cooperative horizon");
+            if ((s.status & 0x00200000) && (s.board.io[17] & s.board.io[18])) {
+                try { if (coin_pair || start_wait || next_wait || prestart_wait || start_input || start_release || selection || first_fight) o.PendingInterrupt(); else o.DisplayInterrupt(); }
+                catch(const std::exception& error) {
+                    throw std::runtime_error(std::string(error.what())+"; PC "+std::to_string(s.next_pc)+
+                        "; cycle "+std::to_string(s.cycles)+"; status "+std::to_string(s.status)+
+                        "; pending "+std::to_string(s.board.io[18]));
+                }
+            }
+            if (result.observe_history) {
+                std::array<uint64_t, 34> row{s.next_pc, s.status, s.cycles};
+                for (unsigned n = 0; n < 16; ++n) row[3+n] = s.a[n];
+                for (unsigned n = 0; n < 15; ++n) row[19+n] = s.b[n];
+                result.cpu_trace.push_back(row);
+            }
         }
         const auto instruction_pc = s.next_pc;
+        if(!o.shadow){
+        if(instruction_pc==0xff808a40 && o.out.video.MarginsEnabled())   // the frame's queue reset: its page's margins start empty
+            o.out.video.ClearMargins(o.out.main_ram[(0x0105d050-0x01000000)/16+1]&0x1ff);
         if(instruction_pc==mk5hitbox::kMk2.strike_pc)mk5hitbox::Strike(mk5hitbox::kMk2,s.a.data(),o.out.main_ram);   // training mode, read-only
         else if(instruction_pc==0xff805020 && s.a[0]==0x0105d480)mk5hitbox::Capture(mk5hitbox::kMk2,o.out.main_ram);   // the world objects' DMA
         if(instruction_pc==0xff818d00 || instruction_pc==0xff805020 || instruction_pc==0xff805040 || instruction_pc==0xff9b0e60)
             o.ObservePresentation();
+        }
         try { if (!(first_fight ? ExecuteFirstFightExtras(o) : selection ? ExecuteSelectionExtras(o) : start_release ? ExecuteStartReleaseExtras(o) : (prestart_wait || start_input) ? ExecutePreStartWaitExtras(o) : next_wait ? ExecuteNextWaitExtras(o) : start_wait && ExecuteStartWaitExtras(o))) {
         if (coin_pair || start_wait || next_wait || prestart_wait || start_input || start_release || selection || first_fight) { switch (s.next_pc) {
 #include "mk2_coin_pair.inc"
