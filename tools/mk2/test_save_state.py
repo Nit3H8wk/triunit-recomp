@@ -171,4 +171,35 @@ class TrainingTests(unittest.TestCase):
         self.assertFalse(cleanup['exists_after'])
 
 
+
+class WideCaptureTests(unittest.TestCase):
+    """Widescreen W0 over the translated first-fight route: the 512-column capture leaves the frames shown unchanged,
+    and its visible centre is the scanout's own frame in every frame."""
+    @unittest.skipUnless((q.ROOT/'roms/mk2').is_dir(),'requires authenticated ROMs')
+    def test_centre_is_the_frame_and_capture_is_read_only(self):
+        run.verify_roms(q.ROOT/'roms/mk2')
+        sources=[q.ROOT/p for p in run.SOURCES if p!='native/tests/mk2_foundation_tests.cpp']
+        sources+=[q.ROOT/p for p in ('native/mk2/mk2_native_check.cpp','native/mk2/mk2_music.cpp','native/tests/mk2_test_audio_sink.cpp',
+                                    'native/tests/mk2_host_close_window.cpp')]
+        with q.scratch_tree()as(scratch,cleanup):
+            exe=scratch/'wide.exe';env={'PATH':str(q.DEFAULT_CC.parent)+os.pathsep+os.environ.get('PATH','')}
+            build=q.command([q.DEFAULT_CC,'-std=c++17','-O1','-municode','-pthread','-Wall','-Wextra','-Werror',
+                '-Wno-unused-parameter','-Wno-missing-field-initializers','-I'+str(q.ROOT/'native/include'),*sources,
+                '-lbcrypt','-luser32','-lgdi32','-lwinmm','-o',exe],scratch,env=env,timeout=300)
+            self.assertTrue(build['passed'],q.compact(build))
+            def session(wide):
+                flags=dict(MK2_TEST_PRESENT_HASHES='1')
+                if wide:flags['MK2_WIDE']='1'
+                result=q.command([exe,q.ROOT/'roms/mk2','--window','--through','first-fight'],scratch,cwd=scratch,timeout=600,
+                                 output_limit=8<<20,env=dict(env,**flags))
+                return result['stdout']
+            off,on=session(False),session(True)
+            self.assertEqual(lines(on,'present'),lines(off,'present'),'the capture changed a shown frame')
+            wide=lines(on,'wide');self.assertGreater(len(wide),100,len(wide))
+            self.assertEqual([w['centre'] for w in wide],[w['plain'] for w in wide],'the visible centre differs from the frame')
+            self.assertEqual(len(wide),len(lines(on,'present')),'one capture per shown frame')
+            print('frames',len(wide))
+        self.assertFalse(cleanup['exists_after'])
+
+
 if __name__=='__main__':unittest.main()

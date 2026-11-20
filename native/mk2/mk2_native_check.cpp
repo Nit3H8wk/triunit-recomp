@@ -17,6 +17,7 @@
 #include "mk5_profile_presentation.hpp"
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <cstdio>
 #include <cstring>
 #include <charconv>
 #include <chrono>
@@ -24,6 +25,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <set>
 #include <thread>
 
 int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
@@ -129,6 +131,13 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
     const auto source_samples=[&]{return music?music->SourceSamples():audio->SourceSamples();};
     const auto output_samples=[&]{return music?music->OutputSamples():audio->OutputSamples();};
     mk2::Scanout scanout(remastered && show_window);
+    // Widescreen W0 debug view (MK2_WIDE=1): per frame, FNV-1a of the 512 VRAM columns, of their visible centre and of
+    // the scanout's own frame; MK2_WIDE_DUMP=<frame,...> adds those frames' 512 columns as hex RGB.
+    const bool wide=std::getenv("MK2_WIDE")!=nullptr;std::set<uint64_t> wide_dump;
+    if(wide){
+        scanout.EnableWide();
+        if(const char* list=std::getenv("MK2_WIDE_DUMP"))for(const char* c=list;*c;){char* end=nullptr;wide_dump.insert(std::strtoull(c,&end,10));c=*end?end+1:end;}
+    }
     // One slot per program ROM and edition: in memory, mirrored to saves/mk2/<program sha>/ for later sessions.
     const auto slot_path=std::filesystem::path(L"saves/mk2")/program.sha256/(remastered?L"slot1-remastered.state":L"slot1.state");
     std::vector<uint8_t> slot;
@@ -173,6 +182,16 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
     machine->SetScanlineObserver([&](const auto& edge,const auto& live_video) {
         const auto before=scanout.frames();scanout.Line(edge,live_video);
         if (scanout.frames()==before) return;
+        if(wide){
+            const auto& w=scanout.wide_pixels();const unsigned n=mk2::Scanout::kWideWidth,width=scanout.width(),margin=(n-width)/2;
+            uint64_t all=0xcbf29ce484222325ull,centre=all,plain=all;
+            for(size_t i=0;i<w.size();++i){all=(all^w[i])*0x100000001b3ull;if(i%n>=margin&&i%n<margin+width)centre=(centre^w[i])*0x100000001b3ull;}
+            for(const uint32_t v:scanout.pixels())plain=(plain^v)*0x100000001b3ull;
+            std::printf("{\"wide\":%llu,\"all\":\"%016llx\",\"centre\":\"%016llx\",\"plain\":\"%016llx\"",(unsigned long long)scanout.frames(),
+                        (unsigned long long)all,(unsigned long long)centre,(unsigned long long)plain);
+            if(wide_dump.count(scanout.frames())){std::printf(",\"rgb\":\"");for(const uint32_t v:w)std::printf("%06x",unsigned(v&0xffffff));std::printf("\"");}
+            std::printf("}\n");
+        }
         raster_tick=94875+uint64_t(edge.scanline_events-1)*6325;
         if(!cmos_live&&!test_switch) {
             const auto bytes=raster_bytes();
