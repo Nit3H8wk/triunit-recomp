@@ -4,6 +4,7 @@
 #include <chrono>
 #include "mk5_program.hpp"
 #include "mk5_hitbox.hpp"
+#include "mk2_widescreen.hpp"
 #include "mk2_valid_cmos_continuation.hpp"
 #include "mk2_oracle_digest.hpp"
 #include <iostream>
@@ -138,28 +139,44 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
     const auto watchdog_start=live_host ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const auto first_instruction = s.instructions;
     const uint32_t end_pc = coin_queue ? 0xff8119b0 : 0xff80dd30;
-    // Widescreen W1 (BootOps::shadow): CPU state around the shadow drawer, which never reaches the loop's guards.
-    std::tuple<decltype(s.a),decltype(s.b),decltype(s.status)> shadow_saved{};bool shadow_skip=false;uint64_t shadow_steps=0;
+    // Widescreen W1 (BootOps::shadow), once per frame at the display table walk (FF804E30, after the queue reset): with the
+    // clip longs widened in the journal to the 512 VRAM columns (-56..456), the scenery streamer FF9F8030 (when the game
+    // runs it; it rebuilds every plane from its window, so one call fills the wider window) and then the whole walk run on
+    // the journaled RAM, the drawer's interrupt kick skipped (FF804440..FF804500); the entries staged at FF804410 and
+    // FF800490 draw the margins. Then the journal is undone and the real walk runs. The shadow never reaches the loop's
+    // guards; a PC outside its routines, a write outside RAM or an exception ends it as a fault.
+    std::tuple<decltype(s.a),decltype(s.b),decltype(s.status)> shadow_saved{};
+    bool shadow_skip=false,shadow_walk=false;uint64_t shadow_steps=0;uint32_t shadow_fault_pc=0;
     constexpr uint64_t kShadowSteps=4000000;
+    const auto shadow_end=[&]{
+        for(auto it=o.shadow_journal.rbegin();it!=o.shadow_journal.rend();++it)o.out.main_ram[it->first]=it->second;
+        o.shadow_journal.clear();std::tie(s.a,s.b,s.status)=shadow_saved;s.next_pc=mk2::wide::kWalkStart;
+        if(o.shadow_fault)o.out.video.margin_fault_pc=shadow_fault_pc;
+        o.shadow=false;shadow_skip=true;o.out.video.margin_faults+=o.shadow_fault;
+    };
     while (live_host ? s.cycles<end_cycle :
            s.next_pc != end_pc || (host_controls ? s.cycles<end_cycle : s.cycles!=end_cycle)) {
-        // At the drawer's call for a list with the arcade clip, run it once more with the clip over the 512 VRAM columns
-        // (-56..456), its interrupt kick skipped (FF804440..FF804500); then undo it and run the real call.
         if(o.shadow){
-            if(s.next_pc==0xff804440)s.next_pc=0xff804510;
-            const bool outside=s.next_pc!=0xff805040&&(s.next_pc<0xff804000||s.next_pc>0xff8045c0);
-            if(s.next_pc==0xff805040||outside||++shadow_steps>kShadowSteps){
-                if(s.next_pc!=0xff805040)o.shadow_fault=true;
-                for(auto it=o.shadow_journal.rbegin();it!=o.shadow_journal.rend();++it)o.out.main_ram[it->first]=it->second;
-                o.shadow_journal.clear();std::tie(s.a,s.b,s.status)=shadow_saved;s.next_pc=0xff805020;
-                o.shadow=false;shadow_skip=true;o.out.video.margin_faults+=o.shadow_fault;
-                continue;
+            if(s.next_pc==mk2::wide::kKick)s.next_pc=mk2::wide::kKickEnd;
+            const uint32_t pc=s.next_pc;
+            if(!shadow_walk&&pc==mk2::wide::kStreamerReturn){   // the streamer returned: the walk from its start, with the real registers
+                std::tie(s.a,s.b,s.status)=shadow_saved;s.next_pc=mk2::wide::kWalkStart;shadow_walk=true;continue;
             }
-        }else if(s.next_pc==0xff805020 && o.out.video.MarginsEnabled()){
+            // The walk also runs the tables' callbacks (floor producers in FFA0xxxx entering FF800160): any program PC.
+            const bool inside=shadow_walk?pc>=0xff800000:mk2::wide::StreamerCode(pc);
+            if((shadow_walk&&pc==mk2::wide::kWalkEnd)||!inside||++shadow_steps>kShadowSteps){
+                if(!(shadow_walk&&pc==mk2::wide::kWalkEnd)){o.shadow_fault=true;shadow_fault_pc=pc|(shadow_walk?1:0);}
+                shadow_end();continue;
+            }
+        }else if(s.next_pc==mk2::wide::kWalkStart && o.out.video.MarginsEnabled()){
+            const auto ram_long=[&](uint32_t bit){const size_t i=(bit-0x01000000)/16;return o.out.main_ram[i]|uint32_t(o.out.main_ram[i+1])<<16;};
             if(shadow_skip)shadow_skip=false;
-            else if(s.a[14]==0 && s.a[13]==0x00fe0190){
+            else if(ram_long(mk2::wide::kClipTopLeft)==0&&ram_long(mk2::wide::kClipBottomRight)==mk2::wide::kArcadeBottomRight){
                 shadow_saved={s.a,s.b,s.status};shadow_steps=0;o.shadow=true;o.shadow_fault=false;
-                s.a[14]=0x0000ffc8;s.a[13]=0x00fe01c8;
+                o.Write32(mk2::wide::kClipTopLeft,mk2::wide::kWideTopLeft);o.Write32(mk2::wide::kClipBottomRight,mk2::wide::kWideBottomRight);
+                // Not while the interrupted main process is inside the real streamer: its lists are half updated.
+                shadow_walk=!o.out.video.margin_streamer||o.out.video.margin_streaming;
+                if(!shadow_walk){o.Push(mk2::wide::kStreamerReturn);s.next_pc=mk2::wide::kStreamer;}
             }
         }
         if(!o.shadow){
@@ -186,8 +203,11 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
         }
         const auto instruction_pc = s.next_pc;
         if(!o.shadow){
-        if(instruction_pc==0xff808a40 && o.out.video.MarginsEnabled())   // the frame's queue reset: its page's margins start empty
-            o.out.video.ClearMargins(o.out.main_ram[(0x0105d050-0x01000000)/16+1]&0x1ff);
+        if(instruction_pc==mk2::wide::kStreamer)o.out.video.margin_streamer=o.out.video.margin_streaming=true;   // it streams
+        else if(instruction_pc==mk2::wide::kStreamerReturn)o.out.video.margin_streaming=false;   // the streamer returned
+        else if(instruction_pc==mk2::wide::kPoolReset[0]||instruction_pc==mk2::wide::kPoolReset[1])o.out.video.margin_streamer=false;
+        if(instruction_pc==mk2::wide::kQueueReset && o.out.video.MarginsEnabled())   // the frame's queue reset: its page's margins start empty
+            o.out.video.ClearMargins(o.out.main_ram[(mk2::wide::kPageOrigin-0x01000000)/16+1]&0x1ff);
         if(instruction_pc==mk5hitbox::kMk2.strike_pc)mk5hitbox::Strike(mk5hitbox::kMk2,s.a.data(),o.out.main_ram);   // training mode, read-only
         else if(instruction_pc==0xff805020 && s.a[0]==0x0105d480)mk5hitbox::Capture(mk5hitbox::kMk2,o.out.main_ram);   // the world objects' DMA
         if(instruction_pc==0xff818d00 || instruction_pc==0xff805020 || instruction_pc==0xff805040 || instruction_pc==0xff9b0e60)
@@ -207,6 +227,13 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
 #include "mk2_task_batch.inc"
         default: throw std::runtime_error("MK2 batch PC outside authenticated fixed translation");
         } } } } catch (const std::exception& error) {
+            if(o.shadow&&!shadow_walk){   // the streamer met a list it cannot walk (boot frames): this frame's walk without it
+                for(auto it=o.shadow_journal.rbegin();it!=o.shadow_journal.rend();++it)o.out.main_ram[it->first]=it->second;
+                o.shadow_journal.clear();std::tie(s.a,s.b,s.status)=shadow_saved;o.shadow_fault=false;
+                o.Write32(mk2::wide::kClipTopLeft,mk2::wide::kWideTopLeft);o.Write32(mk2::wide::kClipBottomRight,mk2::wide::kWideBottomRight);
+                s.next_pc=mk2::wide::kWalkStart;shadow_walk=true;++o.out.video.margin_streamer_skips;continue;
+            }
+            if(o.shadow){o.shadow_fault=true;shadow_fault_pc=instruction_pc|2;shadow_end();continue;}
             std::string cpu="; CPU34 "+std::to_string(s.next_pc)+","+std::to_string(s.status)+","+std::to_string(s.cycles);
             for(auto value:s.a)cpu+=","+std::to_string(value);
             for(unsigned n=0;n<15;++n)cpu+=","+std::to_string(s.b[n]);

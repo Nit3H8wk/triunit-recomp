@@ -539,6 +539,11 @@
     },
     {
       "rule": "pc-density",
+      "path": "native/mk2/mk2_widescreen.hpp",
+      "reason": "hardware-observation fact table: the widescreen shadow pass's walk, staging, streamer and RAM addresses (addresses only; no routine text)"
+    },
+    {
+      "rule": "pc-density",
       "path": "native/mk3/mk3_dma_observer.hpp",
       "reason": "hardware-observation fact table: DMA producer and object-creator return PCs of the Remastered layer classes (addresses only; no routine text)"
     },

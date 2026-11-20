@@ -313,6 +313,9 @@ struct BootVideo {
     // Widescreen W1: the margin columns (VRAM x 0..55 and 456..511) as the shadow drawer's DMA entries draw them
     // (mk2_task_batch.cpp), kNoArt where none did since the page's frame began. Not in save states (shortcut, until W4).
     static constexpr uint16_t kNoArt=0xffff;
+    bool margin_streamer=false,margin_streaming=false;   // the scenery streamer has run since the pool reset / is running
+    uint32_t margin_fault_pc=0;   // the last fault's PC (bit 0: in the walk, bit 1: an exception)
+    uint64_t margin_streamer_skips=0;   // frames whose shadow walk ran without the streamer
     uint64_t margin_faults=0;   // shadow passes left incomplete (an outside PC, a write outside RAM, a refused DMA)
     void EnableMargins(){margin_.assign(vram.size(),kNoArt);}
     bool MarginsEnabled()const{return !margin_.empty();}

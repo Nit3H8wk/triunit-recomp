@@ -3,6 +3,7 @@
 #pragma once
 #include "mk2_oracle_digest.hpp"
 #include "mk2_pixblt.hpp"
+#include "mk2_widescreen.hpp"
 #include "mk2_adsp.hpp"
 #include <initializer_list>
 #include <string>
@@ -267,8 +268,8 @@ public:
         const auto target = s.b.at(reg); s.b[reg] = s.next_pc + 16; Finish(target, 2);
     }
     // Widescreen W1 shadow drawer (mk2_task_batch.cpp): the generated list drawer runs a second time with the clip widened
-    // to the 512 VRAM columns. Its main RAM writes are journaled and undone after it, any other write only marks the pass
-    // faulty, no cycle or instruction is counted, no hook runs, and the DMA entries it stages draw the margin columns.
+    // to the 512 VRAM columns. Its main RAM writes are journaled and undone after it, any other access only marks the pass
+    // faulty (reads return 0), no cycle or instruction is counted, no hook runs, and the DMA entries it stages draw the margin columns.
     bool shadow=false,shadow_fault=false;std::vector<std::pair<size_t,uint16_t>> shadow_journal;
     void Record(char kind, uint32_t address, uint16_t value) {
         if (shadow) return;
@@ -283,6 +284,7 @@ public:
             value = uint16_t(program.bytes.at(offset) | (uint16_t(program.bytes.at(offset + 1)) << 8));
         } else if (address >= 0x01000000 && address <= 0x013ffff0)
             value = out.main_ram.at((address - 0x01000000) / 16);
+        else if (shadow) { shadow_fault = true; return 0; }   // the shadow reads only program ROM and main RAM
         else if (address >= 0x01400000 && address <= 0x0141fff0)
             value = s.cmos.at((address - 0x01400000) / 16);
         else if (address == 0x01480000) value = 0xffff;
@@ -805,9 +807,19 @@ public:
         if (base > 15)
             throw std::runtime_error("MK2 boot MMTM address register is not translated");
         // The shadow drawer's staged entry: A12 r0/r1, A11 r2/r3, A10 r4/r5, A9 r6/r7, A8 r8/r9, A6 r10/r11.
-        if(shadow && s.next_pc==0xff804410){
+        if(shadow && s.next_pc==mk2::wide::kDrawerStage){
             std::array<uint16_t,12> entry{};const unsigned regs[6]={12,11,10,9,8,6};
             for(unsigned k=0;k<6;++k){entry[2*k]=uint16_t(s.a[regs[k]]);entry[2*k+1]=uint16_t(s.a[regs[k]]>>16);}
+            if(!out.video.MarginEntry(entry,program.graphics))shadow_fault=true;
+        } else if(shadow && s.next_pc==mk2::wide::kFloorStage){   // the floor producer: A9 r0/r1, A8 r2/r3, A7 r4/r5, A6 r6/r7, A3 r8/r9, A2 r10/r11
+            std::array<uint16_t,12> entry{};const unsigned regs[6]={9,8,7,6,3,2};
+            for(unsigned k=0;k<6;++k){entry[2*k]=uint16_t(s.a[regs[k]]);entry[2*k+1]=uint16_t(s.a[regs[k]]>>16);}
+            // Each floor line is one unscaled 400-pixel row: the same row of the floor art, 56 pixels earlier and 512 wide.
+            if(entry[6]==400 && entry[7]==1 && !(entry[1]&0x10)){
+                const unsigned code=(entry[1]>>12)&7,bpp=code?code:8;
+                const uint32_t source=(entry[2]|uint32_t(entry[3])<<16)-56*bpp;
+                entry[2]=uint16_t(source);entry[3]=uint16_t(source>>16);entry[4]=uint16_t(entry[4]-56);entry[6]=512;
+            }
             if(!out.video.MarginEntry(entry,program.graphics))shadow_fault=true;
         }
         // The IRQ drains six dwords per object and reaches the command at this cursor.
