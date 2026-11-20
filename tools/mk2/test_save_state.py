@@ -137,4 +137,38 @@ class RunAheadTests(unittest.TestCase):
         self.assertFalse(cleanup['exists_after'])
 
 
+
+class TrainingTests(unittest.TestCase):
+    """Training mode (F8) over the translated first-fight route with the test window: the frames shown are the frames
+    without it (the overlay only reads RAM), and the fight frames carry both fighters' body boxes from the strike rule."""
+    @unittest.skipUnless((q.ROOT/'roms/mk2').is_dir(),'requires authenticated ROMs')
+    def test_boxes_read_only_and_on_the_fighters(self):
+        run.verify_roms(q.ROOT/'roms/mk2')
+        sources=[q.ROOT/p for p in run.SOURCES if p!='native/tests/mk2_foundation_tests.cpp']
+        sources+=[q.ROOT/p for p in ('native/mk2/mk2_native_check.cpp','native/mk2/mk2_music.cpp','native/tests/mk2_test_audio_sink.cpp',
+                                    'native/tests/mk2_host_close_window.cpp')]
+        with q.scratch_tree()as(scratch,cleanup):
+            exe=scratch/'training.exe';env={'PATH':str(q.DEFAULT_CC.parent)+os.pathsep+os.environ.get('PATH','')}
+            build=q.command([q.DEFAULT_CC,'-std=c++17','-O1','-municode','-pthread','-Wall','-Wextra','-Werror',
+                '-Wno-unused-parameter','-Wno-missing-field-initializers','-I'+str(q.ROOT/'native/include'),*sources,
+                '-lbcrypt','-luser32','-lgdi32','-lwinmm','-o',exe],scratch,env=env,timeout=300)
+            self.assertTrue(build['passed'],q.compact(build))
+            def session(training):
+                flags=dict(MK2_TEST_PRESENT_HASHES='1')
+                if training:flags['MK2_TEST_TRAINING']='1'
+                result=q.command([exe,q.ROOT/'roms/mk2','--window','--through','first-fight'],scratch,cwd=scratch,timeout=600,
+                                 output_limit=8<<20,env=dict(env,**flags))
+                return [json.loads(l) for l in result['stdout'].splitlines() if l.startswith('{"present"')]
+            off,on=session(False),session(True)
+            self.assertGreater(len(off),100,len(off))
+            self.assertEqual([f['present'] for f in on],[f['present'] for f in off],'training mode changed a shown frame')
+            self.assertTrue(all(not f['boxes'] for f in off),'boxes without training mode')
+            fight=[f['boxes'] for f in on if sum(b[4]==0 for b in f['boxes'])==2]
+            self.assertGreater(len(fight),20,'no fight frames with both body boxes')
+            for boxes in fight:
+                for x,y,w,h,kind in boxes:self.assertTrue(0<w<400 and 0<h<254 and -400<x<800 and -254<y<508,boxes)
+            print('frames',len(on),'fight frames',len(fight),'strikes',sum(b[4]==1 for f in on for b in f['boxes']))
+        self.assertFalse(cleanup['exists_after'])
+
+
 if __name__=='__main__':unittest.main()

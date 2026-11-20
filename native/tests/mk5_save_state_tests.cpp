@@ -3,6 +3,7 @@
 // The same state then loads into a second session at another boundary. Original, then Remastered with music
 // (synthetic user tracks written by this test). Inputs: a legal route tape (tools/mk1/tapes, rendered by the caller).
 #include "mk5_save_state.hpp"
+#include "mk5_hitbox.hpp"
 #include "mk5_audio_link.hpp"
 #include "mk5_audio_output.hpp"
 #include "../runtime/remastered_music_manifest.hpp"
@@ -100,7 +101,7 @@ void WriteTracks(const std::filesystem::path& folder,double gain_db){
     }
     json<<"}}";check(bool(json),"cannot write synthetic slots.json");
 }
-struct Result {uint64_t frame=0,bytes=0,calls=0;Recording r;};
+struct Result {uint64_t frame=0,bytes=0,calls=0;Recording r;uint64_t training_frames=0,bodies=0,strikes=0;};
 Result Exercise(const VerifiedMk5Program& p,const std::filesystem::path& root,const std::vector<uint16_t>& cmos,const VerifiedMk5GlyphBank& g,
                 const Inputs& tape,const std::filesystem::path* tracks,uint64_t save_frame,uint64_t frames){
     Result out;auto& r=out.r;std::vector<uint8_t> saved,expected;mk5state::Identity identity;
@@ -123,6 +124,26 @@ Result Exercise(const VerifiedMk5Program& p,const std::filesystem::path& root,co
         r.mode=Recording::Mode::compare;b.Calls(out.calls);r.mode=Recording::Mode::off;
         check(r.Complete() && Mk5SaveLiveState(b.Live())==expected,"cross-session load left unmatched output or state");
     }
+    if(!tracks){   // Training mode (F8) over the same pass: read-only, and its boxes sit on the fighters.
+        Session c(p,root,cmos,g,tape,r,tracks);mk5hitbox::enabled=true;c.UntilFrame(save_frame);c.Calls(2);
+        r.Rewind();r.mode=Recording::Mode::compare;   // every raster and PCM block of the recorded pass, with the boxes read
+        const mk5hitbox::Ram ram{c.m.ram};uint64_t shown=c.screen->frames();
+        for(uint64_t k=0;k<out.calls;++k){
+            c.Call();if(c.screen->frames()==shown)continue;shown=c.screen->frames();
+            mk5hitbox::Capture(mk5hitbox::kMk1,c.m.ram);const auto boxes=mk5hitbox::Take();
+            unsigned bodies=0;
+            for(const auto& b:boxes){
+                if(b.kind==mk5training::Strike){++out.strikes;check(b.w>0&&b.h>0&&b.w<400&&b.h<254,"strike box outside the screen scale");continue;}
+                const uint32_t object=ram.lng(mk5hitbox::kMk1.objects[bodies++]);
+                const int x=ram.s16(object+0x90)-ram.s16(mk5hitbox::kMk1.camera_x),y=ram.s16(object+0xb0)-ram.s16(mk5hitbox::kMk1.camera_y);
+                check(b.x<=x&&x<b.x+b.w&&b.y<=y&&y<b.y+b.h,"body box does not hold its fighter object");
+            }
+            out.training_frames+=bodies==2;out.bodies+=bodies;
+        }
+        mk5hitbox::enabled=false;r.mode=Recording::Mode::off;
+        check(r.Complete(),"training mode changed a raster or the PCM");
+        check(out.training_frames>frames/2&&out.strikes>0,"training mode found no fight boxes");
+    }
     auto damaged=saved;damaged.back()^=1;
     refused<std::invalid_argument>([&]{mk5state::CheckLiveState(damaged,identity);},"damaged payload accepted");
     auto truncated=saved;truncated.resize(truncated.size()/2);
@@ -141,7 +162,7 @@ Result Exercise(const VerifiedMk5Program& p,const std::filesystem::path& root,co
 }
 void Report(const char* edition,const Result& x){
     std::cout<<'"'<<edition<<"\":{\"save_frame\":"<<x.frame<<",\"calls\":"<<x.calls<<",\"state_bytes\":"<<x.bytes<<",\"rasters\":"<<x.r.frames.size()
-             <<",\"fighter_frames\":"<<x.r.fighter_frames<<",\"host_pcm_blocks\":"<<x.r.pcm.size()<<",\"host_pcm_samples\":"<<x.r.samples<<",\"passes\":2}";
+             <<",\"fighter_frames\":"<<x.r.fighter_frames<<",\"host_pcm_blocks\":"<<x.r.pcm.size()<<",\"host_pcm_samples\":"<<x.r.samples<<",\"training_frames\":"<<x.training_frames<<",\"training_strikes\":"<<x.strikes<<",\"passes\":2}";
 }
 }
 int wmain(int argc,wchar_t** argv){try{

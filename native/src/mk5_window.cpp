@@ -16,6 +16,7 @@
 #include "mk5_hdr.hpp"
 #include "mk5_audio_link.hpp"
 #include "mk5_audio_output.hpp"
+#include "mk5_training.hpp"
 #define WIN32_LEAN_AND_MEAN
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -58,7 +59,7 @@ void arm_pace_timer(HANDLE timer,LONGLONG ticks,LONGLONG frequency){
 }
 constexpr UINT kFrontier=WM_APP+2;
 constexpr DWORD kOccludedRetryMs=100;
-constexpr UINT kSourceSrv=0,kBezelSrv=1,kChainSrv=2,kPrefilterSrv=3,kStageSrv=5,kSceneSrv=6;
+constexpr UINT kSourceSrv=0,kBezelSrv=1,kChainSrv=2,kPrefilterSrv=3,kStageSrv=5,kSceneSrv=6,kOverlaySrv=7;
 constexpr auto kHdrSpace=DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
 constexpr UINT kShaderConstants=29;
 // The game's area in the television frame: the 4:3 glass, or the Phosphor raster that fits inside it.
@@ -75,6 +76,19 @@ float4 ps(float4 position:SV_Position):SV_Target {
     float4 c=artwork.Load(int3(position.xy,0));
     if(c.a==0)discard;
     return float4(c.rgb,1);
+}
+)HLSL";
+// Training overlay (mk5_training.hpp): source pixels over the game area, point sampled, blended by alpha.
+// shortcut: flat over the CRT curvature (the boxes drift a few pixels near the edges), until a curved preset needs it.
+constexpr char overlay_shader[]=R"HLSL(
+Texture2D overlay : register(t0);
+cbuffer Settings : register(b0) {float4 s[6];};   // s[0].x source height, s[0].z source width, s[5] game viewport
+float4 ps(float4 position:SV_Position):SV_Target {
+    const int2 size=int2(s[0].z,s[0].x);
+    const int2 p=clamp(int2((position.xy-s[5].xy)/s[5].zw*float2(size)),int2(0,0),size-1);
+    float4 c=overlay.Load(int3(p,0));
+    if(c.a==0)discard;
+    return c;
 }
 )HLSL";
 // The television frame at the output size, drawn in code (mk5_bezel.hpp) on every core; no image file is read.
@@ -165,7 +179,7 @@ struct Mk5Window::Impl {
     std::condition_variable ready_cv;
     bool ready=false;std::string failure;
     struct Frame {
-        std::vector<uint32_t> pixels,backdrop,scaled;
+        std::vector<uint32_t> pixels,backdrop,scaled,overlay;
         mk5presentation::FighterFrame fighters;
         unsigned width=0,height=0;
         bool ready=false,scenery=false,actors=false;
@@ -184,9 +198,12 @@ struct Mk5Window::Impl {
     ComPtr<ID3D12Resource> bezel_texture,bezel_upload;
     D3D12_PLACED_SUBRESOURCE_FOOTPRINT bezel_upload_layout{};
     std::vector<uint32_t> bezel_pixels;mk5bezel::Tv tv;bool bezel_dirty=false;std::wstring bezel_image;
+    ComPtr<ID3D12Resource> overlay_texture,overlay_upload;D3D12_PLACED_SUBRESOURCE_FOOTPRINT overlay_layout{};
+    bool overlay_ready=false,overlay_pending=false,overlay_shown=false;mk5training::History history;
+    std::vector<uint32_t> validation_overlay;   // the training overlay of the validated frame, blended by the reference
     ComPtr<ID3D12CommandAllocator> allocator;ComPtr<ID3D12GraphicsCommandList> commands;
     ComPtr<ID3D12RootSignature> root;ComPtr<ID3D12PipelineState> pipeline;
-    ComPtr<ID3D12PipelineState> bezel_pipeline,prefilter_pipeline;
+    ComPtr<ID3D12PipelineState> bezel_pipeline,prefilter_pipeline,overlay_pipeline;
     ComPtr<ID3D12Fence> fence;HANDLE fence_event=nullptr;
     UINT rtv_stride=0;UINT64 fence_value=0;bool in_flight=false,texture_ready=false,upload_pending=false,scaled_ready=false;
     D3D12_PLACED_SUBRESOURCE_FOOTPRINT upload_layout{},readback_layout{};
@@ -358,7 +375,7 @@ struct Mk5Window::Impl {
             for(auto& target:prefiltered)hold(target.Get());
             hold(texture.Get());hold(upload_buffer.Get());hold(readback.Get());hold(allocator.Get());hold(commands.Get());hold(root.Get());hold(pipeline.Get());
             hold(stage_texture.Get());hold(stage_upload.Get());
-            hold(bezel_texture.Get());hold(bezel_upload.Get());hold(bezel_pipeline.Get());hold(prefilter_pipeline.Get());hold(source_capture.memory.Get());
+            hold(bezel_texture.Get());hold(bezel_upload.Get());hold(bezel_pipeline.Get());hold(overlay_texture.Get());hold(overlay_upload.Get());hold(overlay_pipeline.Get());hold(prefilter_pipeline.Get());hold(source_capture.memory.Get());
             auto retained_device=device;auto retained_queue=queue;auto retained_fence=fence;
             auto retained_scalefx=scalefx;auto retained_smaa=smaa;
             std::thread([keep=std::move(keep),retained_device,retained_queue,retained_fence,retained_scalefx,retained_smaa,completion,signal]() mutable {
@@ -378,7 +395,7 @@ struct Mk5Window::Impl {
             queue.Detach();swap.Detach();rtv_heap.Detach();srv_heap.Detach();
             for(auto& target:targets)target.Detach();
             for(auto& target:prefiltered)target.Detach();
-            texture.Detach();upload_buffer.Detach();readback.Detach();bezel_texture.Detach();bezel_upload.Detach();
+            texture.Detach();upload_buffer.Detach();readback.Detach();bezel_texture.Detach();bezel_upload.Detach();overlay_texture.Detach();overlay_upload.Detach();overlay_pipeline.Detach();
             stage_texture.Detach();stage_upload.Detach();
             allocator.Detach();commands.Detach();root.Detach();pipeline.Detach();bezel_pipeline.Detach();prefilter_pipeline.Detach();fence.Detach();device.Detach();
         }
@@ -416,7 +433,7 @@ struct Mk5Window::Impl {
         checked(factory->MakeWindowAssociation(hwnd.load(),DXGI_MWA_NO_ALT_ENTER|DXGI_MWA_NO_WINDOW_CHANGES),"DXGI window association");
         D3D12_DESCRIPTOR_HEAP_DESC heap{};heap.Type=D3D12_DESCRIPTOR_HEAP_TYPE_RTV;heap.NumDescriptors=UINT(targets.size())+prefilter_passes()+1;
         checked(device->CreateDescriptorHeap(&heap,IID_PPV_ARGS(&rtv_heap)),"D3D12 RTV heap");rtv_stride=device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-        heap.Type=D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;heap.NumDescriptors=kSceneSrv+1;heap.Flags=D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        heap.Type=D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;heap.NumDescriptors=kOverlaySrv+1;heap.Flags=D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         checked(device->CreateDescriptorHeap(&heap,IID_PPV_ARGS(&srv_heap)),"D3D12 SRV heap");
         D3D12_DESCRIPTOR_RANGE ranges[2]{};ranges[0].RangeType=D3D12_DESCRIPTOR_RANGE_TYPE_SRV;ranges[0].NumDescriptors=1;
         ranges[1]=ranges[0];ranges[1].BaseShaderRegister=1;
@@ -448,6 +465,15 @@ struct Mk5Window::Impl {
             compile_pixel(bezel_shader,sizeof(bezel_shader),"ps");
             state.PS={ps->GetBufferPointer(),ps->GetBufferSize()};
             checked(device->CreateGraphicsPipelineState(&state,IID_PPV_ARGS(&bezel_pipeline)),"D3D12 bezel pipeline");
+        }
+        if(controls.training){
+            compile_pixel(overlay_shader,sizeof(overlay_shader),"ps");
+            auto blend=state.BlendState.RenderTarget[0];
+            auto& b=state.BlendState.RenderTarget[0];b.BlendEnable=TRUE;b.SrcBlend=D3D12_BLEND_SRC_ALPHA;b.DestBlend=D3D12_BLEND_INV_SRC_ALPHA;
+            b.SrcBlendAlpha=D3D12_BLEND_ZERO;b.DestBlendAlpha=D3D12_BLEND_ONE;
+            state.PS={ps->GetBufferPointer(),ps->GetBufferSize()};
+            checked(device->CreateGraphicsPipelineState(&state,IID_PPV_ARGS(&overlay_pipeline)),"D3D12 training overlay pipeline");
+            b=blend;
         }
         if(prefilter_passes()){
             compile_pixel(mk5crt::shader,sizeof(mk5crt::shader),"psPrefilter");
@@ -709,10 +735,21 @@ struct Mk5Window::Impl {
             }
             write_upload(stage_upload.Get(),stage_layout,staged.scaled,stage_w,stage_h);
         }
+        overlay_shown=!staged.overlay.empty();
+        if(overlay_shown){
+            if(!overlay_texture || overlay_layout.Footprint.Width!=w || overlay_layout.Footprint.Height!=h){
+                D3D12_RESOURCE_DESC d{};d.Dimension=D3D12_RESOURCE_DIMENSION_TEXTURE2D;d.Width=w;d.Height=h;d.DepthOrArraySize=1;d.MipLevels=1;d.Format=DXGI_FORMAT_B8G8R8A8_UNORM;d.SampleDesc.Count=1;
+                overlay_texture=make_resource(D3D12_HEAP_TYPE_DEFAULT,d,D3D12_RESOURCE_STATE_COPY_DEST);overlay_ready=false;
+                UINT64 bytes=0;device->GetCopyableFootprints(&d,0,1,0,&overlay_layout,nullptr,nullptr,&bytes);
+                overlay_upload=make_resource(D3D12_HEAP_TYPE_UPLOAD,buffer_desc(bytes),D3D12_RESOURCE_STATE_GENERIC_READ);
+                set_srv(kOverlaySrv,overlay_texture.Get(),d.Format);
+            }
+            write_upload(overlay_upload.Get(),overlay_layout,staged.overlay,w,h);overlay_pending=true;
+        }
         upload_pending=true;
         if(validate_graphics && (fighters_scaled?!fighter_validation_frames:
                                  scenery_scaled?!stage_validation_frames:!plain_validated)){
-            validation_source=image;
+            validation_source=image;validation_overlay=overlay_shown?staged.overlay:std::vector<uint32_t>{};
             validation_stage.swap(staged.scaled);
         }
         return true;
@@ -898,6 +935,13 @@ struct Mk5Window::Impl {
                     continue;
                 }
                 hash=(hash^(row[x]&0xffffff))*1099511628211ull;
+                // Blending is within one code on the GPU (D3D12 output merger precision): only where the overlay is translucent.
+                const auto overlay_alpha=[&]{
+                    if(validation_overlay.empty())return 0u;
+                    const unsigned ox=std::min(unsigned(std::max(u,0.f)*float(image_width)),image_width-1),oy=std::min(unsigned(std::max(v,0.f)*float(image_height)),image_height-1);
+                    return unsigned(validation_overlay[size_t(oy)*image_width+ox]>>24);
+                }();
+                const bool blended=overlay_alpha>0&&overlay_alpha<255;
                 const auto expected_at=[&](float su,float sv){
                     std::array<float,3> rgb{};
                     if(crt.phosphor())rgb=phosphor_row[x-unsigned(viewport.TopLeftX)];
@@ -908,7 +952,13 @@ struct Mk5Window::Impl {
                         if(!stage_sample(su,sv,rgb))rgb=sample(su,sv);
                         if(mk5crt::sample_index(sv*image_height)&1)for(float& value:rgb)value*=1-scanlines;
                     }
-                    return mk5color::apply(rgb,color_mode,float(brightness)/100);
+                    rgb=mk5color::apply(rgb,color_mode,float(brightness)/100);
+                    if(!validation_overlay.empty()){   // the overlay pass: its point-sampled texel over the stored 8-bit colour
+                        const unsigned ox=std::min(unsigned(std::max(u,0.f)*float(image_width)),image_width-1),oy=std::min(unsigned(std::max(v,0.f)*float(image_height)),image_height-1);
+                        const uint32_t o=validation_overlay[size_t(oy)*image_width+ox];const float a=float(o>>24)/255;
+                        if(a>0)for(unsigned c=0;c<3;++c)rgb[c]=float(o>>(16-8*c)&255)/255*a+std::round(std::clamp(rgb[c],0.f,1.f)*255)/255*(1-a);
+                    }
+                    return rgb;
                 };
                 // Returns the largest channel error and whether every channel is within its limit.
                 const auto compare=[&](const std::array<float,3>& expected_rgb,unsigned& worst){
@@ -917,7 +967,7 @@ struct Mk5Window::Impl {
                         const int actual=int((row[x]>>shift)&255);
                         const unsigned error=unsigned(std::abs(actual-int(std::lround(expected))));
                         worst=std::max(worst,error);
-                        const unsigned limit=crt.enabled()&&expected==0&&!prefilter_passes()&&!reconstruction?0u:tolerance;
+                        const unsigned limit=(crt.enabled()&&expected==0&&!prefilter_passes()&&!reconstruction?0u:tolerance)+(blended?1u:0u);
                         // Compare against the unrounded color so a whole-code error still fails.
                         if(error>limit&&!(color_rounding&&std::abs(actual-expected)<=D3D12_FLOAT32_TO_INTEGER_TOLERANCE_IN_ULP))ok=false;
                     }
@@ -976,7 +1026,7 @@ struct Mk5Window::Impl {
                     details<<" ["<<x<<","<<y<<" rgb="<<std::hex<<row[x]<<" expected="<<want<<std::dec<<" uv="<<u<<","<<v<<"]";}++mismatches;}
             }
         }
-        D3D12_RANGE none{0,0};readback->Unmap(0,&none);readback.Reset();validation_source.clear();validation_stage.clear();
+        D3D12_RANGE none{0,0};readback->Unmap(0,&none);readback.Reset();validation_source.clear();validation_stage.clear();validation_overlay.clear();
         validation_mismatches=mismatches;validation_max_error=max_error;validation_bezel_pixels=visible_bezel;validation_subtexel_pixels=subtexel_pixels;validation_image_hash=hash;++validation_frames;
         if(mismatches)throw std::runtime_error("D3D12 GPU pixel validation mismatches="+std::to_string(mismatches)+" max_error="+std::to_string(max_error)+details.str());
     }
@@ -989,6 +1039,7 @@ struct Mk5Window::Impl {
         if(upload_pending){
             copy_upload(texture.Get(),upload_buffer.Get(),upload_layout,texture_ready);
             if(stage_scaled)copy_upload(stage_texture.Get(),stage_upload.Get(),stage_layout,stage_texture_ready);
+            if(overlay_pending){copy_upload(overlay_texture.Get(),overlay_upload.Get(),overlay_layout,overlay_ready);overlay_pending=false;}
             upload_pending=false;
         }
         const bool validation=validate_graphics && !validation_source.empty();
@@ -1030,6 +1081,10 @@ struct Mk5Window::Impl {
              crt.gamma_out,crt.gain,crt.curvature,viewport.Height/image_height,crt.horizontal_sharpness,float(color_mode),float(brightness)/100,scalefx?3.f:0.f,
              viewport.TopLeftX,viewport.TopLeftY,viewport.Width,viewport.Height,float(decode_phosphor()),0,0,float(stage_scaled),float(fighters_scaled)};
         commands->SetGraphicsRoot32BitConstants(1,kShaderConstants,settings,0);commands->DrawInstanced(3,1,0,0);
+        if(overlay_shown && overlay_pipeline){
+            commands->SetPipelineState(overlay_pipeline.Get());commands->SetGraphicsRootDescriptorTable(0,srv_at(kOverlaySrv));
+            commands->DrawInstanced(3,1,0,0);commands->SetPipelineState(pipeline.Get());
+        }
         if(bezel)draw_bezel(); // after the game: the rounded glass corners cover the image corners
         if(validation)readback=copy_back(drawn,rest,readback_layout);
         else barrier(drawn,D3D12_RESOURCE_STATE_RENDER_TARGET,rest);
@@ -1168,13 +1223,13 @@ BootDiInputs Mk5Window::Inputs(BootDiInputs base)const{
         }
         impl->controller_count=impl->pads.count()+unsigned(hid.size());
     }else impl->controller_count=0;
-    for(unsigned p=0;p<2;++p)held[p]=mk5controls::clean(held[p],c.socd,impl->socd[p]);
+    for(unsigned p=0;p<2;++p){held[p]=mk5controls::clean(held[p],c.socd,impl->socd[p]);mk5training::held[p]=held[p];}
     base.in01=mk5controls::shared(held[0],held[1],base.in01,true);
     return base;
 }
 void Mk5Window::Present(const std::vector<uint32_t>& pixels,unsigned width,unsigned height,
                         const std::vector<uint32_t>& backdrop,
-                        const mk5presentation::FighterFrame& fighters){
+                        const mk5presentation::FighterFrame& fighters,const std::vector<mk5training::Box>& boxes){
     impl->check_failure();if(!impl->running)return;
     if(!width || !height || pixels.size()!=size_t(width)*height)throw std::runtime_error("MK5 window requires complete RGB frame");
     if(!backdrop.empty()&&backdrop.size()!=pixels.size())throw std::runtime_error("MK5 window requires complete backdrop frame");
@@ -1206,6 +1261,10 @@ void Mk5Window::Present(const std::vector<uint32_t>& pixels,unsigned width,unsig
         }
         else pending.fighters=fighters;
         pending.width=width;pending.height=height;pending.ready=true;
+        if(impl->controls.training){
+            for(unsigned p=0;p<2;++p)impl->history.Push(p,mk5training::held[p]);
+            mk5training::Draw(pending.overlay,width,height,impl->history,boxes);
+        }
     }
     LARGE_INTEGER stamp{};QueryPerformanceCounter(&stamp);{std::lock_guard<std::mutex> lock(impl->stats_mutex);if(impl->frames>=60)impl->producer_timing.observe(stamp.QuadPart,impl->frequency);}
     ++impl->frames;SetEvent(impl->compose_wake?impl->compose_wake:impl->wake);
@@ -1213,6 +1272,7 @@ void Mk5Window::Present(const std::vector<uint32_t>& pixels,unsigned width,unsig
 void Mk5Window::Frontier(uint32_t pc){if(impl->hwnd)PostMessageW(impl->hwnd.load(),kFrontier,pc,0);}
 uint64_t Mk5Window::frames()const{return impl->frames;}
 bool Mk5Window::RunAhead()const{return impl->controls.runAhead && !impl->ahead_stopped;}
+bool Mk5Window::Training()const{return impl->controls.training;}
 uint64_t Mk5Window::input_events()const{return impl->events;}
 bool Mk5Window::GraphicsValidationEnabled()const{return impl->validate_graphics;}
 std::string Mk5Window::presentation_json()const{

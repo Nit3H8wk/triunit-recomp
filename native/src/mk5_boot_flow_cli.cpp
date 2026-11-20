@@ -2,6 +2,7 @@
 #include "mk5_task_body.hpp"
 #include "mk5_scanout.hpp"
 #include "mk5_window.hpp"
+#include "mk5_hitbox.hpp"
 #include "mk5_audio_link.hpp"
 #include "mk5_save_state.hpp"
 #include "mk5_profile_presentation.hpp"
@@ -216,6 +217,9 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered,Mk5StateHost host){
                     // Run-ahead (F6): each real frame is held; the frame after it, run from a snapshot, is shown, then undone.
                     const bool run_ahead=prepared_window&&prepared_window->RunAhead()&&host.audio&&host.gain&&screen;
                     mk2::state::Snapshot ahead;
+                    // Training mode (F8): the window draws the inputs and the boxes the strike check tests (mk5_hitbox.hpp).
+                    mk5hitbox::enabled=prepared_window&&prepared_window->Training();
+                    const auto boxes=[&]{mk5hitbox::Capture(mk5hitbox::kMk1,m.ram);return mk5hitbox::Take();};
                     const uint64_t call_limit=o.visual?(o.window_frames?20000ull+uint64_t(o.window_frames)*16:uint64_t(-1)):o.main_slices;
                     for(uint64_t call=0;call<call_limit;++call){
                         if(o.visual && !window && call>=20000){window_stop="window-start-budget";break;}
@@ -233,7 +237,7 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered,Mk5StateHost host){
                             }
                             if(!run_ahead || !window->RunAhead()){
                                 window->Present(screen->pixels(),screen->width(),screen->height(),
-                                                screen->backdrop_pixels(),screen->fighter_frame());
+                                                screen->backdrop_pixels(),screen->fighter_frame(),boxes());
                                 shown_frame=screen->frames();if(o.window_frames && window->frames()>=o.window_frames){window_stop="window-frame-limit";break;}
                             }
                         }
@@ -244,7 +248,7 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered,Mk5StateHost host){
                                 // The next frame with the same live inputs: shown, never heard, then undone at a boundary.
                                 const auto fields=[&](auto& a){a(runner,*screen,*host.audio,*host.gain);};
                                 const auto real=screen->frames();const auto inputs=o.body.active_di;bool closed=false;
-                                ahead.Save(fields);mk5audio::SetGameAudioSpeculative(true);
+                                ahead.Save(fields);mk5audio::SetGameAudioSpeculative(true);mk5hitbox::strikes.clear();   // the shown frame's own
                                 while(screen->frames()==real){
                                     if(!window->Pump()){closed=true;break;}
                                     o.body.active_di=window->Inputs(*active_base);
@@ -252,7 +256,7 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered,Mk5StateHost host){
                                     if(next.stop!=TaskBodyStop::Budget && next.stop!=TaskBodyStop::DiLimit)break; // the real run meets it
                                 }
                                 if(!closed && screen->frames()>real)window->Present(screen->pixels(),screen->width(),screen->height(),
-                                                                                     screen->backdrop_pixels(),screen->fighter_frame());
+                                                                                     screen->backdrop_pixels(),screen->fighter_frame(),boxes());
                                 runner.CompactDiagnostics();mk5audio::TrimGameAudioDiagnostics();
                                 ahead.Load(fields);mk5audio::SetGameAudioSpeculative(false);o.body.active_di=inputs;
                                 shown_frame=real;

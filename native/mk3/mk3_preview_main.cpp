@@ -45,6 +45,7 @@
 #include "../launcher/launcher_legal.hpp"
 #include "mk5_audio_output.hpp"
 #include "mk5_window.hpp"
+#include "mk5_hitbox.hpp"
 #include "mk5_profile_presentation.hpp"
 #include "mk5_stage_bicubic.hpp"
 #include <chrono>
@@ -172,6 +173,7 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
         else if (a == "--strict") strict = true;
         else if (a == "--hashes") hashes = true;
         else if (a == "--run-ahead") run_ahead = true;
+        else if (a == "--training") mk5hitbox::enabled = true;   // headless: the boxes in each --hashes frame line
         else if (a == "--dma-census") census_on = true;
         else if (a == "--tape" && n + 1 < argc) tape_file = argv[++n];
         else if (a == "--watch-dcs" && n + 1 < argc) watch_dcs = int(std::stoul(mk3host::Narrow(argv[++n]), nullptr, 0) & 0xffff);
@@ -253,6 +255,7 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
         uint64_t fighter_frames = 0, fighter_layers = 0, fighter_mismatched = 0;
         mk5presentation::FighterFrame fighters_shown;
         std::vector<uint32_t> backdrop_shown;
+        std::vector<mk5training::Box> frame_boxes;
 
         std::unique_ptr<Mk5Window> window;
         if (window_on) {
@@ -307,6 +310,7 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
         // Run-ahead (F6): each real frame is held; the frame after it, run from a snapshot at the next instruction
         // boundary with the same inputs, is shown (never heard), then undone. 1: snapshot due, 2: speculating, 3: undo due.
         if (window && window->RunAhead()) run_ahead = true;
+        if (window && window->Training()) mk5hitbox::enabled = true;
         if (census_on) run_ahead = false;
         int ahead = 0;
         mk2::state::Snapshot ahead_state;
@@ -360,9 +364,10 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
             if (scenery) backdrop_shown = s.backdrop; else backdrop_shown.clear();
             fighters_shown.layers.clear();
             if (s.fighters.serial) fighters_shown = s.fighters;
-            window->Present(shown, mk3::Scanout::kFrameWidth, mk3::Scanout::kFrameHeight, backdrop_shown, fighters_shown);   // paced to the 146234-clock raster
+            window->Present(shown, mk3::Scanout::kFrameWidth, mk3::Scanout::kFrameHeight, backdrop_shown, fighters_shown, frame_boxes);   // paced to the 146234-clock raster
         };
         scanout.presented = [&](const mk3::Scanout& s) {
+            mk5hitbox::Capture(mk5hitbox::kMk3, b.o.ram); frame_boxes = mk5hitbox::Take();   // training mode (F8), read-only
             if (ahead == 2) {
                 ahead = 3;
                 if (hashes) std::printf("{\"ahead\":%llu,\"rgb\":\"%016llx\"}\n", (unsigned long long)s.frames, (unsigned long long)HashRgb(s.frame));
@@ -428,6 +433,12 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
                                 (unsigned long long)HashRgb(s.frame), (unsigned long long)HashRgb(previous_rgb),
                                 (unsigned long long)HashWords(b.o.palette));
                     if (!state_plan.empty() || run_ahead) { std::printf(",\"pcm\":\"%016llx\"", (unsigned long long)pcm_hash); pcm_hash = 0xcbf29ce484222325ull; }
+                    if (mk5hitbox::enabled) {
+                        std::printf(",\"boxes\":[");
+                        for (size_t i = 0; i < frame_boxes.size(); ++i)
+                            std::printf("%s[%d,%d,%d,%d,%d]", i ? "," : "", frame_boxes[i].x, frame_boxes[i].y, frame_boxes[i].w, frame_boxes[i].h, int(frame_boxes[i].kind));
+                        std::printf("]");
+                    }
                     if (layer2) std::printf(",\"scenery\":%llu,\"fighters\":%zu,\"blood\":%zu,\"rm\":\"%016llx\"", (unsigned long long)flagged, s.fighters.serial ? s.fighters.layers.size() : size_t(0),
                                             layers->blood.stains.size(),
                                             (unsigned long long)(composed.empty() ? 0 : HashRgb(composed)));
@@ -469,6 +480,7 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
             if ((!state_requests.empty() || ahead == 1 || ahead == 3) && !stop) return true;   // before the observers' Step: Run resumes at this instruction
             if (census_on) census.queue.Step(board.s.pc, board.s.a.data());
             if (layer2) layers->Step(board.s.pc, board.s.a.data());
+            if (board.s.pc == mk5hitbox::kMk3.strike_pc) mk5hitbox::Strike(mk5hitbox::kMk3, board.s.a.data(), b.o.ram);
             if (tape_next < tape.size()) {
                 const uint64_t cycle = board.Cycles();
                 if (cycle >= 1000 && !(board.s.status & 0x02000000u))   // ST.P: a PIXBLT restart re-entry is not a boundary
@@ -483,7 +495,7 @@ int wmain(int argc, wchar_t** argv) {   // -municode (generate.FLAGS): wide argu
                 const auto requests = std::move(state_requests);
                 state_requests.clear();
                 for (const auto r : requests) state_request(r);
-                if (ahead == 1) { ahead_state.Save(ahead_fields); ahead = 2; }
+                if (ahead == 1) { ahead_state.Save(ahead_fields); ahead = 2; mk5hitbox::strikes.clear(); }   // the shown frame's own
                 else if (ahead == 3) { ahead_state.Load(ahead_fields); ahead = 0; if (window) poll(); }
             }
             if (ahead >= 2) { ahead_state.Load(ahead_fields); ahead = 0; }   // closed during the speculative frame

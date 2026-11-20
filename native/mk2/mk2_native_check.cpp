@@ -12,6 +12,7 @@
 #include "mk2_valid_cmos_startup.hpp"
 #include "mk2_valid_cmos_draw.hpp"
 #include "mk5_window.hpp"
+#include "mk5_hitbox.hpp"
 #include "mk5_program.hpp"
 #include "mk5_profile_presentation.hpp"
 #define WIN32_LEAN_AND_MEAN
@@ -94,6 +95,7 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
     if(music_mode && !remastered && std::string(music_mode)!="original")throw std::runtime_error("invalid MK2 music mode");
     std::unique_ptr<Mk5Window> window;
     if (show_window) window=std::make_unique<Mk5Window>(cmos_live&&!remastered);
+    mk5hitbox::enabled=window&&window->Training();   // training mode (F8): boxes the strike check tests
     bool stop_requested=false,valid_host_admitted=false,live_boundary_validated=false;
     // Run-ahead (F6): the real frames are held; the frame after each one, run from a snapshot, is shown, then undone.
     bool hold_frames=false,speculating=false;
@@ -190,7 +192,7 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
                 if(!pump_host(94875+uint64_t(edge.scanline_events-1)*6325))return;
             } else if (!window->Pump()) throw std::runtime_error("native diagnostic window closed");
             if(!hold_frames || speculating)window->Present(scanout.presentation(),scanout.width(),scanout.height(),
-                                                           scanout.backdrop_pixels(),scanout.fighter_frame());
+                                                           scanout.backdrop_pixels(),scanout.fighter_frame(),mk5hitbox::Take());
         }
     });
     const auto host_range=host_controls&&!cmos_host&&!cmos_live ? mk2::HostControlRange(0,int(mk2::kFirstFightWindowCount)-2) : mk2::HostControlBounds{};
@@ -255,7 +257,7 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
                 const mk2::LiveAudio live_audio{audio.get(),music.get()};
                 const auto fields=[&](auto& a){mk2::state::Session(a,continuation,*machine,scanout,live_audio);};
                 const auto host=std::make_tuple(raster_tick,last_host_input,last_host_input_tick,provider_requests);
-                ahead.Save(fields);speculating=true;
+                ahead.Save(fields);speculating=true;mk5hitbox::strikes.clear();   // the shown frame's own
                 for(const auto real=scanout.frames();!stop_requested && scanout.frames()==real;)
                     continuation=mk2::ResumeValidLiveHost(program,std::move(continuation),*machine,frame_end());
                 ahead.Load(fields);speculating=false;

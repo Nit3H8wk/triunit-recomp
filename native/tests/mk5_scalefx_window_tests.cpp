@@ -1,6 +1,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include "mk5_window.hpp"
+#include "mk5_controls.hpp"
 #include "mk5_audio_link.hpp"
 #include "mk5_stage_bicubic.hpp"
 #include "mk5_fighter_bicubic.hpp"
@@ -14,8 +15,8 @@
 #include <stdexcept>
 int main(int argc,char** argv){try{
  const std::string group=argc==2?argv[1]:"";
- if(group!="effects"&&group!="crt"&&group!="stage"&&group!="fighter"&&group!="hdr"&&group!="frame")
-  throw std::runtime_error("Choose the effects, crt, stage, fighter, hdr or frame test group");
+ if(group!="effects"&&group!="crt"&&group!="stage"&&group!="fighter"&&group!="hdr"&&group!="frame"&&group!="training")
+  throw std::runtime_error("Choose the effects, crt, stage, fighter, hdr, frame or training test group");
  mk5audio::detail::hooks.output_clock=true;
  SetEnvironmentVariableA("MK1_GRAPHICS_VALIDATE","1");SetEnvironmentVariableA("MK1_FULLSCREEN","0");SetEnvironmentVariableA("MK1_BEZEL","1");
  SetEnvironmentVariableA("MK1_FILTER","nearest");SetEnvironmentVariableA("MK1_COLOR","warm");SetEnvironmentVariableA("MK1_BRIGHTNESS","110");
@@ -250,6 +251,22 @@ int main(int argc,char** argv){try{
   std::cout<<"PASS DX12 "<<preset<<" ScaleFX "<<amount<<" "<<filter<<" scale "<<scale<<" CAS "<<cas<<" bilateral "<<bilateral<<" SMAA "<<smaa<<" bezel "<<(bezel?"on":"off")<<std::endl;
   return report;
  };
+ if(group=="training"){
+  // Training mode (F8): the overlay (input history and boxes) blended over the game area, checked against the CPU
+  // reference of the overlay pass, with and without the television frame.
+  mk5controls::Config controls;controls.training=1;SetEnvironmentVariableA("MK1_CONTROLS",mk5controls::format(controls).c_str());
+  mk5training::held[0]=1u<<mk5controls::Right|1u<<mk5controls::HighPunch;mk5training::held[1]=1u<<mk5controls::Down;
+  SetEnvironmentVariableA("MK1_SCANLINES","0");
+  for(const bool bezel:{false,true}){
+   SetEnvironmentVariableA("MK1_BEZEL",bezel?"1":"0");SetEnvironmentVariableA("MK1_CRT_PRESET","off");SetEnvironmentVariableA("MK1_SCALEFX","0");
+   Mk5Window window;window.Present(image,400,254,{},{},{{100,60,80,120,mk5training::Body},{170,90,40,20,mk5training::Strike}});
+   std::string report;const auto until=GetTickCount64()+5000;
+   while(GetTickCount64()<until){window.Pump();report=window.presentation_json();if(report.find("\"gpu_validation_frames\":1")!=std::string::npos)break;Sleep(5);}
+   if(report.find("\"gpu_validation_frames\":1")==std::string::npos||report.find("\"gpu_validation_mismatches\":0")==std::string::npos)
+    throw std::runtime_error("Training overlay validation failed: "+report);
+  }
+  std::cout<<"PASS training overlay window\n";return 0;
+ }
  if(group=="effects"){
   const auto verify_scale=[&](const char* mode,unsigned width,unsigned height){
    const auto report=verify("off","0",false,true,"nearest",mode);

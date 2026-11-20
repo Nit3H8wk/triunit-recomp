@@ -1,6 +1,7 @@
 #include "mk5_task_body.hpp"
 #include "mk5_audio_link.hpp"
 #include "mk5_read_map.hpp"
+#include "mk5_hitbox.hpp"
 #include <algorithm>
 #include <stdexcept>
 
@@ -46,6 +47,7 @@ void Mk5TaskBodyRunner::pre(uint32_t pc){
     if(pc==kMainLoop && main_mode){if(main_started)++result.main_loops;main_started=true;}
     --remaining;++result.instruction_count;
     if(irq.CheckBoundary(pc))throw TaskBodyStop::IrqHandler;
+    if(pc==mk5hitbox::kMk1.strike_pc)mk5hitbox::Strike(mk5hitbox::kMk1,s.a.data(),m.ram);   // training mode, read-only
     if((pc==0xffde7ad0 || pc==0xffc7a700 || pc==0xffc9f010 || pc==0xffca3d00) && video)
         video->ObserveBlood(pc,s);
     // Constructor returns for selection poses, finishers, afterimages and Test Your Might.

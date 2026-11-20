@@ -6,11 +6,13 @@ void need(bool ok,const char* why){if(!ok)throw std::runtime_error(why);}
 int main(){try{
  const Config d;Config c;
  need(parse(format(d),c)&&format(c)==format(d),"format/parse round trip");
- c.keys[1][Run]=0x70;c.pad[0][Block]=1u<<20;c.socd=1;c.runAhead=1;Config back;
- need(parse(format(c),back)&&back.keys[1][Run]==0x70&&back.pad[0][Block]==1u<<20&&back.socd==1&&back.runAhead==1,"edited controls survive the text form");
+ c.keys[1][Run]=0x70;c.pad[0][Block]=1u<<20;c.socd=1;c.runAhead=1;c.training=1;Config back;
+ need(parse(format(c),back)&&back.keys[1][Run]==0x70&&back.pad[0][Block]==1u<<20&&back.socd==1&&back.runAhead==1&&back.training==1,"edited controls survive the text form");
  for(const char* bad:{"","1,2","zz,"}) {Config x=d;need(!parse(bad,x)&&format(x)==format(d),"invalid text rejected without change");}
- auto text=format(d);text.back()='2';need(!parse(text,c),"run-ahead out of range rejected");
- text=format(c);text.resize(text.size()-2);need(parse(text,back)&&back.socd==1&&back.runAhead==0,"a profile from before run-ahead keeps SOCD, run-ahead off");
+ auto text=format(d);text.back()='2';need(!parse(text,c),"training out of range rejected");
+ text=format(c);text.resize(text.size()-2);need(parse(text,back)&&back.runAhead==1&&back.training==0,"a profile from before training keeps run-ahead, training off");
+ text.back()='2';need(!parse(text,c),"run-ahead out of range rejected");
+ text=format(c);text.resize(text.size()-4);need(parse(text,back)&&back.socd==1&&back.runAhead==0&&back.training==0,"a profile from before run-ahead keeps SOCD, run-ahead off");
  text.back()='2';need(!parse(text,back),"SOCD mode out of range rejected");
  need(!parse(format(c)+",0",back),"an extra field is rejected");
  // Neutral: opposite directions cancel each other, other actions pass.

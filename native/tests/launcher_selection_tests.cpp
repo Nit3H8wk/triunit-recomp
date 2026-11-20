@@ -180,8 +180,9 @@ int wmain(int argc,wchar_t** argv){
   app.act(controlCell+25+mk5controls::Up);verify(app.capture<0,"controller directions are not mappable");
   app.act(socdControl);verify(app.draftControls.socd==1,"SOCD toggles to last input");
   app.act(runAheadControl);verify(app.draftControls.runAhead==1,"run-ahead toggles to 1 frame");
+  app.act(trainingControl);verify(app.draftControls.training==1,"training mode toggles on");
   app.act(210);const auto stored=app.backend.loadControls();
-  verify(stored.keys[0][mk5controls::HighPunch]==81&&stored.socd==1&&stored.runAhead==1,"controls saved and reloaded");
+  verify(stored.keys[0][mk5controls::HighPunch]==81&&stored.socd==1&&stored.runAhead==1&&stored.training==1,"controls saved and reloaded");
   app.act(211);app.act(210);verify(mk5controls::format(app.backend.loadControls())==mk5controls::format(mk5controls::Config{}),"original controls restored");
   app.act(212);
   std::cout<<"PASS: cabinet selection and rollback; 608 individual video values and 404 combined INI round trips across both games and editions; controls tab\n";return 0;

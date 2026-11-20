@@ -26,19 +26,20 @@ struct Config {
     std::array<std::array<uint32_t,Count>,2> pad{{{0,0,0,0,X,RB|RT,Y,A,B,LB|LT,BACK,START},{0,0,0,0,X,RB|RT,Y,A,B,LB|LT,BACK,START}}};
     int socd=0; // 0 neutral (an arcade lever cannot hold both), 1 last input wins
     int runAhead=0; // frames shown ahead of the game (0 or 1): one frame less input lag than the arcade
+    int training=0; // training overlay (mk5_training.hpp): input history and the game's boxes
 };
 // Text form for the launcher profile and MK1_CONTROLS: 24 keys, 24 pad masks, SOCD, run-ahead (absent before F6: 0),
-// comma-separated hex.
+// training (absent before F8: 0), comma-separated hex.
 inline std::string format(const Config& c){
     std::string out;char cell[16];
     for(const auto& p:c.keys)for(auto k:p){std::snprintf(cell,sizeof cell,"%x,",unsigned(k));out+=cell;}
     for(const auto& p:c.pad)for(auto m:p){std::snprintf(cell,sizeof cell,"%x,",unsigned(m));out+=cell;}
-    return out+std::to_string(c.socd)+","+std::to_string(c.runAhead);
+    return out+std::to_string(c.socd)+","+std::to_string(c.runAhead)+","+std::to_string(c.training);
 }
 inline bool parse(const std::string& text,Config& c){
-    Config out;size_t at=0;std::array<unsigned long,2*Count*2+2> v{};
+    Config out;size_t at=0;std::array<unsigned long,2*Count*2+3> v{};
     const size_t fields=std::count(text.begin(),text.end(),',')+1;
-    if(fields!=v.size()&&fields!=v.size()-1)return false;
+    if(fields>v.size()||fields<v.size()-2)return false;
     for(size_t i=0;i<fields;++i){
         const size_t end=i+1<fields?text.find(',',at):text.size();
         if(end==std::string::npos||end==at||end-at>8||text.find_first_not_of("0123456789abcdef",at)<end)return false;
@@ -46,8 +47,9 @@ inline bool parse(const std::string& text,Config& c){
     }
     for(size_t i=0;i<2*Count;++i){if(v[i]>255)return false;out.keys[i/Count][i%Count]=uint8_t(v[i]);}
     for(size_t i=0;i<2*Count;++i)out.pad[i/Count][i%Count]=i%Count<HighPunch?0:uint32_t(v[2*Count+i]);
-    if(v[2*Count*2]>1||v.back()>1)return false;
-    out.socd=int(v[2*Count*2]);out.runAhead=int(v.back());c=out;return true;
+    const auto* tail=&v[2*Count*2];
+    if(tail[0]>1||tail[1]>1||tail[2]>1)return false;
+    out.socd=int(tail[0]);out.runAhead=int(tail[1]);out.training=int(tail[2]);c=out;return true;
 }
 // Held actions (bit per Action) of one player.
 inline uint32_t from_keys(const Config& c,unsigned player,const std::array<bool,256>& keys){

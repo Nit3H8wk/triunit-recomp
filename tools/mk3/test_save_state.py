@@ -70,4 +70,25 @@ class RunAheadTests(unittest.TestCase):
                 print(edition,'frames compared',len(on['frames']),'frames ahead',len(on['ahead']))
 
 
+
+class TrainingTests(unittest.TestCase):
+    """Training mode (F8), headless with the legal round start tape into the fight, where the CPU attacks P1: every frame
+    line is the same without --training (the boxes only read RAM and registers), the fight frames hold both fighters'
+    body boxes around their objects, and the strike check reports attack boxes."""
+    @unittest.skipUnless((ROOT/'roms/mk3').is_dir(),'requires authenticated ROMs')
+    def test_boxes_read_only_and_on_the_fighters(self):
+        frames=4000
+        with preview.Preview() as p:
+            run=lambda *extra:p.run('--hashes','--tape',TAPE,'--edition','original','--frames',frames,*extra,timeout=1800)['frames']
+            off,on=run(),run('--training')
+            self.assertEqual([{k:v for k,v in f.items() if k!='boxes'} for f in on],off,'training mode changed a frame line')
+            fight=[f['boxes'] for f in on if sum(b[4]==0 for b in f['boxes'])==2]
+            strikes=sum(b[4]==1 for f in on for b in f['boxes'])
+            self.assertGreater(len(fight),300,'too few fight frames with both body boxes')
+            self.assertGreater(strikes,0,'the strike check reported no attack box')
+            for boxes in fight:
+                for x,y,w,h,kind in boxes:self.assertTrue(0<w<400 and 0<h<254 and -400<x<800 and -254<y<508,boxes)
+            print('frames',len(on),'fight frames',len(fight),'strikes',strikes)
+
+
 if __name__=='__main__':unittest.main()

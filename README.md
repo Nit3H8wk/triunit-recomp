@@ -161,6 +161,12 @@ layer: the game's state, rules and timing do not change.
   the same as without it. It needs about twice the CPU per frame; when a
   frame does not fit (the audio queue starts to drain), it turns itself off
   for that session (`"run_ahead":"stopped"` in the session log).
+- **Training mode (off by default, all three games).** *Settings > Controls >
+  Training mode* draws over the image each player's input history (direction,
+  buttons, frames held) and the boxes the game itself tests: each fighter's
+  body box, built by the game's own strike-check rule, in blue, and every
+  attack box the strike check tests, in red. The overlay only reads the
+  game's memory and registers; the game runs exactly as without it.
 - Keyboard and XInput controllers work in the games and in the app.
 
 ### Audio

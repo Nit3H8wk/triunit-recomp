@@ -116,7 +116,7 @@ enum MenuAudioControl {menuVolume=281,menuMute};
 enum DisplayControl {displayPage=290,hdrMode,hdrPaper,hdrPeak,hdrHighlights};
 constexpr int launcherTab=3,controlsTab=6,tabCount=7;
 // CONTROLS tab cells: 300 + player*50 + column*25 + action (column 0 keyboard, 1 controller); 390 SOCD.
-constexpr int controlCell=300,socdControl=390,runAheadControl=391;
+constexpr int controlCell=300,socdControl=390,runAheadControl=391,trainingControl=392;
 constexpr Rect menuVolumeBox{969,700,166,54},menuMuteBox{1145,700,84,54};
 struct App {
     HWND window=nullptr;Backend backend;std::unique_ptr<Renderer> graphics;
@@ -297,7 +297,7 @@ struct App {
     }
     // CONTROLS tab cells (ids, boxes and their player / column / action).
     static std::tuple<int,int,unsigned> cell(int id){const int n=id-controlCell;return {n/50,n%50/25,unsigned(n%25)};}
-    static Rect cellBox(int id){const auto [player,column,action]=cell(id);return {560+float(player*2+column)*170,368+float(action)*28,160,26};}
+    static Rect cellBox(int id){const auto [player,column,action]=cell(id);return {560+float(player*2+column)*170,368+float(action)*27,160,26};}
     static std::vector<int> controlCells(){
         std::vector<int> ids;for(int player:{0,1})for(int column:{0,1})for(unsigned a=0;a<mk5controls::Count;++a)
             if(!column||a>=mk5controls::HighPunch)ids.push_back(controlCell+player*50+column*25+int(a));
@@ -395,7 +395,7 @@ struct App {
         if(!settings&&page!=pagePlay)for(const auto& button:pageButtons())controls.push_back({button.id,button.box,button.enabled});
         if(settings){
             for(int i=0;i<tabCount;++i)controls.push_back({220+i,{300+float(i)*134,294,134,40},tabEnabled(i)});
-            if(category==controlsTab){for(int id:controlCells())controls.push_back({id,cellBox(id),true});controls.push_back({socdControl,{969,708,260,28},true});controls.push_back({runAheadControl,{969,742,260,28},true});}
+            if(category==controlsTab){for(int id:controlCells())controls.push_back({id,cellBox(id),true});controls.push_back({socdControl,{969,698,260,28},true});controls.push_back({runAheadControl,{969,730,260,28},true});controls.push_back({trainingControl,{969,762,260,28},true});}
             if(category==0){float y=350;for(int id:videoControls()){controls.push_back({id,{969,y,260,54},videoControlEnabled(id)});y+=60;}}
             if(category==1){controls.push_back({245,{969,350,260,54},musicAvailable||draft.remastered});controls.push_back({205,{969,420,260,54},true});controls.push_back({243,{969,490,260,54},false});controls.push_back({244,{969,560,260,54},false});}
             if(category==2){float y=350;for(int id:displayControls()){controls.push_back({id,{969,y,260,54},videoControlEnabled(id)});y+=60;}}
@@ -577,6 +577,7 @@ struct App {
             }
             if(id==socdControl)draftControls.socd=!draftControls.socd;
             if(id==runAheadControl)draftControls.runAhead=!draftControls.runAhead;
+            if(id==trainingControl)draftControls.training=!draftControls.training;
         }
     }
     std::vector<int> actions()const{
@@ -595,7 +596,7 @@ struct App {
             if(gameVolumeEnabled())a.push_back(270);
             if(backend.adjustmentsAvailable())a.push_back(271);
             if(resetScoresPending){a.push_back(272);a.push_back(273);}
-        }else if(category==controlsTab){a=controlCells();a.push_back(socdControl);a.push_back(runAheadControl);}
+        }else if(category==controlsTab){a=controlCells();a.push_back(socdControl);a.push_back(runAheadControl);a.push_back(trainingControl);}
         else a={202,203,204,206,230,menuVolume,menuMute};
         a.insert(a.end(),{210,211,212});return a;
     }
@@ -1137,19 +1138,21 @@ struct App {
             g.text(L"ACTION",306+shift,346,12,muted,1);
             for(int k=0;k<4;++k)g.text(std::array<const wchar_t*,4>{L"P1 KEYBOARD",L"P1 CONTROLLER",L"P2 KEYBOARD",L"P2 CONTROLLER"}[size_t(k)],560+shift+float(k)*170,346,12,muted,1);
             for(unsigned a=0;a<mk5controls::Count;++a){
-                const float y=370+float(a)*28;g.text(mk5controls::names[a],306+shift,y+5,13,white,.4f);
+                const float y=370+float(a)*27;g.text(mk5controls::names[a],306+shift,y+5,13,white,.4f);
                 if(a<mk5controls::HighPunch)for(int player:{0,1})g.text(L"D-PAD / STICK",730+shift+float(player)*340+10,y+7,11,muted,.6f);
             }
             for(int id:controlCells()){auto box=cellBox(id);box.x+=shift;const auto [player,column,action]=cell(id);
                 control(id,box,capture==id?L"PRESS...":column?padName(draftControls.pad[size_t(player)][action]):keyName(draftControls.keys[size_t(player)][action]),true,capture==id,11);}
-            g.text(L"OPPOSITE DIRECTIONS (SOCD)",306+shift,713,13,white,.4f);
-            g.text(L"An arcade lever cannot hold both: neutral is the original.",560+shift,715,11,muted,.2f);
-            control(socdControl,{969+shift,708,260,28},draftControls.socd?L"LAST INPUT WINS":L"NEUTRAL",true,false,12);
-            g.text(L"RUN-AHEAD",306+shift,747,13,white,.4f);
-            g.text(L"Shows the next frame: one frame less input lag. Off is the arcade.",560+shift,749,11,muted,.2f);
-            control(runAheadControl,{969+shift,742,260,28},draftControls.runAhead?L"1 FRAME":L"OFF",true,false,12);
-            g.text(L"SAVE STATES",306+shift,782,13,white,.4f);
-            g.text(L"In the game: F5 saves, F7 loads. Every game and edition; one slot each, in saves.",560+shift,784,11,muted,.2f);
+            g.text(L"OPPOSITE DIRECTIONS (SOCD)",306+shift,703,13,white,.4f);
+            g.text(L"An arcade lever cannot hold both: neutral is the original.",560+shift,705,11,muted,.2f);
+            control(socdControl,{969+shift,698,260,28},draftControls.socd?L"LAST INPUT WINS":L"NEUTRAL",true,false,12);
+            g.text(L"RUN-AHEAD",306+shift,735,13,white,.4f);
+            g.text(L"Shows the next frame: one frame less input lag. Off is the arcade.",560+shift,737,11,muted,.2f);
+            control(runAheadControl,{969+shift,730,260,28},draftControls.runAhead?L"1 FRAME":L"OFF",true,false,12);
+            g.text(L"TRAINING MODE",306+shift,767,13,white,.4f);
+            g.text(L"Shows each player's inputs and the game's hit boxes over the image.",560+shift,769,11,muted,.2f);
+            control(trainingControl,{969+shift,762,260,28},draftControls.training?L"ON":L"OFF",true,false,12);
+            g.text(L"SAVE STATES  In the game: F5 saves, F7 loads. Every game and edition; one slot each, in saves.",306+shift,795,11,muted,.2f);
         }else{
             row(202,350,L"LAUNCHER FPS LIMIT",L"Unfocused: 2 FPS (10 while building). Minimized: paused.",std::to_wstring(draftLauncher.fps)+L" FPS");
             row(203,420,L"LAUNCHER V-SYNC",L"Syncs the launcher with the monitor.",draftLauncher.vsync?L"ON":L"OFF");

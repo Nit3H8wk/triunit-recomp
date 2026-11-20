@@ -135,7 +135,7 @@ Ports Input::Poll() {
             }
         }
     }
-    for (unsigned p = 0; p < 2; ++p) held[p] = mk5controls::clean(held[p], c.socd, impl->socd[p]);
+    for (unsigned p = 0; p < 2; ++p) mk5training::held[p] = held[p] = mk5controls::clean(held[p], c.socd, impl->socd[p]);
     return Held(held, keys);
 }
 

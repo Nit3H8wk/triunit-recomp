@@ -3,6 +3,7 @@
 #include "mk2_valid_cmos_draw.hpp"
 #include <chrono>
 #include "mk5_program.hpp"
+#include "mk5_hitbox.hpp"
 #include "mk2_valid_cmos_continuation.hpp"
 #include "mk2_oracle_digest.hpp"
 #include <iostream>
@@ -160,6 +161,8 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
             result.cpu_trace.push_back(row);
         }
         const auto instruction_pc = s.next_pc;
+        if(instruction_pc==mk5hitbox::kMk2.strike_pc)mk5hitbox::Strike(mk5hitbox::kMk2,s.a.data(),o.out.main_ram);   // training mode, read-only
+        else if(instruction_pc==0xff805020 && s.a[0]==0x0105d480)mk5hitbox::Capture(mk5hitbox::kMk2,o.out.main_ram);   // the world objects' DMA
         if(instruction_pc==0xff818d00 || instruction_pc==0xff805020 || instruction_pc==0xff805040 || instruction_pc==0xff9b0e60)
             o.ObservePresentation();
         try { if (!(first_fight ? ExecuteFirstFightExtras(o) : selection ? ExecuteSelectionExtras(o) : start_release ? ExecuteStartReleaseExtras(o) : (prestart_wait || start_input) ? ExecutePreStartWaitExtras(o) : next_wait ? ExecuteNextWaitExtras(o) : start_wait && ExecuteStartWaitExtras(o))) {
