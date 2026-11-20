@@ -153,11 +153,13 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
         o.shadow_journal.clear();std::tie(s.a,s.b,s.status)=shadow_saved;s.next_pc=mk2::wide::kWalkStart;
         if(o.shadow_fault)o.out.video.margin_fault_pc=shadow_fault_pc;
         o.shadow=false;shadow_skip=true;o.out.video.margin_faults+=o.shadow_fault;
+        o.out.video.wide_walk_drawn=!o.shadow_fault;   // else the real walk's DMAs are mirrored too
     };
     while (live_host ? s.cycles<end_cycle :
            s.next_pc != end_pc || (host_controls ? s.cycles<end_cycle : s.cycles!=end_cycle)) {
         if(o.shadow){
             if(s.next_pc==mk2::wide::kKick)s.next_pc=mk2::wide::kKickEnd;
+            if(s.next_pc==mk2::wide::kMarker&&shadow_walk)o.out.video.wide_shadow_post=true;
             const uint32_t pc=s.next_pc;
             if(!shadow_walk&&pc==mk2::wide::kStreamerReturn){   // the streamer returned: the walk from its start, with the real registers
                 std::tie(s.a,s.b,s.status)=shadow_saved;s.next_pc=mk2::wide::kWalkStart;shadow_walk=true;continue;
@@ -168,7 +170,7 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
                 if(!(shadow_walk&&pc==mk2::wide::kWalkEnd)){o.shadow_fault=true;shadow_fault_pc=pc|(shadow_walk?1:0);}
                 shadow_end();continue;
             }
-        }else if(s.next_pc==mk2::wide::kWalkStart && o.out.video.MarginsEnabled()){
+        }else if(s.next_pc==mk2::wide::kWalkStart && o.out.video.WideEnabled()){
             const auto ram_long=[&](uint32_t bit){const size_t i=(bit-0x01000000)/16;return o.out.main_ram[i]|uint32_t(o.out.main_ram[i+1])<<16;};
             if(shadow_skip)shadow_skip=false;
             else if(ram_long(mk2::wide::kClipTopLeft)==0&&ram_long(mk2::wide::kClipBottomRight)==mk2::wide::kArcadeBottomRight){
@@ -203,11 +205,12 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
         }
         const auto instruction_pc = s.next_pc;
         if(!o.shadow){
+        if(instruction_pc==mk2::wide::kMarker)o.out.video.wide_real_post=true;   // the real walk's marker entry
         if(instruction_pc==mk2::wide::kStreamer)o.out.video.margin_streamer=o.out.video.margin_streaming=true;   // it streams
         else if(instruction_pc==mk2::wide::kStreamerReturn)o.out.video.margin_streaming=false;   // the streamer returned
         else if(instruction_pc==mk2::wide::kPoolReset[0]||instruction_pc==mk2::wide::kPoolReset[1])o.out.video.margin_streamer=false;
-        if(instruction_pc==mk2::wide::kQueueReset && o.out.video.MarginsEnabled())   // the frame's queue reset: its page's margins start empty
-            o.out.video.ClearMargins(o.out.main_ram[(mk2::wide::kPageOrigin-0x01000000)/16+1]&0x1ff);
+        if(instruction_pc==mk2::wide::kQueueReset && o.out.video.WideEnabled())   // the frame's queue reset: its page as VRAM holds it
+            o.out.video.StartWideFrame(o.out.main_ram[(mk2::wide::kPageOrigin-0x01000000)/16+1]&0x1ff);
         if(instruction_pc==mk5hitbox::kMk2.strike_pc)mk5hitbox::Strike(mk5hitbox::kMk2,s.a.data(),o.out.main_ram);   // training mode, read-only
         else if(instruction_pc==0xff805020 && s.a[0]==0x0105d480)mk5hitbox::Capture(mk5hitbox::kMk2,o.out.main_ram);   // the world objects' DMA
         if(instruction_pc==0xff818d00 || instruction_pc==0xff805020 || instruction_pc==0xff805040 || instruction_pc==0xff9b0e60)

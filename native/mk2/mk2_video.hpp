@@ -305,32 +305,47 @@ struct BootVideo {
         };
         const auto pixels=Render(command,dma_registers,dma_palette,graphics,[&](size_t index,uint16_t pen,bool write){
             auto& dest=vram.at(index);
-            if(write){dest=pen;present_pixel(index);}
+            if(write){dest=pen;present_pixel(index);if(wide_mirror)wide_[index]=pen;}
         },[&]{prepare_fighter_surface();});
         board.dma_command=command; board.io[18]&=uint16_t(~2);
         return pixels;
     }
-    // Widescreen W1: the margin columns (VRAM x 0..55 and 456..511) as the shadow drawer's DMA entries draw them
-    // (mk2_task_batch.cpp), kNoArt where none did since the page's frame began. Not in save states (shortcut, until W4).
-    static constexpr uint16_t kNoArt=0xffff;
+    // Widescreen (mk2_task_batch.cpp): the frame as the shadow pass composes it over all 512 VRAM columns. Each frame starts
+    // from its page as VRAM holds it at the queue reset (after the page clear); the shadow walk draws its entries with the
+    // wide clip; every other draw of the frame (DMAs not staged by the walk, the page clear, CPU writes) is mirrored as it
+    // happens. Not in save states (shortcut, until W4).
     bool margin_streamer=false,margin_streaming=false;   // the scenery streamer has run since the pool reset / is running
     uint32_t margin_fault_pc=0;   // the last fault's PC (bit 0: in the walk, bit 1: an exception)
     uint64_t margin_streamer_skips=0;   // frames whose shadow walk ran without the streamer
-    uint64_t margin_faults=0;   // shadow passes left incomplete (an outside PC, a write outside RAM, a refused DMA)
-    void EnableMargins(){margin_.assign(vram.size(),kNoArt);}
-    bool MarginsEnabled()const{return !margin_.empty();}
-    uint16_t MarginPixel(size_t index)const{return margin_[index];}
-    static bool MarginColumn(size_t index){const auto x=index&511;return x<56||x>=456;}
-    void ClearMargins(unsigned page_row){
-        for(size_t y=page_row;y<page_row+256&&y<512;++y)for(size_t x=0;x<512;++x)if(MarginColumn(y*512+x))margin_[y*512+x]=kNoArt;
+    uint64_t margin_faults=0;   // shadow passes left incomplete (an outside PC, a refused access, a refused DMA)
+    bool wide_walk_drawn=false;   // this frame's walk entries are in the layer: their real DMAs are not mirrored
+    bool wide_mirror=false;       // set around a real DMA that the layer takes too
+    std::vector<uint32_t> wide_walk_entries;   // queue cursors of the walk's entries this frame (real staging)
+    // The table's marker: the shadow's entries after it wait (wide_pending) until the drain reaches the real entries after
+    // it (from wide_post_key on), so the floor shadows drawn at the marker stay under the world objects, as in VRAM.
+    bool wide_shadow_post=false,wide_real_post=false;uint32_t wide_post_key=0;bool wide_post_keyed=false;
+    std::vector<std::array<uint16_t,12>> wide_pending;
+    void EnableWide(){wide_.assign(vram.size(),0);}
+    bool WideEnabled()const{return !wide_.empty();}
+    uint16_t WidePixel(size_t index)const{return wide_[index];}
+    void StartWideFrame(unsigned page_row){
+        const size_t from=size_t(page_row&0x1ff)*512,count=std::min<size_t>(256*512,vram.size()-from);
+        std::copy_n(vram.begin()+from,count,wide_.begin()+from);
+        wide_walk_entries.clear();wide_walk_drawn=false;wide_shadow_post=wide_real_post=wide_post_keyed=false;wide_pending.clear();
     }
-    // One staged entry (r0..r11 as the queue holds them) with the board's current clip; false when the board's DMA would
-    // refuse it (it then draws nothing).
-    bool MarginEntry(const std::array<uint16_t,12>& entry,const std::vector<uint8_t>& graphics){
+    void MirrorWide(size_t start,size_t count){if(!wide_.empty())std::copy_n(vram.begin()+start,count,wide_.begin()+start);}
+    // One entry staged by the shadow walk (r0..r11 as the queue holds them) with the board's current clip; false when the
+    // board's DMA would refuse it (it then draws nothing).
+    bool WideEntry(const std::array<uint16_t,12>& entry,const std::vector<uint8_t>& graphics){
+        if(wide_shadow_post){wide_pending.push_back(entry);return true;}
+        return DrawWide(entry,graphics);
+    }
+    void FlushWide(const std::vector<uint8_t>& graphics){for(const auto& e:wide_pending)DrawWide(e,graphics);wide_pending.clear();}
+    bool DrawWide(const std::array<uint16_t,12>& entry,const std::vector<uint8_t>& graphics){
         auto r=dma_registers;std::copy(entry.begin(),entry.end(),r.begin());
         try{
             Render(entry[1],r,entry[8],graphics,[&](size_t index,uint16_t pen,bool write){
-                if(write&&index<margin_.size()&&MarginColumn(index))margin_[index]=pen;
+                if(write&&index<wide_.size())wide_[index]=pen;
             },[]{});
         }catch(const std::runtime_error&){return false;}
         return true;
@@ -358,6 +373,8 @@ struct BootVideo {
         }
         if (mask & 0x00ff) { fighters.Clear(offset,1,vram[offset]&0x7fff);MaskBlood(offset);UpdateBackdrop(offset,false); }
         if (mask & 0xff00) { fighters.Clear(offset+1,1,vram[offset+1]&0x7fff);MaskBlood(offset+1);UpdateBackdrop(offset+1,false); }
+        if (mask & 0x00ff) MirrorWide(offset,1);
+        if (mask & 0xff00) MirrorWide(offset+1,1);
     }
     uint16_t ReadVram(uint32_t address, const BoardBootControls& board) const {
         const unsigned offset = VramOffset(address);
@@ -366,7 +383,7 @@ struct BootVideo {
             : uint16_t((vram[offset] >> 8) | (vram[offset + 1] & 0xff00));
     }
 private:
-    std::vector<uint16_t> backdrop,margin_;
+    std::vector<uint16_t> backdrop,wide_;
     bool fighters_enabled=false;
     mk5presentation::FighterSurface fighters;
     mk5presentation::FighterSlots fighter_objects;

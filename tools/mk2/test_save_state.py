@@ -173,8 +173,8 @@ class TrainingTests(unittest.TestCase):
 
 
 class WideCaptureTests(unittest.TestCase):
-    """Widescreen W0/W1 over the translated first-fight route: the 512-column capture and the shadow drawer behind its
-    margins leave the frames shown unchanged, and the capture's visible centre is the scanout's own frame in every frame."""
+    """Widescreen over the translated first-fight route: the 512-column capture and the shadow pass that composes it leave
+    the frames shown unchanged, and the composed frame's visible centre is the scanout's own frame in every frame."""
     @unittest.skipUnless((q.ROOT/'roms/mk2').is_dir(),'requires authenticated ROMs')
     def test_centre_is_the_frame_and_capture_is_read_only(self):
         run.verify_roms(q.ROOT/'roms/mk2')
@@ -198,11 +198,11 @@ class WideCaptureTests(unittest.TestCase):
             wide=lines(on,'wide');self.assertGreater(len(wide),100,len(wide))
             self.assertEqual([w['centre'] for w in wide],[w['plain'] for w in wide],'the visible centre differs from the frame')
             self.assertEqual(len(wide),len(lines(on,'present')),'one capture per shown frame')
-            # W1: the shadow ran without a fault; margin pixels it left without art show the page's clear pen.
-            self.assertEqual(wide[-1]['faults'],0,'a shadow drawer pass was left incomplete')
-            margin=2*56*254;covered=[w for w in wide if w['empty']<margin//4]
-            print('seconds without/with',round(off_s,2),round(on_s,2),'frames',len(wide),'frames with at least 3/4 of the margins drawn',len(covered),
-                  'clear-pen margin pixels (quartiles)',sorted(w['empty'] for w in wide)[::len(wide)//4])
+            # The shadow composes all 512 columns: no fault, and margin pixels beyond the arcade's own spill in the fights.
+            self.assertEqual(wide[-1]['faults'],0,'a shadow pass was left incomplete')
+            self.assertGreater(sum(w['added']>0 for w in wide),300,'the shadow added no margin art')
+            print('seconds without/with',round(off_s,2),round(on_s,2),'frames',len(wide),
+                  'margin pixels added (quartiles)',sorted(w['added'] for w in wide)[::len(wide)//4])
         self.assertFalse(cleanup['exists_after'])
 
 

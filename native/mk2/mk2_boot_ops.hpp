@@ -395,7 +395,14 @@ public:
                     out.video.DrawQueuedBlood(s.b[14]);
                     if(out.video.BackdropEnabled())draw=out.video.TakeDraw(s.b[14]);
                 }
+                // Widescreen: every real DMA reaches the wide layer too, except the walk entries the shadow already drew.
+                auto& walk=out.video.wide_walk_entries;
+                const auto own=s.next_pc==mk2::wide::kDrain?std::find(walk.begin(),walk.end(),s.b[14]):walk.end();
+                if(own!=walk.end() && out.video.wide_post_keyed && s.b[14]==out.video.wide_post_key)out.video.FlushWide(program.graphics);
+                out.video.wide_mirror=out.video.WideEnabled() && own==walk.end();
+                if(own!=walk.end())walk.erase(own);
                 const auto pixels = out.video.StartDma(value, s.board, program.graphics,draw.scenery,draw.fighter);
+                out.video.wide_mirror=false;
                 machine.ScheduleDma(pixels, dma_start_offset);
                 dma_line_event_ = true;
             } else {
@@ -791,6 +798,7 @@ public:
                 const uint32_t address = (s.b[4] & ~uint32_t(7)) + row * s.b[3];
                 // The board callback ignores COLOR1/data and directly copies the entire physical shift register.
                 std::copy_n(out.video.shift_register.begin(), 1024, out.video.vram.begin() + (address >> 3));
+                out.video.MirrorWide(address >> 3, 1024);
                 out.video.MaskBlood(address >> 3,1024);
                 if(presentation)out.video.CopyBackdrop(address >> 3,1024,scenery);
             }
@@ -810,7 +818,7 @@ public:
         if(shadow && s.next_pc==mk2::wide::kDrawerStage){
             std::array<uint16_t,12> entry{};const unsigned regs[6]={12,11,10,9,8,6};
             for(unsigned k=0;k<6;++k){entry[2*k]=uint16_t(s.a[regs[k]]);entry[2*k+1]=uint16_t(s.a[regs[k]]>>16);}
-            if(!out.video.MarginEntry(entry,program.graphics))shadow_fault=true;
+            if(!out.video.WideEntry(entry,program.graphics))shadow_fault=true;
         } else if(shadow && s.next_pc==mk2::wide::kFloorStage){   // the floor producer: A9 r0/r1, A8 r2/r3, A7 r4/r5, A6 r6/r7, A3 r8/r9, A2 r10/r11
             std::array<uint16_t,12> entry{};const unsigned regs[6]={9,8,7,6,3,2};
             for(unsigned k=0;k<6;++k){entry[2*k]=uint16_t(s.a[regs[k]]);entry[2*k+1]=uint16_t(s.a[regs[k]]>>16);}
@@ -820,7 +828,12 @@ public:
                 const uint32_t source=(entry[2]|uint32_t(entry[3])<<16)-56*bpp;
                 entry[2]=uint16_t(source);entry[3]=uint16_t(source>>16);entry[4]=uint16_t(entry[4]-56);entry[6]=512;
             }
-            if(!out.video.MarginEntry(entry,program.graphics))shadow_fault=true;
+            if(!out.video.WideEntry(entry,program.graphics))shadow_fault=true;
+        }
+        // Widescreen: once the shadow drew this frame's walk, the real walk's entries are not mirrored into the wide layer.
+        if(!shadow && out.video.wide_walk_drawn && (s.next_pc==mk2::wide::kDrawerStage || s.next_pc==mk2::wide::kFloorStage)){
+            out.video.wide_walk_entries.push_back(s.a[1]-0xc0);
+            if(out.video.wide_real_post && !out.video.wide_post_keyed){out.video.wide_post_key=s.a[1]-0xc0;out.video.wide_post_keyed=true;}
         }
         // The IRQ drains six dwords per object and reaches the command at this cursor.
         if(!shadow && out.video.BackdropEnabled() &&

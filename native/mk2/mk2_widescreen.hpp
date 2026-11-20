@@ -5,6 +5,9 @@
 namespace mk2::wide {
 // Display table walk of the frame builder: after the queue reset, to the direct-DMA stage.
 constexpr uint32_t kWalkStart=0xff804e30,kWalkEnd=0xff805050,kQueueReset=0xff808a40;
+// The table's marker entry (B8 = A1): when the drain reaches it, the fighters' floor shadows are drawn (FF801000 by direct
+// DMA, FF801590/FF801600), before the entries staged after it (the world objects).
+constexpr uint32_t kMarker=0xff804f60,kDrain=0xff804630;
 // The list drawer's interrupt kick (DINT, INT1 enable, DMA busy test, TRAP 1, EINT), skipped by the shadow.
 constexpr uint32_t kKick=0xff804440,kKickEnd=0xff804510;
 // Staging MMTMs: the list drawer (A12 A11 A10 A9 A8 A6 as r0/r1..r10/r11) and the floor producer (A9 A8 A7 A6 A3 A2).
