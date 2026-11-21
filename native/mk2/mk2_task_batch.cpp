@@ -195,6 +195,10 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
                 const int d=hold?(camera==held[0]?held[1]:0):mk2::wide::WindowShift(mode,camera,low,high);
                 if(!hold)held={camera,d};
                 o.out.video.SetWideShift(d);o.out.video.wide_hud=false;o.out.video.wide_world=camera;
+                auto& free=o.out.video.wide_free;free.clear();   // the pool's free objects before the shadow's streamer run
+                for(uint32_t object=ram_long(mk2::wide::kFreeList);object>=0x01000000&&object<0x013fffe0&&free.size()<mk2::wide::kPoolObjects;
+                    object=ram_long(object))free.push_back(object);
+                std::sort(free.begin(),free.end());
                 shadow_saved={s.a,s.b,s.status};shadow_steps=0;o.shadow=true;o.shadow_fault=false;
                 o.Write32(mk2::wide::kClipTopLeft,mk2::wide::WideTopLeft(d));o.Write32(mk2::wide::kClipBottomRight,mk2::wide::WideBottomRight(d));
                 // Not while the interrupted main process is inside the real streamer: its lists are half updated.

@@ -367,7 +367,22 @@ struct BootVideo {
     std::vector<WideDraw> wide_pending;
     // Per-plane fit: the entries of a far plane's list (mk2::wide::FitCamera) wait in wide_plane until the list ends
     // (WidePlane), so the plane is placed as a whole.
-    bool wide_fit=false;std::vector<std::array<uint16_t,12>> wide_plane;
+    struct WideStaged{std::array<uint16_t,12> entry;bool fresh;};
+    bool wide_fit=false;std::vector<WideStaged> wide_plane;
+    // The objects on the pool's free list when the shadow pass starts (sorted): one the shadow walk stages was built by the
+    // shadow's own streamer run. The real streamer builds only every 8 frames, so such an object that reaches the arcade's
+    // columns is not on the arcade screen yet (a fast plane pops in at the edge): it is left out, unless its plane is fitted.
+    std::vector<uint32_t> wide_free;
+    bool WideFresh(uint32_t object)const{return std::binary_search(wide_free.begin(),wide_free.end(),object);}
+    // An entry's columns in the layer [first, last) from its x (10-bit DMA x read as -256..767), width, X step and flip.
+    static std::pair<int,int> WideSpan(const std::array<uint16_t,12>& e){
+        int x=e[4]&0x3ff;if(x>=768)x-=1024;
+        const unsigned xstep=e[10]?e[10]:0x100;const int w=int(((e[6]&0x3ffu)<<8)/xstep),lo=e[1]&0x10?x-w+1:x;
+        return {lo,lo+w};
+    }
+    bool WideOnArcade(const std::array<uint16_t,12>& e)const{
+        const auto [lo,hi]=WideSpan(e);const int arcade=mk2::wide::kMargin-wide_shift;return hi>arcade&&lo<arcade+400;
+    }
     std::array<unsigned,2> wide_page_fitted{};   // the planes fitted in each page's composition
     // Each far camera's ratio in this arena: its velocity and the world's in a frame where the world moved.
     int wide_world=0;   // this build's world camera x (mk2_task_batch.cpp)
@@ -389,9 +404,10 @@ struct BootVideo {
     void MirrorWide(size_t start,size_t count){if(!wide_.empty())std::copy_n(vram.begin()+start,count,wide_.begin()+start);}
     // One entry staged by the shadow walk (r0..r11 as the queue holds them) with the board's current clip; false when the
     // board's DMA would refuse it (it then draws nothing).
-    bool WideEntry(const std::array<uint16_t,12>& entry,const std::vector<uint8_t>& graphics){
+    bool WideEntry(const std::array<uint16_t,12>& entry,const std::vector<uint8_t>& graphics,bool fresh=false){
         auto moved=entry;if(!wide_hud)moved[4]=uint16_t(moved[4]-wide_shift);
-        if(wide_fit){wide_plane.push_back(moved);return true;}
+        if(wide_fit){wide_plane.push_back({moved,fresh});return true;}
+        if(fresh&&WideOnArcade(moved))return true;
         return WidePlace({moved,0,512},graphics);
     }
     bool WidePlace(const WideDraw& draw,const std::vector<uint8_t>& graphics){
@@ -429,10 +445,8 @@ struct BootVideo {
     bool WidePlane(const std::vector<uint8_t>& graphics){
         if(!wide_fit||wide_plane.empty()){wide_plane.clear();return true;}
         int hull_left=1<<20,hull_right=-(1<<20),drawn_left=512,drawn_right=0;std::array<bool,512> drawn{};
-        for(const auto& e:wide_plane){
-            int x=e[4]&0x3ff;if(x>=768)x-=1024;   // the layer's columns -256..767 (10-bit DMA x)
-            const unsigned xstep=e[10]?e[10]:0x100;const int w=int(((e[6]&0x3ffu)<<8)/xstep);
-            const int lo=e[1]&0x10?x-w+1:x;hull_left=std::min(hull_left,lo);hull_right=std::max(hull_right,lo+w);
+        for(const auto& [e,fresh]:wide_plane){
+            const auto [lo,hi]=WideSpan(e);hull_left=std::min(hull_left,lo);hull_right=std::max(hull_right,hi);
             auto r=dma_registers;std::copy(e.begin(),e.end(),r.begin());
             try{Render(e[1],r,e[8],graphics,[&](size_t index,uint16_t,bool write){
                     if(write)return;
@@ -449,7 +463,8 @@ struct BootVideo {
             else{shift=-left;width=right-left;}
         }
         if(shift||width<512)++wide_page_fitted[wide_page];
-        bool placed=true;for(const auto& e:wide_plane)placed&=WidePlace({e,shift,width},graphics);
+        bool placed=true;
+        for(const auto& [e,fresh]:wide_plane)if(shift||width<512||!fresh||!WideOnArcade(e))placed&=WidePlace({e,shift,width},graphics);
         wide_plane.clear();return placed;
     }
     bool DrawWide(const WideDraw& draw,const std::vector<uint8_t>& graphics){
