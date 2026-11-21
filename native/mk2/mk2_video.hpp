@@ -305,7 +305,8 @@ struct BootVideo {
         };
         const auto pixels=Render(command,dma_registers,dma_palette,graphics,[&](size_t index,uint16_t pen,bool write){
             auto& dest=vram.at(index);
-            if(write){dest=pen;present_pixel(index);if(wide_mirror)wide_[index]=pen;}
+            if(write){dest=pen;present_pixel(index);
+                if(wide_mirror){const int x=int(index&511)-(wide_mirror_world?wide_page_shift[(index>>17)&1]:0);if(x>=0&&x<512)wide_[(index&~size_t(511))+size_t(x)]=pen;}}
         },[&]{prepare_fighter_surface();});
         board.dma_command=command; board.io[18]&=uint16_t(~2);
         return pixels;
@@ -320,25 +321,63 @@ struct BootVideo {
     uint64_t margin_faults=0;   // shadow passes left incomplete (an outside PC, a refused access, a refused DMA)
     bool wide_walk_drawn=false;   // this frame's walk entries are in the layer: their real DMAs are not mirrored
     bool wide_mirror=false;       // set around a real DMA that the layer takes too
+    // The window offset of this frame (mk2::wide::WindowShift): the layer holds screen x -56+d .. 456+d; scenery draws move
+    // by -d, screen-fixed ones (the HUD list, wide_hud, and the real drain's own entries) keep their place.
+    int wide_shift=0;bool wide_hud=false,wide_mirror_world=false;   // a mirrored real DMA of scenery moves with its page
+    std::array<int,2> wide_held{};     // the last shifting frame's camera x and offset (mode 5 keeps it)
+    std::array<int,3> wide_limits{};   // the arena's last usable camera limits (min, max, valid)
+    std::array<int,2> wide_page_shift{};unsigned wide_page=0;   // the offset each VRAM page was composed with
+    int WideShiftOfRow(unsigned vram_row)const{return wide_page_shift[(vram_row>>8)&1];}
+    // A page composed with an offset and not cleared since keeps its last composition, moved by the change of offset.
+    void SetWideShift(int d){
+        int& page_shift=wide_page_shift[wide_page];wide_shift=d;wide_kept=false;   // the shadow composes this build
+        if(page_shift==d||wide_.empty()){page_shift=d;return;}
+        const int move=d-page_shift;page_shift=d;   // the new column c shows the old column c+move
+        for(size_t y=size_t(wide_page)*256;y<size_t(wide_page)*256+256;++y){
+            auto* row=wide_.data()+y*512;
+            if(move>0)std::copy(row+move,row+512,row);else std::copy_backward(row,row+512+move,row+512);
+        }
+    }
+    std::array<bool,2> wide_cleared{{true,true}};   // the page clear ran on the page since its last build
+    void MarkCleared(size_t index){if(!wide_.empty())wide_cleared[(index>>17)&1]=true;}
+    // A frame with no build (the game drawing straight onto its pages, after a match): at the next display interrupt each
+    // page composed with an offset turns back into its plain VRAM, offset 0 (EndUnbuiltFrame, at a frame boundary).
+    bool wide_frame_started=false;
+    // A build that kept a page's composition without the shadow composing it (a round's start: queue reset, no walk) also
+    // turns that page back into its plain VRAM.
+    bool wide_kept=false;
+    void PlainPage(unsigned page){
+        std::copy_n(vram.begin()+size_t(page)*256*512,256*512,wide_.begin()+size_t(page)*256*512);wide_page_shift[page]=0;
+    }
+    void EndUnbuiltFrame(){
+        if(wide_.empty())return;
+        if(wide_kept){PlainPage(wide_page);wide_kept=false;}
+        if(!wide_frame_started)for(unsigned page=0;page<2;++page)if(wide_page_shift[page])PlainPage(page);
+    }
     std::vector<uint32_t> wide_walk_entries;   // queue cursors of the walk's entries this frame (real staging)
     // The table's marker: the shadow's entries after it wait (wide_pending) until the drain reaches the real entries after
     // it (from wide_post_key on), so the floor shadows drawn at the marker stay under the world objects, as in VRAM.
     bool wide_shadow_post=false,wide_real_post=false;uint32_t wide_post_key=0;bool wide_post_keyed=false;
     std::vector<std::array<uint16_t,12>> wide_pending;
-    void EnableWide(){wide_.assign(vram.size(),0);}
+    void EnableWide(){wide_=vram;}   // from what VRAM already holds
     bool WideEnabled()const{return !wide_.empty();}
     uint16_t WidePixel(size_t index)const{return wide_[index];}
     void StartWideFrame(unsigned page_row){
-        const size_t from=size_t(page_row&0x1ff)*512,count=std::min<size_t>(256*512,vram.size()-from);
-        std::copy_n(vram.begin()+from,count,wide_.begin()+from);
+        wide_page=(page_row>>8)&1;
+        // The frame starts from the VRAM page, offset 0, unless the page was composed with an offset and not cleared since:
+        // then what the game left on it is that composition (VRAM holds it unshifted).
+        wide_kept=!wide_cleared[wide_page]&&wide_page_shift[wide_page];   // valid only if the shadow composes this build
+        if(!wide_kept)PlainPage(wide_page);
+        wide_cleared[wide_page]=false;wide_shift=wide_page_shift[wide_page];wide_frame_started=true;
         wide_walk_entries.clear();wide_walk_drawn=false;wide_shadow_post=wide_real_post=wide_post_keyed=false;wide_pending.clear();
     }
     void MirrorWide(size_t start,size_t count){if(!wide_.empty())std::copy_n(vram.begin()+start,count,wide_.begin()+start);}
     // One entry staged by the shadow walk (r0..r11 as the queue holds them) with the board's current clip; false when the
     // board's DMA would refuse it (it then draws nothing).
     bool WideEntry(const std::array<uint16_t,12>& entry,const std::vector<uint8_t>& graphics){
-        if(wide_shadow_post){wide_pending.push_back(entry);return true;}
-        return DrawWide(entry,graphics);
+        auto moved=entry;if(!wide_hud)moved[4]=uint16_t(moved[4]-wide_shift);
+        if(wide_shadow_post){wide_pending.push_back(moved);return true;}
+        return DrawWide(moved,graphics);
     }
     void FlushWide(const std::vector<uint8_t>& graphics){for(const auto& e:wide_pending)DrawWide(e,graphics);wide_pending.clear();}
     bool DrawWide(const std::array<uint16_t,12>& entry,const std::vector<uint8_t>& graphics){

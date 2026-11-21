@@ -160,6 +160,8 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
         if(o.shadow){
             if(s.next_pc==mk2::wide::kKick)s.next_pc=mk2::wide::kKickEnd;
             if(s.next_pc==mk2::wide::kMarker&&shadow_walk)o.out.video.wide_shadow_post=true;
+            if(s.next_pc==mk2::wide::kCameraLoad&&shadow_walk)   // a list with a screen-fixed camera (HUD) keeps its place
+                o.out.video.wide_hud=s.a[13]<mk2::wide::kScrollFirst||s.a[13]>mk2::wide::kScrollLast;
             const uint32_t pc=s.next_pc;
             if(!shadow_walk&&pc==mk2::wide::kStreamerReturn){   // the streamer returned: the walk from its start, with the real registers
                 std::tie(s.a,s.b,s.status)=shadow_saved;s.next_pc=mk2::wide::kWalkStart;shadow_walk=true;continue;
@@ -174,8 +176,20 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
             const auto ram_long=[&](uint32_t bit){const size_t i=(bit-0x01000000)/16;return o.out.main_ram[i]|uint32_t(o.out.main_ram[i+1])<<16;};
             if(shadow_skip)shadow_skip=false;
             else if(ram_long(mk2::wide::kClipTopLeft)==0&&ram_long(mk2::wide::kClipBottomRight)==mk2::wide::kArcadeBottomRight){
+                const auto word=[&](uint32_t bit){return int16_t(o.out.main_ram[(bit-0x01000000)/16]);};
+                int low=word(mk2::wide::kCameraMin),high=word(mk2::wide::kCameraMax);auto& limits=o.out.video.wide_limits;
+                if(low<=high&&high-low<=mk2::wide::kWorldMax)limits={low,high,1};
+                else if(limits[2]){low=limits[0];high=limits[1];}   // a finisher frees the camera: the arena's own limits
+                const unsigned mode=uint16_t(word(mk2::wide::kMode));const int camera=word(mk2::wide::kCameraX);
+                auto& held=o.out.video.wide_held;   // the last fight frame's camera and offset
+                // Modes 3 and 5 (the finisher's scene, the round's end) keep the offset while the camera stays; the winner's
+                // screen (mode 5 too) moves the camera to it: centred.
+                const bool hold=mode<16&&(mk2::wide::kHoldModes>>mode&1);
+                const int d=hold?(camera==held[0]?held[1]:0):mk2::wide::WindowShift(mode,camera,low,high);
+                if(!hold)held={camera,d};
+                o.out.video.SetWideShift(d);o.out.video.wide_hud=false;
                 shadow_saved={s.a,s.b,s.status};shadow_steps=0;o.shadow=true;o.shadow_fault=false;
-                o.Write32(mk2::wide::kClipTopLeft,mk2::wide::kWideTopLeft);o.Write32(mk2::wide::kClipBottomRight,mk2::wide::kWideBottomRight);
+                o.Write32(mk2::wide::kClipTopLeft,mk2::wide::WideTopLeft(d));o.Write32(mk2::wide::kClipBottomRight,mk2::wide::WideBottomRight(d));
                 // Not while the interrupted main process is inside the real streamer: its lists are half updated.
                 shadow_walk=!o.out.video.margin_streamer||o.out.video.margin_streaming;
                 if(!shadow_walk){o.Push(mk2::wide::kStreamerReturn);s.next_pc=mk2::wide::kStreamer;}
@@ -206,6 +220,7 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
         const auto instruction_pc = s.next_pc;
         if(!o.shadow){
         if(instruction_pc==mk2::wide::kMarker)o.out.video.wide_real_post=true;   // the real walk's marker entry
+        if(instruction_pc==mk2::wide::kDisplayIrq){o.out.video.EndUnbuiltFrame();o.out.video.wide_frame_started=false;}   // a new frame
         if(instruction_pc==mk2::wide::kStreamer)o.out.video.margin_streamer=o.out.video.margin_streaming=true;   // it streams
         else if(instruction_pc==mk2::wide::kStreamerReturn)o.out.video.margin_streaming=false;   // the streamer returned
         else if(instruction_pc==mk2::wide::kPoolReset[0]||instruction_pc==mk2::wide::kPoolReset[1])o.out.video.margin_streamer=false;
@@ -233,7 +248,8 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
             if(o.shadow&&!shadow_walk){   // the streamer met a list it cannot walk (boot frames): this frame's walk without it
                 for(auto it=o.shadow_journal.rbegin();it!=o.shadow_journal.rend();++it)o.out.main_ram[it->first]=it->second;
                 o.shadow_journal.clear();std::tie(s.a,s.b,s.status)=shadow_saved;o.shadow_fault=false;
-                o.Write32(mk2::wide::kClipTopLeft,mk2::wide::kWideTopLeft);o.Write32(mk2::wide::kClipBottomRight,mk2::wide::kWideBottomRight);
+                const int d=o.out.video.wide_shift;
+                o.Write32(mk2::wide::kClipTopLeft,mk2::wide::WideTopLeft(d));o.Write32(mk2::wide::kClipBottomRight,mk2::wide::WideBottomRight(d));
                 s.next_pc=mk2::wide::kWalkStart;shadow_walk=true;++o.out.video.margin_streamer_skips;continue;
             }
             if(o.shadow){o.shadow_fault=true;shadow_fault_pc=instruction_pc|2;shadow_end();continue;}

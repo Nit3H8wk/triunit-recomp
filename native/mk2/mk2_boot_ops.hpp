@@ -399,7 +399,11 @@ public:
                 auto& walk=out.video.wide_walk_entries;
                 const auto own=s.next_pc==mk2::wide::kDrain?std::find(walk.begin(),walk.end(),s.b[14]):walk.end();
                 if(own!=walk.end() && out.video.wide_post_keyed && s.b[14]==out.video.wide_post_key)out.video.FlushWide(program.graphics);
-                out.video.wide_mirror=out.video.WideEnabled() && own==walk.end();
+                // A walk entry the shadow drew is not mirrored; one it did not draw (no shadow this frame) is scenery. Only the
+                // drain's entries outside the walk (the HUD bars, wins and medallions) keep their place; every other real DMA
+                // draws scenery in the arcade's screen and moves with its page's offset.
+                out.video.wide_mirror=out.video.WideEnabled() && (own==walk.end() || !out.video.wide_walk_drawn);
+                out.video.wide_mirror_world=s.next_pc!=mk2::wide::kDrain || own!=walk.end();
                 if(own!=walk.end())walk.erase(own);
                 const auto pixels = out.video.StartDma(value, s.board, program.graphics,draw.scenery,draw.fighter);
                 out.video.wide_mirror=false;
@@ -798,7 +802,7 @@ public:
                 const uint32_t address = (s.b[4] & ~uint32_t(7)) + row * s.b[3];
                 // The board callback ignores COLOR1/data and directly copies the entire physical shift register.
                 std::copy_n(out.video.shift_register.begin(), 1024, out.video.vram.begin() + (address >> 3));
-                out.video.MirrorWide(address >> 3, 1024);
+                out.video.MirrorWide(address >> 3, 1024);out.video.MarkCleared(address >> 3);
                 out.video.MaskBlood(address >> 3,1024);
                 if(presentation)out.video.CopyBackdrop(address >> 3,1024,scenery);
             }
@@ -822,18 +826,19 @@ public:
         } else if(shadow && s.next_pc==mk2::wide::kFloorStage){   // the floor producer: A9 r0/r1, A8 r2/r3, A7 r4/r5, A6 r6/r7, A3 r8/r9, A2 r10/r11
             std::array<uint16_t,12> entry{};const unsigned regs[6]={9,8,7,6,3,2};
             for(unsigned k=0;k<6;++k){entry[2*k]=uint16_t(s.a[regs[k]]);entry[2*k+1]=uint16_t(s.a[regs[k]]>>16);}
-            // Each floor line is one unscaled 400-pixel row: the same row of the floor art, 56 pixels earlier and 512 wide.
+            // Each floor line is one unscaled 400-pixel row: the same row of the floor art from the wide window's left edge
+            // (56 - d pixels earlier) and 512 wide.
             if(entry[6]==400 && entry[7]==1 && !(entry[1]&0x10)){
-                const unsigned code=(entry[1]>>12)&7,bpp=code?code:8;
-                const uint32_t source=(entry[2]|uint32_t(entry[3])<<16)-56*bpp;
-                entry[2]=uint16_t(source);entry[3]=uint16_t(source>>16);entry[4]=uint16_t(entry[4]-56);entry[6]=512;
+                const unsigned code=(entry[1]>>12)&7,bpp=code?code:8;const int lead=mk2::wide::kMargin-out.video.wide_shift;
+                const uint32_t source=(entry[2]|uint32_t(entry[3])<<16)-uint32_t(lead)*bpp;
+                entry[2]=uint16_t(source);entry[3]=uint16_t(source>>16);entry[4]=uint16_t(entry[4]-lead);entry[6]=512;
             }
             if(!out.video.WideEntry(entry,program.graphics))shadow_fault=true;
         }
-        // Widescreen: once the shadow drew this frame's walk, the real walk's entries are not mirrored into the wide layer.
-        if(!shadow && out.video.wide_walk_drawn && (s.next_pc==mk2::wide::kDrawerStage || s.next_pc==mk2::wide::kFloorStage)){
+        // Widescreen: the real walk's entries (their queue cursors); the shadow's own copies replace them when it drew this frame.
+        if(!shadow && out.video.WideEnabled() && (s.next_pc==mk2::wide::kDrawerStage || s.next_pc==mk2::wide::kFloorStage)){
             out.video.wide_walk_entries.push_back(s.a[1]-0xc0);
-            if(out.video.wide_real_post && !out.video.wide_post_keyed){out.video.wide_post_key=s.a[1]-0xc0;out.video.wide_post_keyed=true;}
+            if(out.video.wide_walk_drawn && out.video.wide_real_post && !out.video.wide_post_keyed){out.video.wide_post_key=s.a[1]-0xc0;out.video.wide_post_keyed=true;}
         }
         // The IRQ drains six dwords per object and reaches the command at this cursor.
         if(!shadow && out.video.BackdropEnabled() &&
