@@ -55,10 +55,15 @@ constexpr int kEndSlack=mk5wide::kEndSlack;
 // world: its art ends where the arcade screen stands at each camera limit (the camera can pass a limit by a few pixels:
 // it counts as at the limit). 0 outside a fight or with unusable limits.
 inline int WindowShift(unsigned mode,int camera,int minimum,int maximum){return Shifting(mode)?mk5wide::WindowShift(camera,minimum,maximum):0;}
-// The shadow's clip for a window shift (y<<16|x): screen x -56+d .. 456+d, plus kReach on each side so that the streamer
-// builds, and the walk stages, the far planes' art beyond the window (the per-plane fit measures where it ends; the DMA
-// clip keeps the layer's 512 columns). Its 10-bit DMA x stays within -256..767.
+// The shadow's clip (y<<16|x): screen x -67 .. 467 of the virtual camera, plus kReach on each side so that the streamer
+// builds, and the walk stages, the far planes' art beyond the window (the per-plane fit measures where it ends; the layer
+// clips the draws to its columns). Its 10-bit DMA x stays within -256..767.
 constexpr int kReach=mk5wide::kReach;
-constexpr uint32_t WideTopLeft(int d){return uint32_t(uint16_t(int16_t(d-kMargin-kReach)));}
-constexpr uint32_t WideBottomRight(int d){return (kArcadeBottomRight&0xffff0000u)|uint16_t(int16_t(400+kMargin+kReach+d));}
+constexpr uint32_t WideTopLeft(){return uint32_t(uint16_t(int16_t(-mk5wide::kWideMargin-kReach)));}
+constexpr uint32_t WideBottomRight(){return (kArcadeBottomRight&0xffff0000u)|uint16_t(int16_t(400+mk5wide::kWideMargin+kReach));}
+// The scroll longs the virtual camera moves (16.16, a camera word is the high word): the far planes' from kScrollFirst every
+// 20h, the world's (kCameraX's long, slot 7) and the front plane's (slot 8); each velocity kScrollVelocityGap lower.
+constexpr unsigned kScrollSlots=9,kWorldSlot=7;constexpr uint32_t kScrollVelocityGap=0x120;
+static_assert(kScrollFirst+kWorldSlot*0x20+16==kCameraX && kScrollFirst+(kScrollSlots-1)*0x20+16==kScrollLast &&
+              kCameraX-kVelocityGap==kWorldVelocity,"MK2 scroll layout");
 }

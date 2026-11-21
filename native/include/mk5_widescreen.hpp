@@ -50,8 +50,13 @@ constexpr uint32_t kCameraMin=0x010517e0,kCameraMax=0x010517f0,kMode=0x01051190;
 constexpr unsigned kShiftModes=(1u<<2)|(1u<<6),kHoldModes=(1u<<3)|(1u<<5);
 inline bool Shifting(unsigned mode){return mode<16&&(kShiftModes>>mode&1);}
 inline bool Holding(unsigned mode){return mode<16&&(kHoldModes>>mode&1);}
-// The shadow's clip for a window offset (y<<16|x): screen x -56+d .. 456+d plus mk5wide::kReach on each side.
-constexpr uint32_t WideTopLeft(int d){return uint32_t(uint16_t(int16_t(d-mk5wide::kMargin-mk5wide::kReach)));}
-constexpr uint32_t WideBottomRight(int d){
-    return (kArcadeBottomRight&0xffff0000u)|uint16_t(int16_t(mk5wide::kVisible+mk5wide::kMargin+mk5wide::kReach+d));}
+// Menu modes (fighter select 4, battle plan 7, 13): their screens have no arena even where their objects follow a camera.
+constexpr unsigned kMenuModes=(1u<<4)|(1u<<7)|(1u<<13);
+inline bool Menu(unsigned mode){return mode<16&&(kMenuModes>>mode&1);}
+// The shadow's clip (y<<16|x): screen x -67 .. 467 of the virtual camera plus mk5wide::kReach on each side.
+constexpr uint32_t WideTopLeft(){return uint32_t(uint16_t(int16_t(-mk5wide::kWideMargin-mk5wide::kReach)));}
+constexpr uint32_t WideBottomRight(){
+    return (kArcadeBottomRight&0xffff0000u)|uint16_t(int16_t(mk5wide::kVisible+mk5wide::kWideMargin+mk5wide::kReach));}
+// The scroll longs the virtual camera moves: the far planes', the world's and the front plane's (ratio slots 0..8).
+constexpr unsigned kScrollSlots=(kFrontScroll-kScrollFirst)/0x20+1,kWorldSlot=(kWorldScroll-kScrollFirst)/0x20;
 }

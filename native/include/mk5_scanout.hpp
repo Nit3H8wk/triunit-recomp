@@ -2,6 +2,7 @@
 #include "mk5_irq.hpp"
 #include "mk5_fighter_video.hpp"
 #include "mk5_blood_shade.hpp"
+#include "mk5_wide.hpp"
 #include <filesystem>
 class Mk5LiveVideo;
 // RGB is sampled from live VRAM/palette at each raster edge, before DPYADR
@@ -76,7 +77,7 @@ public:
     const std::vector<uint32_t>& backdrop_pixels()const{return backdrop_complete;}
     const mk5presentation::FighterFrame& fighter_frame()const{return fighter_complete;}
     const mk5blood::Shade& blood_frame_shade()const{return frame_shade;}   // the last complete frame's
-    static constexpr unsigned kWideWidth=512;   // a VRAM line
+    static constexpr unsigned kWideWidth=mk5wide::kLayerWidth;   // the 16:9 layer (mk5_wide.hpp)
     void EnableWide(const Mk5LiveVideo& video){wide_video=&video;}
     const std::vector<uint32_t>& wide_pixels()const{return wide_complete;}   // kWideWidth x height(), the last complete frame
     int wide_shift()const{return wide_shift_;}   // its window offset (mk5wide::WindowShift)

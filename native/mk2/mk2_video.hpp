@@ -101,10 +101,10 @@ struct BootVideo {
         const unsigned page_x=uint16_t(page), page_y=page>>16;
         if(page_y!=0 && page_y!=256)return;
         std::fill_n(blood_layer.begin()+page_y*512,256*512,0);
-        // Widescreen: the stains over the wide window too (screen x -56+d .. 456+d, layer column page_x+x-d), into the wide
-        // blood layer; the stains' own state (the pen they first cover) stays the arcade's.
+        // Widescreen: the stains over the wide window too (screen x -67+d .. 467+d, layer column page_x+x+11-d), into the
+        // wide blood layer; the stains' own state (the pen they first cover) stays the arcade's.
         const bool wide_on=wide.Enabled();
-        if(wide_on){wide.blood.resize(vram.size());std::fill_n(wide.blood.begin()+page_y*512,256*512,0);}
+        if(wide_on){wide.blood.resize(mk5wide::kLayerSize);std::fill_n(wide.blood.begin()+page_y*mk5wide::kLayerWidth,256*mk5wide::kLayerWidth,0);}
         if(!visible)return;
         const int camera_x=int16_t(camera),camera_y=int16_t(camera>>16);
         const int left=uint16_t(clip_start),top=clip_start>>16;
@@ -120,9 +120,9 @@ struct BootVideo {
                     const auto shade=blood_pixels[k];
                     if(!shade)continue;
                     if(wide_on){
-                        const int column=int(page_x)+x-wide.shift;
-                        if(column>=0 && column<512 && x>=wide.shift-mk2::wide::kMargin && x<400+mk2::wide::kMargin+wide.shift)
-                            wide.blood[(page_y+y)*512+size_t(column)]=uint16_t(stain.colors[shade]|0x8000);
+                        const int column=int(page_x)+x+mk5wide::kExtra-wide.shift;
+                        if(column>=0 && column<mk5wide::kLayerWidth)
+                            wide.blood[(page_y+y)*mk5wide::kLayerWidth+size_t(column)]=uint16_t(stain.colors[shade]|0x8000);
                     }
                     if(x<left || x>=right || x+int(page_x)>=512)continue;
                     const size_t i=(page_y+y)*512+page_x+x;
@@ -181,7 +181,7 @@ struct BootVideo {
     // between() runs between the passes. Returns the pixels the DMA timing charges.
     template<class Put,class Between>
     static unsigned Render(uint16_t command,const std::array<uint16_t,18>& r,uint16_t palette_register,
-                           const std::vector<uint8_t>& graphics,Put&& put,Between&& between) {
+                           const std::vector<uint8_t>& graphics,Put&& put,Between&& between,size_t stride=512) {
         // Measured commands plus the pinned finite unscaled sets below.
         // Validate the whole draw before framebuffer mutation.
         const bool fill=(command&15)==12;
@@ -255,7 +255,7 @@ struct BootVideo {
                     for(int ix=0;ix<end;ix+=int(xstep),sx=(sx+1)&0x3ff) {
                         if(sx<(r[16]&0x3ff) || sx>(r[17]&0x3ff)) continue;
                         const auto pixel=extract(row_bit+unsigned(ix>>8)*bpp,mask);
-                        if(pixel)put(size_t(sy)*512+sx,uint16_t(palette|pixel),write);
+                        if(pixel)put(size_t(sy)*stride+sx,uint16_t(palette|pixel),write);
                     }
                 }
             };
@@ -283,7 +283,7 @@ struct BootVideo {
                         if(sx<(r[16]&0x3ff) || sx>(r[17]&0x3ff)) continue;
                         const auto pixel=fill?0u:extract(bit,mask);
                         if(fill || opaque_copy || pixel)
-                            put(size_t(sy)*512+sx,uint16_t(palette|(fill || (command&15)==8?r[9]&0xff:pixel)),write);
+                            put(size_t(sy)*stride+sx,uint16_t(palette|(fill || (command&15)==8?r[9]&0xff:pixel)),write);
                     }
                 }
                 if(skip) {
@@ -318,7 +318,7 @@ struct BootVideo {
         const auto pixels=Render(command,dma_registers,dma_palette,graphics,[&](size_t index,uint16_t pen,bool write){
             auto& dest=vram.at(index);
             if(write){dest=pen;present_pixel(index);
-                if(wide_mirror){const int x=int(index&511)-(wide_mirror_world?wide.page_shift[(index>>17)&1]:0);if(x>=0&&x<512)wide.Write((index&~size_t(511))+size_t(x),pen,!wide_mirror_world);}}
+                if(wide_mirror){const auto at=wide.At(index,wide_mirror_world?wide.page_shift[(index>>17)&1]:0);if(at>=0)wide.Write(size_t(at),pen,!wide_mirror_world);}}
         },[&]{prepare_fighter_surface();});
         board.dma_command=command; board.io[18]&=uint16_t(~2);
         return pixels;
@@ -348,8 +348,8 @@ struct BootVideo {
     // The table's marker: the shadow's entries after it wait (wide_pending) until the drain reaches the real entries after
     // it (from wide_post_key on), so the floor shadows drawn at the marker stay under the world objects, as in VRAM.
     bool wide_shadow_post=false,wide_real_post=false;uint32_t wide_post_key=0;bool wide_post_keyed=false;
-    // How an entry reaches the layer: x moved by shift columns and, when width < 512, the columns [0, width) stretched to
-    // the 512 (the per-plane fit, WidePlane).
+    // How an entry reaches the layer: x moved by shift columns and, when width < kLayerWidth, the columns [0, width)
+    // stretched to the layer's (the per-plane fit, WidePlane).
     struct WideDraw{std::array<uint16_t,12> entry;int shift,width;bool fixed;   // fixed: a screen-fixed (HUD) draw
         template<class A> friend void Fields(A& a,WideDraw& d){a(d.entry,d.shift,d.width,d.fixed);}};
     std::vector<WideDraw> wide_pending;
@@ -386,11 +386,14 @@ struct BootVideo {
     uint32_t WideBloodPixel(size_t index)const{const auto pixel=wide.blood.empty()?0:wide.blood[index];return pixel?ExpandRgb555(pixel):0;}
     // One entry staged by the shadow walk (r0..r11 as the queue holds them) with the board's current clip; false when the
     // board's DMA would refuse it (it then draws nothing).
+    // The shadow draws at the virtual camera (the window offset is in the scrolls): nothing moves here. An object the
+    // shadow's streamer built (fresh) stays out of the arcade's columns while the window is centred: the real streamer has
+    // not built it yet.
     bool WideEntry(const std::array<uint16_t,12>& entry,const std::vector<uint8_t>& graphics,bool fresh=false){
-        auto moved=entry;if(!wide_hud)moved[4]=uint16_t(moved[4]-wide.shift);
-        if(wide_fit){wide_plane.push_back({moved,fresh});return true;}
-        if(fresh&&WideOnArcade(moved))return true;
-        return WidePlace({moved,0,512,wide_hud},graphics);
+        if(!wide_hud)wide.arena=true;   // a draw that follows a camera
+        if(wide_fit){wide_plane.push_back({entry,fresh});return true;}
+        if(fresh&&!wide.shift&&WideOnArcade(entry))return true;
+        return WidePlace({entry,0,mk5wide::kLayerWidth,wide_hud},graphics);
     }
     bool WidePlace(const WideDraw& draw,const std::vector<uint8_t>& graphics){
         if(wide_shadow_post){wide_pending.push_back(draw);return true;}
@@ -408,33 +411,40 @@ struct BootVideo {
         return placed;
     }
     // Whether the arcade screen itself shows this end of the plane's art (mk5wide::EndShown).
-    bool WideEndShown(int end,bool left_end)const{return mk5wide::EndShown(end,left_end,wide.shift,wide.world,wide.limits,wide_plane_ratio);}
+    bool WideEndShown(int end,bool left_end,int plane_shift)const{return mk5wide::EndShown(end,left_end,plane_shift,wide.world,wide.limits,wide_plane_ratio);}
     // The waiting plane (mk5wide::FitPlane): the hull of its art in layer columns, from what its entries draw inside the layer
     // and from their spans beyond it (the shadow reaches mk2::wide::kReach + 48 px past the window).
     bool WidePlane(const std::vector<uint8_t>& graphics){
         if(!wide_fit||wide_plane.empty()){wide_plane.clear();return true;}
-        int hull_left=1<<20,hull_right=-(1<<20);std::array<bool,512> drawn{};
+        int hull_left=1<<20,hull_right=-(1<<20);std::array<bool,mk5wide::kLayerWidth> drawn{};
         for(const auto& [e,fresh]:wide_plane){
-            const auto [lo,hi]=WideSpan(e);hull_left=std::min(hull_left,lo);hull_right=std::max(hull_right,hi);
-            auto r=dma_registers;std::copy(e.begin(),e.end(),r.begin());
-            try{Render(e[1],r,e[8],graphics,[&](size_t index,uint16_t,bool write){if(!write)drawn[index&511]=true;},[]{});}
+            const auto [lo,hi]=WideSpan(e);hull_left=std::min(hull_left,lo+mk5wide::kExtra);hull_right=std::max(hull_right,hi+mk5wide::kExtra);
+            auto r=LayerRegisters(e,0);
+            try{Render(e[1],r,e[8],graphics,[&](size_t index,uint16_t,bool write){if(!write)drawn[index%mk5wide::kLayerWidth]=true;},[]{},
+                       mk5wide::kLayerWidth);}
             catch(const std::runtime_error&){wide_plane.clear();return false;}
         }
-        const auto fit=mk5wide::FitPlane(drawn,hull_left,hull_right,wide.shift,[&](int end,bool left){return WideEndShown(end,left);});
+        const int plane_shift=mk5wide::PlaneShift(wide.shift,wide_plane_ratio);
+        const auto fit=mk5wide::FitPlane(drawn,hull_left,hull_right,plane_shift,[&](int end,bool left){return WideEndShown(end,left,plane_shift);});
         if(fit.fitted())++wide.page_fitted[wide.page];
         bool placed=true;
-        for(const auto& [e,fresh]:wide_plane)if(fit.fitted()||!fresh||!WideOnArcade(e))
+        for(const auto& [e,fresh]:wide_plane)if(fit.fitted()||!fresh||wide.shift||!WideOnArcade(e))
             placed&=WidePlace({e,fit.shift,fit.width,false},graphics);
         wide_plane.clear();return placed;
     }
+    // An entry's registers for the layer: x in layer columns (moved by shift), the layer's own clip.
+    std::array<uint16_t,18> LayerRegisters(const std::array<uint16_t,12>& entry,int shift)const{
+        auto r=dma_registers;std::copy(entry.begin(),entry.end(),r.begin());
+        r[4]=mk5wide::LayerX(uint16_t(r[4]+shift));r[16]=0;r[17]=mk5wide::kLayerWidth-1;return r;
+    }
     bool DrawWide(const WideDraw& draw,const std::vector<uint8_t>& graphics){
-        auto r=dma_registers;std::copy(draw.entry.begin(),draw.entry.end(),r.begin());r[4]=uint16_t(r[4]+draw.shift);
+        const auto r=LayerRegisters(draw.entry,draw.shift);
         try{
             Render(r[1],r,r[8],graphics,[&](size_t index,uint16_t pen,bool write){
                 if(!write||index>=wide.pens.size())return;
-                const bool fixed=draw.width>=512&&draw.fixed;   // a stretched (fitted) plane is scenery
+                const bool fixed=draw.width>=mk5wide::kLayerWidth&&draw.fixed;   // a stretched (fitted) plane is scenery
                 mk5wide::Stretch(index,draw.width,[&](size_t i){wide.Write(i,pen,fixed);});
-            },[]{});
+            },[]{},mk5wide::kLayerWidth);
         }catch(const std::runtime_error&){return false;}
         return true;
     }

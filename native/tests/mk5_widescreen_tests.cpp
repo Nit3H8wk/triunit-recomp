@@ -61,7 +61,7 @@ Run Play(const std::filesystem::path& root,const std::vector<uint32_t>& tape,con
         for(unsigned y=0;y<H;++y)for(unsigned x=0;x<W;++x)if(x<margin||x>=margin+X)frame.margin=Fnv(frame.margin,{wide[y*W+x]});
         if(widescreen && !frame.shift && !frame.fitted){   // the presented wide frame's centre is the presented frame
             const auto& p=screen.wide_presentation();const auto& b=screen.wide_backdrop_pixels();
-            for(unsigned y=0;y<H;++y)for(unsigned x=0;x<X;++x){
+            for(unsigned y=0;y<H;++y)for(unsigned x=4;x<X-4;++x){   // the arcade's edge columns apart (Mk5Scanout::wide_line)
                 frame.presented_centre+=p[y*W+margin+x]!=screen.pixels()[y*X+x];
                 if(!screen.backdrop_pixels().empty())frame.presented_centre+=b[y*W+margin+x]!=screen.backdrop_pixels()[y*X+x];
             }

@@ -60,7 +60,7 @@ struct Settings {
 // Whole source remains visible even below 1x. At small sizes, beam modulation is
 // analytically faded to avoid subpixel vertical aliasing; no source row is cropped.
 struct Viewport{float x,y,width,height;};
-// The source's physical aspect is across/down (4:3 by default; a widescreen MK2 frame is 4:3 x 512/400 = 128:75).
+// The source's physical aspect is across/down (4:3 by default; a widescreen frame is 16:9, mk5_wide.hpp).
 inline Viewport viewport(unsigned width,unsigned height,unsigned source_height,bool crt,unsigned across=4,unsigned down=3){
  float h=std::min(float(height),across==4&&down==3?float(width)*.75f:float(width)*down/across);
  if(crt&&source_height&&h>=source_height)h=std::floor(h/source_height)*source_height;

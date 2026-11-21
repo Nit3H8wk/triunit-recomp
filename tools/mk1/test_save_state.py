@@ -115,7 +115,7 @@ class WindowStateTests(unittest.TestCase):
                                                      if l.startswith('{"present"')][:30]
             self.assertEqual(after('MK1 state loaded from memory'),after('MK1 state saved'),'a widescreen load does not resume the saved frames')
             self.assertEqual(len(after('MK1 state saved')),30)
-            self.assertTrue(all(json.loads(l)['width']==512 for l in rows if l.startswith('{"present"')))
+            self.assertTrue(all(json.loads(l)['width']==534 for l in rows if l.startswith('{"present"')))
             for widescreen in (True,False):
                 again=session('load@10',60,'tracks',wide=widescreen)
                 self.assertIn('MK1 state loaded from saves/mk1/',again);self.assertNotIn('not loaded',again)
@@ -156,7 +156,7 @@ class CmosGuardTests(unittest.TestCase):
 
 class RunAheadTests(unittest.TestCase):
     """Run-ahead (F6) through the product loop of mk5_boot_flow_cli.cpp with the test window (constant input) and the
-    test PCM sink, Original, Remastered with music and Remastered widescreen (its 512 columns): 300 frames shown with
+    test PCM sink, Original, Remastered with music and Remastered widescreen (its 534 columns): 300 frames shown with
     run-ahead are the next real frames of a session without it, and the PCM delivered is the same."""
     @unittest.skipUnless((ROOT/'roms/mk1').is_dir(),'requires authenticated ROMs')
     def test_shows_the_next_real_frame_and_keeps_the_audio(self):
@@ -185,7 +185,7 @@ class RunAheadTests(unittest.TestCase):
                     self.assertTrue(r['passed'] and game and game['stop']=='window-frame-limit',out[-1500:])
                     return out
                 off,on=session(False),session(True)
-                # All the columns (a widescreen frame's 512 included) of each shown frame and its backdrop.
+                # All the columns (a widescreen frame's 534 included) of each shown frame and its backdrop.
                 shown=lambda out:[json.loads(l)['all'] for l in out.splitlines() if l.startswith('{"present"')]
                 frames=shown_ahead(self,shown(off),shown(on));checkpoints=same_pcm(self,off,on)
                 print(edition,'frames compared',frames,'PCM checkpoints',checkpoints)

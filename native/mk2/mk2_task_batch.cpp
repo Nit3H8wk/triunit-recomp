@@ -140,7 +140,8 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
     const auto first_instruction = s.instructions;
     const uint32_t end_pc = coin_queue ? 0xff8119b0 : 0xff80dd30;
     // Widescreen W1 (BootOps::shadow), once per frame at the display table walk (FF804E30, after the queue reset): with the
-    // clip longs widened in the journal to the 512 VRAM columns (-56..456), the scenery streamer FF9F8030 (when the game
+    // clip longs widened in the journal to the 16:9 window (-67..467 plus kReach) and the scrolls moved to the virtual
+    // camera (mk5wide::VirtualScroll, when the window is shifted), the scenery streamer FF9F8030 (when the game
     // runs it; it rebuilds every plane from its window, so one call fills the wider window) and then the whole walk run on
     // the journaled RAM, the drawer's interrupt kick skipped (FF804440..FF804500); the entries staged at FF804410 and
     // FF800490 draw the margins. Then the journal is undone and the real walk runs. The shadow never reaches the loop's
@@ -154,6 +155,19 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
         if(o.shadow_fault)o.out.video.margin_fault_pc=shadow_fault_pc;
         o.shadow=false;shadow_skip=true;o.out.video.margin_faults+=o.shadow_fault;
         o.out.video.wide_walk_drawn=!o.shadow_fault;   // else the real walk's DMAs are mirrored too
+        if(!o.shadow_fault)o.out.video.wide.Composed();
+    };
+    // The shadow's clip and virtual camera, written through the journal: each scroll moves by its ratio times d (the world's
+    // by d), the ratios read again whenever the world moves.
+    const auto shadow_view=[&](int d){
+        const auto ram_long=[&](uint32_t bit){const size_t i=(bit-0x01000000)/16;return int32_t(o.out.main_ram[i]|uint32_t(o.out.main_ram[i+1])<<16);};
+        o.Write32(mk2::wide::kClipTopLeft,mk2::wide::WideTopLeft());o.Write32(mk2::wide::kClipBottomRight,mk2::wide::WideBottomRight());
+        const int32_t world_velocity=ram_long(mk2::wide::kWorldVelocity);
+        for(unsigned slot=0;slot<mk2::wide::kScrollSlots;++slot){
+            const uint32_t scroll=mk2::wide::kScrollFirst+slot*0x20;auto& ratio=o.out.video.wide.PlaneRatio(slot);
+            if(world_velocity)ratio=mk5wide::MeasuredRatio(ram_long(scroll-mk2::wide::kScrollVelocityGap),world_velocity);
+            if(d)o.Write32(scroll,uint32_t(mk5wide::VirtualScroll(ram_long(scroll),d,slot==mk2::wide::kWorldSlot?nullptr:&ratio)));
+        }
     };
     while (live_host ? s.cycles<end_cycle :
            s.next_pc != end_pc || (host_controls ? s.cycles<end_cycle : s.cycles!=end_cycle)) {
@@ -196,7 +210,7 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
                     object=ram_long(object))free.push_back(object);
                 std::sort(free.begin(),free.end());
                 shadow_saved={s.a,s.b,s.status};shadow_steps=0;o.shadow=true;o.shadow_fault=false;
-                o.Write32(mk2::wide::kClipTopLeft,mk2::wide::WideTopLeft(d));o.Write32(mk2::wide::kClipBottomRight,mk2::wide::WideBottomRight(d));
+                shadow_view(d);
                 // Not while the interrupted main process is inside the real streamer: its lists are half updated.
                 shadow_walk=!o.out.video.margin_streamer||o.out.video.margin_streaming;
                 if(!shadow_walk){o.Push(mk2::wide::kStreamerReturn);s.next_pc=mk2::wide::kStreamer;}
@@ -255,8 +269,7 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
             if(o.shadow&&!shadow_walk){   // the streamer met a list it cannot walk (boot frames): this frame's walk without it
                 for(auto it=o.shadow_journal.rbegin();it!=o.shadow_journal.rend();++it)o.out.main_ram[it->first]=it->second;
                 o.shadow_journal.clear();std::tie(s.a,s.b,s.status)=shadow_saved;o.shadow_fault=false;
-                const int d=o.out.video.wide.shift;
-                o.Write32(mk2::wide::kClipTopLeft,mk2::wide::WideTopLeft(d));o.Write32(mk2::wide::kClipBottomRight,mk2::wide::WideBottomRight(d));
+                shadow_view(o.out.video.wide.shift);
                 s.next_pc=mk2::wide::kWalkStart;shadow_walk=true;++o.out.video.margin_streamer_skips;continue;
             }
             if(o.shadow){o.shadow_fault=true;shadow_fault_pc=instruction_pc|2;shadow_end();continue;}

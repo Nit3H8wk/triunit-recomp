@@ -826,12 +826,12 @@ public:
         } else if(shadow && s.next_pc==mk2::wide::kFloorStage){   // the floor producer: A9 r0/r1, A8 r2/r3, A7 r4/r5, A6 r6/r7, A3 r8/r9, A2 r10/r11
             std::array<uint16_t,12> entry{};const unsigned regs[6]={9,8,7,6,3,2};
             for(unsigned k=0;k<6;++k){entry[2*k]=uint16_t(s.a[regs[k]]);entry[2*k+1]=uint16_t(s.a[regs[k]]>>16);}
-            // Each floor line is one unscaled 400-pixel row: the same row of the floor art from the wide window's left edge
-            // (56 - d pixels earlier) and 512 wide.
+            // Each floor line is one unscaled 400-pixel row (at the virtual camera): the same row of the floor art from the
+            // wide window's left edge (67 pixels earlier) and as wide as the layer.
             if(entry[6]==400 && entry[7]==1 && !(entry[1]&0x10)){
-                const unsigned code=(entry[1]>>12)&7,bpp=code?code:8;const int lead=mk2::wide::kMargin-out.video.wide.shift;
+                const unsigned code=(entry[1]>>12)&7,bpp=code?code:8;constexpr int lead=mk5wide::kWideMargin;
                 const uint32_t source=(entry[2]|uint32_t(entry[3])<<16)-uint32_t(lead)*bpp;
-                entry[2]=uint16_t(source);entry[3]=uint16_t(source>>16);entry[4]=uint16_t(entry[4]-lead);entry[6]=512;
+                entry[2]=uint16_t(source);entry[3]=uint16_t(source>>16);entry[4]=uint16_t(entry[4]-lead);entry[6]=mk5wide::kLayerWidth;
             }
             if(!out.video.WideEntry(entry,program.graphics))shadow_fault=true;
         }

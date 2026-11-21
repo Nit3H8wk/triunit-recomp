@@ -6,6 +6,7 @@
 #include "mk5_stage_bicubic.hpp"
 #include "mk5_fighter_bicubic.hpp"
 #include "mk5_crt.hpp"
+#include "mk5_wide.hpp"
 #include "mk5_hdr.hpp"
 #include <wincodec.h>
 #include <wrl/client.h>
@@ -74,32 +75,33 @@ int main(int argc,char** argv){try{
   return 0;
  }
  if(group=="wide"){
-  // A widescreen MK2 frame: 512 columns at 4:3 x 512/400 (128:75), no TV frame even with MK1_BEZEL=1, aspect-correct
-  // scaling, the stage and a fighter layer past the 400th column composed and read back equal to the CPU reference.
+  // A widescreen frame: 534 columns at 16:9 (mk5_wide.hpp), no TV frame even with MK1_BEZEL=1, filling the window's 16:9
+  // area despite integer scaling (MK1_SCALE_MODE 5), the stage and a fighter layer past the 400th column composed and
+  // read back equal to the CPU reference.
   using namespace mk5presentation;
   SetEnvironmentVariableA("MK1_SCANLINES","0");SetEnvironmentVariableA("MK1_COLOR","original");SetEnvironmentVariableA("MK1_BRIGHTNESS","100");
   SetEnvironmentVariableA("MK1_CRT_PRESET","off");SetEnvironmentVariableA("MK1_SCALEFX","0");SetEnvironmentVariableA("MK1_CAS","0");
   SetEnvironmentVariableA("MK1_BILATERAL","0");SetEnvironmentVariableA("MK1_SMAA","0");SetEnvironmentVariableA("MK1_SCALE_MODE","5");
-  std::vector<uint32_t> wide(512*254);
-  for(unsigned y=0;y<254;++y)for(unsigned x=0;x<512;++x)wide[y*512+x]=(((x/13+(y+x/5)/11)&1)?0x00c04080:0x00205090)+(x%7)*0x00020101;
+  std::vector<uint32_t> wide(534*254);
+  for(unsigned y=0;y<254;++y)for(unsigned x=0;x<534;++x)wide[y*534+x]=(((x/13+(y+x/5)/11)&1)?0x00c04080:0x00205090)+(x%7)*0x00020101;
   FighterFrame frame;frame.serial=1;frame.underlay=wide;frame.backdrop=wide;
   frame.covered.resize(wide.size());frame.opaque_order.resize(wide.size());
-  for(unsigned y=60;y<200;++y)for(unsigned x=8;x<504;++x)frame.backdrop[y*512+x]|=mk5stage::scenery;
-  frame.layers.push_back({470,170,3,2,true,{0xff130b02,0xff104fbb,0,0,0xfffefefe,0xff9ea104},2});
+  for(unsigned y=60;y<200;++y)for(unsigned x=8;x<526;++x)frame.backdrop[y*534+x]|=mk5stage::scenery;
+  frame.layers.push_back({490,170,3,2,true,{0xff130b02,0xff104fbb,0,0,0xfffefefe,0xff9ea104},2});
   for(unsigned y=0;y<2;++y)for(unsigned x=0;x<3;++x){
-   const auto index=(170+y)*512+470+x;const auto pen=frame.layers.front().pixels[y*3+x];
+   const auto index=(170+y)*534+490+x;const auto pen=frame.layers.front().pixels[y*3+x];
    if(pen){frame.covered[index]=1;wide[index]=pen&0xffffff;}
   }
-  Mk5Window window(false,128,75);window.Present(wide,512,254,{},frame);
+  Mk5Window window(false,mk5wide::kAcross,mk5wide::kDown);window.Present(wide,534,254,{},frame);
   const std::array<const char*,8> fields{"\"bicubic_fighter_validation_frames\":1","\"bicubic_stage_frames\":1","\"gpu_validation_frames\":1",
-                         "\"gpu_validation_mismatches\":0","\"bezel\":false","\"viewport_width\":867","\"viewport_height\":508",
+                         "\"gpu_validation_mismatches\":0","\"bezel\":false","\"viewport_width\":903","\"viewport_height\":508",
                          "\"physical_aspect\":\"wide\""};
   const auto complete=[&](const std::string& report){
    return std::all_of(fields.begin(),fields.end(),[&](const char* field){return report.find(field)!=std::string::npos;});};
   const auto deadline=GetTickCount64()+5000;std::string report;
   do{window.Pump();report=window.presentation_json();Sleep(5);}while(!complete(report)&&GetTickCount64()<deadline);
   if(!complete(report))throw std::runtime_error("Widescreen presentation differs: "+report);
-  std::cout<<"PASS widescreen 512-column frame at 128:75\n";return 0;
+  std::cout<<"PASS widescreen 534-column frame at 16:9\n";return 0;
  }
  if(group=="fighter"){
   using namespace mk5presentation;

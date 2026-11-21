@@ -91,19 +91,23 @@ void Mk5Scanout::wide_line(unsigned row,unsigned col,bool enabled){
         if(wide_present){wide_source_work.assign(n,kBlank);wide_blood_work.assign(n,0);}
         wide_shift_work=layer.Enabled()?layer.ShiftOfRow(row>>9):0;wide_fitted_work=layer.Enabled()?layer.FittedOfRow(row>>9):0;
     }
+    const size_t base=size_t(row>>9)*mk5wide::kLayerWidth;   // the layer's line (mk5_wide.hpp)
     for(unsigned x=0;x<kWideWidth;++x){
-        const auto index=row+((col+x-margin)&511);const size_t dest=size_t(rows_)*kWideWidth+x;
-        const uint16_t pen=layer.Enabled()?layer.pens[index]:memory.vram[index];
-        wide_centre_work+=x>=margin && x<margin+width_ && pen!=memory.vram[index];
+        const auto index=row+((col+x-margin)&511);const size_t dest=size_t(rows_)*kWideWidth+x,at=base+x;
+        const uint16_t pen=layer.Enabled()?layer.pens[at]:memory.vram[index];
+        // The centre against the arcade, its kEdge columns at each side apart: the wide frame draws there the objects the
+        // arcade drops at its screen's edge (Mk5LiveVideo::WideOutside).
+        constexpr unsigned kEdge=4;
+        wide_centre_work+=x>=margin+kEdge && x<margin+width_-kEdge && pen!=memory.vram[index];
         wide_work[dest]=enabled?expand_rgb(memory.palette.at(pen&0x7fff)):0;
         if(!wide_present)continue;
         const int world=int(x)-int(margin)+wide_shift_work,hud=int(x)-int(margin);
-        const bool fixed=layer.Enabled() && layer.fixed[index];
+        const bool fixed=layer.Enabled() && layer.fixed[at];
         int16_t source=enabled?kRaw:kBlank;
         if(enabled && !fixed && world>=0 && world<int(width_) && pen==memory.vram[row+((col+unsigned(world))&511)])source=int16_t(world);
         else if(enabled && (fixed || !layer.Enabled()) && hud>=0 && hud<int(width_) && pen==memory.vram[index])source=int16_t(hud);
         wide_source_work[dest]=source;
-        wide_blood_work[dest]=source==kRaw && layer.Enabled()?wide_video->WideBloodPixel(index):0;
+        wide_blood_work[dest]=source==kRaw && layer.Enabled()?wide_video->WideBloodPixel(at):0;
     }
 }
 // The wide frame of the Remastered layers: a pixel with an arcade column takes that column's data (colour with blood,

@@ -1061,14 +1061,16 @@ struct Mk5Window::Impl {
         barrier(drawn,rest,D3D12_RESOURCE_STATE_RENDER_TARGET);
         const auto rtv=rtv_at(hdr?scene_rtv():index);
         const float black[4]={0,0,0,1};commands->OMSetRenderTargets(1,&rtv,FALSE,nullptr);commands->ClearRenderTargetView(rtv,black,0,nullptr);
-        auto area=crt.phosphor()?mk5crt::phosphor_viewport(target_width,target_height,image_height,across,down):mk5crt::viewport(target_width,target_height,image_height,crt.enabled(),across,down);
+        // A widescreen frame (16:9) fills the screen: no whole-line CRT height and no integer scale, which would leave a border.
+        const bool wide=across*3!=down*4;
+        auto area=crt.phosphor()?mk5crt::phosphor_viewport(target_width,target_height,wide?0:image_height,across,down):mk5crt::viewport(target_width,target_height,image_height,crt.enabled()&&!wide,across,down);
         mk5crt::Viewport bounds{0,0,float(target_width),float(target_height)};
         commands->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         commands->SetGraphicsRootSignature(root.Get());
         if(bezel){
             area=bezel_area(tv,image_height,crt);bounds=area;
         }
-        area=mk5video::scaled_viewport(bounds,area,image_width,image_height,scale_mode,across,down);
+        area=mk5video::scaled_viewport(bounds,area,image_width,image_height,wide?0:scale_mode,across,down);
         viewport_width=unsigned(area.width);viewport_height=unsigned(area.height);
         source_aspect=scale_mode>=1&&scale_mode<=4&&area.width>=image_width&&area.width*image_height==area.height*image_width;
         crt_integer_vertical=crt.enabled()&&std::fmod(area.height,float(image_height))==0;

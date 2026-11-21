@@ -37,7 +37,7 @@ bool Shape(const std::array<uint16_t,18>& r,const std::vector<uint8_t>& gfx,DmaS
 }
 // The pinned blitter: fixed-point source coordinates follow the scaled blitter; skip consumes source samples; the
 // destination starts at XSTART in either mode. put(dest, pen) for every pixel written inside the destination clip.
-template<class Put> void Blit(const std::array<uint16_t,18>& r,const DmaShape& d,const std::vector<uint8_t>& gfx,Put&& put){
+template<class Put> void Blit(const std::array<uint16_t,18>& r,const DmaShape& d,const std::vector<uint8_t>& gfx,Put&& put,size_t stride=512){
     const uint16_t value=r[1];
     const unsigned start=(value&64)?r[0]&255:0,end=(value&64)?r[0]>>8:r[0];
     const uint16_t pal=r[8]&0x7f00,color=pal|(r[9]&255);unsigned sy=r[5]&511;
@@ -48,7 +48,7 @@ template<class Put> void Blit(const std::array<uint16_t,18>& r,const DmaShape& d
                 const uint32_t bit=d.source+((iy>>8)*d.width+(ix>>8))*d.bpp;
                 const unsigned pixel=d.fill?0:graphics_pixel(gfx,bit,d.bpp);
                 const unsigned mode=pixel?((value&8)?2:((value&2)?1:0)):((value&4)?2:((value&1)?1:0));
-                if(mode)put(size_t(sy)*512+sx,mode==2?color:uint16_t(pal|pixel));
+                if(mode)put(size_t(sy)*stride+sx,mode==2?color:uint16_t(pal|pixel));
             }sx=(sx+((value&16)?1023:1))&1023;
         }sy=(sy+((value&32)?511:1))&511;
     }
@@ -215,10 +215,10 @@ void Mk5LiveVideo::DrawBlood(const ResetTrace& s,bool arena_visible){
     const auto page_x=uint16_t(s.a[5]),page_y=uint16_t(s.a[5]>>16);
     if(page_y!=0 && page_y!=256)return;
     std::fill_n(blood_layer.begin()+page_y*512,256*512,0);
-    // Widescreen: the stains over the wide window too (screen x -56+d .. 456+d, layer column page_x+x-d), into the wide
+    // Widescreen: the stains over the wide window too (screen x -67+d .. 467+d, layer column page_x+x+11-d), into the wide
     // blood layer; the stains' own state (the pen they first cover) stays the arcade's.
     const bool wide_blood=wide.Enabled() && !wide.blood.empty();
-    if(wide_blood)std::fill_n(wide.blood.begin()+page_y*512,256*512,uint8_t(0));
+    if(wide_blood)std::fill_n(wide.blood.begin()+page_y*mk5wide::kLayerWidth,256*mk5wide::kLayerWidth,uint8_t(0));
     if(!arena_visible)return;
     const int camera_x=int16_t(s.a[4]),camera_y=int16_t(s.a[4]>>16);
     const int left=uint16_t(s.a[14]),top=uint16_t(s.a[14]>>16);
@@ -236,9 +236,8 @@ void Mk5LiveVideo::DrawBlood(const ResetTrace& s,bool arena_visible){
                 const auto shade=blood_sprite.pixels[k];
                 if(!shade)continue;
                 if(wide_blood){
-                    const int column=int(page_x)+x-wide.shift;
-                    if(column>=0 && column<512 && x>=wide.shift-mk5wide::kMargin && x<mk5wide::kVisible+mk5wide::kMargin+wide.shift)
-                        wide.blood[size_t(page_y+y)*512+size_t(column)]=shade;
+                    const int column=int(page_x)+x+mk5wide::kExtra-wide.shift;
+                    if(column>=0 && column<mk5wide::kLayerWidth)wide.blood[size_t(page_y+y)*mk5wide::kLayerWidth+size_t(column)]=shade;
                 }
                 if(x<left || x>=right || x+page_x>=512)continue;
                 const size_t i=size_t(page_y+y)*512+size_t(page_x+x);
@@ -267,11 +266,12 @@ void Mk5LiveVideo::Write(uint32_t pc,unsigned offset,uint16_t value){
     const bool scenery=!owner && IsBackdropDma(caller);
     auto draw=fighters.Draw(owner);
     // Widescreen: in the real walk, the staged draws up to this object come first and this draw is mirrored inside its
-    // arcade columns only (not at all for a fitted far plane: the staged draw replaces it); after a failed shadow pass the
-    // walk is mirrored whole as scenery. Any other draw is mirrored where it lands, screen-fixed.
+    // arcade columns only (not at all for a fitted far plane or a shifted window: the staged draws, made at the virtual
+    // camera, replace it); after a failed shadow pass the walk is mirrored whole as scenery. Any other draw is mirrored where
+    // it lands, screen-fixed.
     const WideEntry* staged=wide.Enabled() && wide_walk && wide_walk_drawn?WideMerge(cpu.a[0]):nullptr;
     const bool merge=wide.Enabled() && wide_walk && wide_walk_drawn,world=wide_walk && !(staged && staged->fixed);
-    const bool mirror=wide.Enabled() && !(staged && staged->fitted);
+    const bool mirror=wide.Enabled() && !(staged && staged->fitted) && !(merge && wide.shift);
     Blit(r,d,gfx,[&](size_t dest,uint16_t pen){
         m.vram.at(dest)=pen;
         fighters.Write(draw,dest,m.vram[dest]|(scenery?backdrop_owner:0),owner?BloodPixel(dest):0);
@@ -282,66 +282,78 @@ void Mk5LiveVideo::Write(uint32_t pc,unsigned offset,uint16_t value){
         }
         ++pixels_written;
         if(mirror){
-            const int column=int(dest&511),x=column-(world?wide.page_shift[(dest>>17)&1]:0);
-            if(x>=0 && x<512 && (!merge || (column>=mk5wide::kMargin && column<mk5wide::kMargin+mk5wide::kVisible)))
-                wide.Write((dest&~size_t(511))+size_t(x),pen,!world);
+            const int column=int(dest&511);const auto at=wide.At(dest,world?wide.page_shift[(dest>>17)&1]:0);
+            if(at>=0 && (!merge || (column>=mk5wide::kMargin && column<mk5wide::kMargin+mk5wide::kVisible)))wide.Write(size_t(at),pen,!world);
         }
     });
 }
 // The shadow pass's DMA registers: a command is staged for the wide layer, with no timing, no interrupt and no effect on
-// VRAM or the Remastered layers. Scenery moves by the window offset; a screen-fixed object keeps its place. False when the
-// board's DMA would refuse the command.
+// VRAM or the Remastered layers. The shadow draws at the virtual camera (the window offset is in the scrolls), so nothing
+// moves here. False when the board's DMA would refuse the command.
 bool Mk5LiveVideo::ShadowWrite(unsigned offset,uint16_t value){
     unsigned index=offset;if(offset==12 || offset==13)index=(shadow_regs[15]&32)?offset:offset+4;
     if(index>=shadow_regs.size())return false;
     if(index!=1 || !(value&0x8000)){shadow_regs[index]=value;return true;}
     auto r=shadow_regs;r[1]=value;shadow_regs=r;
     DmaShape d;if(!Shape(r,gfx,d))return false;
-    if(!wide_hud)r[4]=uint16_t(r[4]-wide.shift);
-    const WideEntry e{r,cpu.a[0],0,mk5wide::kWidth,wide_hud,false};
+    const WideEntry e{r,cpu.a[0],0,mk5wide::kLayerWidth,wide_hud,false};
+    if(!wide_hud)wide.arena=true;   // a draw that follows a camera
     if(wide_fit)wide_plane.push_back(e);else WideStage(e);
     return true;
 }
 void Mk5LiveVideo::WideStage(const WideEntry& e){wide_staged.push_back(e);}
 // The real walk draws `object`: the staged draws before its own (and its own) reach the layer; returns its own, if staged.
 const Mk5LiveVideo::WideEntry* Mk5LiveVideo::WideMerge(uint32_t object){
-    for(size_t i=wide_cursor;i<wide_staged.size();++i)if(wide_staged[i].object==object){WideFlush(i+1);return &wide_staged[i];}
+    for(size_t i=wide_cursor;i<wide_staged.size();++i)if(wide_staged[i].object==object){
+        WideFlush(i);WideOutside(wide_staged[i],true);wide_cursor=i+1;return &wide_staged[i];}
     return nullptr;
 }
+// Staged draws the real walk did not make (it passed them): drawn whole when the arcade drops them at its screen's edge.
 void Mk5LiveVideo::WideFlush(size_t end){
-    for(;wide_cursor<end && wide_cursor<wide_staged.size();++wide_cursor)WideOutside(wide_staged[wide_cursor]);
+    for(;wide_cursor<end && wide_cursor<wide_staged.size();++wide_cursor)WideOutside(wide_staged[wide_cursor],false);
 }
-// A staged draw on the layer: outside its arcade columns (the real draw owns those), or anywhere for a fitted far plane.
-bool Mk5LiveVideo::WideOutside(const WideEntry& e){
+// A staged draw on the layer, rendered in layer columns: outside its arcade columns (the real draw owns those) with the
+// window centred; anywhere for a fitted far plane, a shifted window, or a draw the arcade drops although it would cover at
+// most kEdgeDrop of its columns (its list drawer skips an object showing only one or two columns at the screen's edge: the
+// arcade's own edge column then shows what lies behind, a seam in the middle of the wide frame).
+bool Mk5LiveVideo::WideOutside(const WideEntry& e,bool made){
+    constexpr int kEdgeDrop=3;
     auto r=e.regs;r[4]=uint16_t(r[4]+e.shift);
+    const auto [lo,hi]=mk5wide::Span(r[4],r[6],r[10],(r[1]&16)!=0);
+    const int on=std::min(hi,mk5wide::kMargin+mk5wide::kVisible)-std::max(lo,mk5wide::kMargin);
+    const bool whole=e.fitted || wide.shift || (!made && on<=kEdgeDrop);
+    r[4]=mk5wide::LayerX(r[4]);r[16]=0;r[17]=mk5wide::kLayerWidth-1;
     DmaShape d;if(!Shape(r,gfx,d))return false;
-    const int first=mk5wide::kMargin-(e.fixed?0:wide.shift),last=first+mk5wide::kVisible;
+    constexpr int first=mk5wide::kWideMargin,last=first+mk5wide::kVisible;
     Blit(r,d,gfx,[&](size_t dest,uint16_t pen){
-        if(!e.fitted){const int c=int(dest&511);if(c>=first && c<last)return;wide.Write(dest,pen,e.fixed);return;}
+        if(dest>=wide.pens.size())return;
+        if(!e.fitted){const int c=int(dest%mk5wide::kLayerWidth);if(!whole && c>=first && c<last)return;wide.Write(dest,pen,e.fixed);return;}
         mk5wide::Stretch(dest,e.width,[&](size_t i){wide.Write(i,pen,false);});
-    });
+    },mk5wide::kLayerWidth);
     return true;
 }
 bool Mk5LiveVideo::WideList(bool fit,unsigned slot,int32_t velocity,int32_t world_velocity){
     const bool placed=WidePlane();wide_fit=fit;wide_plane_ratio=nullptr;
     if(fit){
         auto& ratio=wide.PlaneRatio(slot);wide_plane_ratio=&ratio;
-        if(world_velocity)ratio=world_velocity>0?mk5wide::Ratio{velocity,world_velocity}:mk5wide::Ratio{-int64_t(velocity),-int64_t(world_velocity)};
+        if(world_velocity)ratio=mk5wide::MeasuredRatio(velocity,world_velocity);
     }
     return placed;
 }
 // The waiting far plane (mk5wide::FitPlane): its art from what its draws put inside the layer and from their spans beyond.
 bool Mk5LiveVideo::WidePlane(){
     if(!wide_fit || wide_plane.empty()){wide_plane.clear();return true;}
-    int hull_left=1<<20,hull_right=-(1<<20);std::array<bool,mk5wide::kWidth> drawn{};
+    int hull_left=1<<20,hull_right=-(1<<20);std::array<bool,mk5wide::kLayerWidth> drawn{};
     for(const auto& e:wide_plane){
+        auto r=e.regs;r[4]=mk5wide::LayerX(r[4]);r[16]=0;r[17]=mk5wide::kLayerWidth-1;
         const auto [lo,hi]=mk5wide::Span(e.regs[4],e.regs[6],e.regs[10],(e.regs[1]&16)!=0);
-        hull_left=std::min(hull_left,lo);hull_right=std::max(hull_right,hi);
-        DmaShape d;if(!Shape(e.regs,gfx,d)){wide_plane.clear();return false;}
-        Blit(e.regs,d,gfx,[&](size_t dest,uint16_t){drawn[dest&511]=true;});
+        hull_left=std::min(hull_left,lo+mk5wide::kExtra);hull_right=std::max(hull_right,hi+mk5wide::kExtra);
+        DmaShape d;if(!Shape(r,gfx,d)){wide_plane.clear();return false;}
+        Blit(r,d,gfx,[&](size_t dest,uint16_t){drawn[dest%mk5wide::kLayerWidth]=true;},mk5wide::kLayerWidth);
     }
-    const auto fit=mk5wide::FitPlane(drawn,hull_left,hull_right,wide.shift,[&](int end,bool left){
-        return mk5wide::EndShown(end,left,wide.shift,wide.world,wide.limits,wide_plane_ratio);});
+    const int plane_shift=mk5wide::PlaneShift(wide.shift,wide_plane_ratio);
+    const auto fit=mk5wide::FitPlane(drawn,hull_left,hull_right,plane_shift,[&](int end,bool left){
+        return mk5wide::EndShown(end,left,plane_shift,wide.world,wide.limits,wide_plane_ratio);});
     if(fit.fitted())++wide.page_fitted[wide.page];
     for(auto e:wide_plane){e.shift=fit.shift;e.width=fit.width;e.fitted=fit.fitted();WideStage(e);}
     wide_plane.clear();return true;

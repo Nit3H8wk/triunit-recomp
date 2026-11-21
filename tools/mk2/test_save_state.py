@@ -119,7 +119,7 @@ def same_pcm(test,off,on):
 
 class RunAheadTests(unittest.TestCase):
     """Run-ahead (F6) through the live loop with the test window and a constant input, Original, Remastered with music and
-    Remastered widescreen (its 512 columns):
+    Remastered widescreen (its 534 columns):
     every frame shown with run-ahead is the next real frame of a session without it, and the PCM delivered is the same."""
     @unittest.skipUnless((q.ROOT/'roms/mk2').is_dir(),'requires authenticated ROMs')
     def test_shows_the_next_real_frame_and_keeps_the_audio(self):
@@ -148,7 +148,7 @@ class RunAheadTests(unittest.TestCase):
                                      [l[:300] for l in out.splitlines() if 'cmos_hex' not in l][-20:])
                     return out
                 off,on=session(False),session(True)
-                # All the columns (a widescreen frame's 512 included) of each shown frame and its backdrop.
+                # All the columns (a widescreen frame's 534 included) of each shown frame and its backdrop.
                 shown=lambda out:[json.loads(l)['all'] for l in out.splitlines() if l.startswith('{"present"')]
                 frames=shown_ahead(self,shown(off),shown(on));checkpoints=same_pcm(self,off,on)
                 print(edition,'frames compared',frames,'PCM checkpoints',checkpoints)
@@ -191,7 +191,7 @@ class TrainingTests(unittest.TestCase):
 
 
 class WideCaptureTests(unittest.TestCase):
-    """Widescreen over the translated first-fight route: the 512-column capture and the shadow pass that composes it leave
+    """Widescreen over the translated first-fight route: the 16:9 (534-column) capture and the shadow pass that composes it leave
     the frames shown unchanged, and the composed frame's visible centre is the scanout's own frame in every frame."""
     @unittest.skipUnless((q.ROOT/'roms/mk2').is_dir(),'requires authenticated ROMs')
     def test_centre_is_the_frame_and_capture_is_read_only(self):
@@ -219,19 +219,19 @@ class WideCaptureTests(unittest.TestCase):
             centred=[w for w in wide if w['shift']==0 and w['fitted']==0]
             self.assertEqual([w['centre'] for w in centred],[w['plain'] for w in centred],'the visible centre differs from the frame')
             self.assertEqual(len(wide),len(lines(on,'present')),'one capture per shown frame')
-            # The shadow composes all 512 columns: no fault, and margin pixels beyond the arcade's own spill in the fights.
+            # The shadow composes all 534 columns: no fault, and margin pixels beyond the arcade's own spill in the fights.
             self.assertEqual(wide[-1]['faults'],0,'a shadow pass was left incomplete')
             self.assertGreater(sum(w['added']>0 for w in wide),300,'the shadow added no margin art')
             print('seconds without/with',round(off_s,2),round(on_s,2),'frames',len(wide),'shifted',sum(w['shift']!=0 for w in wide),'fitted',sum(w['fitted']>0 for w in wide),
                   'shifts',sorted({w['shift'] for w in wide}),
                   'margin pixels added (quartiles)',sorted(w['added'] for w in wide)[::len(wide)//4])
-            # Widescreen presentation (Remastered, MK2_WIDESCREEN=1): 512-column frames whose centre is the Remastered frame
+            # Widescreen presentation (Remastered, MK2_WIDESCREEN=1): 534-column frames whose centre is the Remastered frame
             # (pixels and backdrop) wherever the window is centred and no far plane was fitted.
             (plain,_),(widescreen,_)=session(False,MK1_MUSIC_MODE='remastered'),session(True,MK1_MUSIC_MODE='remastered',MK2_WIDESCREEN='1')
             frames=lambda out:[json.loads(l) for l in out.splitlines() if l.startswith('{"present"')]
             plain,shown,layer=frames(plain),frames(widescreen),lines(widescreen,'wide')
             self.assertEqual((len(shown),len(layer)),(len(plain),len(plain)))
-            self.assertEqual({(f['width']) for f in shown},{512});self.assertEqual({f['width'] for f in plain},{400})
+            self.assertEqual({(f['width']) for f in shown},{534});self.assertEqual({f['width'] for f in plain},{400})
             exact=[n for n,w in enumerate(layer) if w['shift']==0 and w['fitted']==0]
             self.assertGreater(len(exact),600,len(exact))
             self.assertEqual([shown[n]['present'] for n in exact],[plain[n]['present'] for n in exact],'the widescreen centre differs')

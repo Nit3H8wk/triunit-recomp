@@ -95,11 +95,11 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
     const char* music_mode=std::getenv("MK1_MUSIC_MODE");
     const bool remastered=music_mode && std::string(music_mode)=="remastered";
     if(music_mode && !remastered && std::string(music_mode)!="original")throw std::runtime_error("invalid MK2 music mode");
-    // Widescreen (MK2_WIDESCREEN=1, Remastered window only): the shadow pass's 512 columns are shown, 4:3 x 512/400.
+    // Widescreen (MK2_WIDESCREEN=1, Remastered window only): the shadow pass's 16:9 frame (mk5_wide.hpp) is shown.
     const char* widescreen_flag=std::getenv("MK2_WIDESCREEN");
     const bool widescreen=remastered&&show_window&&!test_switch&&widescreen_flag&&std::string(widescreen_flag)=="1";
     std::unique_ptr<Mk5Window> window;
-    if (show_window) window=widescreen?std::make_unique<Mk5Window>(cmos_live&&!remastered,128,75):std::make_unique<Mk5Window>(cmos_live&&!remastered);
+    if (show_window) window=widescreen?std::make_unique<Mk5Window>(cmos_live&&!remastered,mk5wide::kAcross,mk5wide::kDown):std::make_unique<Mk5Window>(cmos_live&&!remastered);
     mk5hitbox::enabled=window&&window->Training();   // training mode (F8): boxes the strike check tests
     bool stop_requested=false,valid_host_admitted=false,live_boundary_validated=false;
     // Run-ahead (F6): the real frames are held; the frame after each one, run from a snapshot, is shown, then undone.

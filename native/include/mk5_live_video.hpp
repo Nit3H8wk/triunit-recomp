@@ -38,19 +38,20 @@ class Mk5LiveVideo {
     mk5presentation::FighterSurface fighters;
     mk5presentation::FighterSlots fighter_objects;
     uint32_t held_prop=0;
-    // Widescreen (mk5_widescreen.hpp, Mk5TaskBodyRunner shadow mode): the frame over all 512 VRAM columns. Each frame starts
+    // Widescreen (mk5_widescreen.hpp, Mk5TaskBodyRunner shadow mode): the 16:9 frame (mk5_wide.hpp). Each frame starts
     // from its page as VRAM holds it when the builder starts (after the page clear). The shadow walk stages every list's
-    // draws with the wide clip; the real walk then merges them by object: before each real draw, the staged draws up to the
-    // same object are drawn outside their arcade columns, and the real draw itself is mirrored inside them (so the arcade's
-    // columns are its own draws: an object the arcade skips or has not built yet stays out of them). Every other draw of the
-    // frame (DMAs outside the walk, the page clear, CPU writes) is mirrored as it happens. The blood is the floor splash's
-    // shade, as blood_layer.
+    // draws with the wide clip at the virtual camera; the real walk then merges them by object: with the window centred,
+    // before each real draw the staged draws up to the same object are drawn outside their arcade columns, and the real draw
+    // itself is mirrored inside them (so the arcade's columns are its own draws: an object the arcade has not built yet stays
+    // out of them; one it drops at its screen's edge is drawn whole); with the window shifted, the staged draws replace the
+    // real ones. Every other draw of the frame (DMAs outside the walk, the page clear, CPU writes) is mirrored as it
+    // happens. The blood is the floor splash's shade, as blood_layer.
     mk5wide::Layer<uint8_t> wide;
     std::array<uint16_t,18> shadow_regs{};
     // The real walk runs (wide_walk); the shadow staged its draws (wide_walk_drawn), else the real walk is mirrored whole.
     bool wide_walk_drawn=false,wide_walk=false;
-    // A staged draw: its registers (x moved by the window offset unless screen-fixed), its object, how it reaches the layer
-    // (a fitted far plane moves and stretches, mk5wide::Fit, and replaces the arcade's own draw of the object).
+    // A staged draw: its registers (VRAM x at the virtual camera), its object, how it reaches the layer (a fitted far plane
+    // moves and stretches, mk5wide::Fit, and replaces the arcade's own draw of the object).
     struct WideEntry{std::array<uint16_t,18> regs;uint32_t object;int shift,width;bool fixed,fitted;
         template<class A> friend void Fields(A& a,WideEntry& e){a(e.regs,e.object,e.shift,e.width,e.fixed,e.fitted);}};
     std::vector<WideEntry> wide_staged;size_t wide_cursor=0;
@@ -61,7 +62,7 @@ class Mk5LiveVideo {
     void WideStage(const WideEntry& e);
     const WideEntry* WideMerge(uint32_t object);
     void WideFlush(size_t end);
-    bool WideOutside(const WideEntry& e);
+    bool WideOutside(const WideEntry& e,bool made);
     // Save states: gfx and blood_sprite come from the ROMs and stay with the live object.
     template<class A> friend void Fields(A& a,Mk5LiveVideo& v){
         a(v.regs,v.due,v.pending,v.data_bank,v.blood_stains,v.blood_layer,v.blood_pen,v.blood_floor,v.backdrop,v.fighters,v.fighter_objects,v.held_prop,
@@ -127,7 +128,9 @@ public:
         wide_walk=inside;
     }
     // The shadow pass starts: this frame's window offset from the mode, the camera and the arena's limits. Returns it.
-    int WideBegin(bool shifting,bool holding,int camera,int low,int high){
+    bool wide_menu=false;   // this build's mode is a menu's (mk5widescreen::Menu)
+    int WideBegin(bool shifting,bool holding,int camera,int low,int high,bool menu){
+        wide_menu=menu;
         const int d=wide.Offset(shifting,holding,camera,low,high,mk5wide::kWorldMax);
         wide.SetShift(d);shadow_regs=regs;wide_hud=wide_fit=false;wide_plane.clear();wide_staged.clear();wide_cursor=0;
         shadow_active=true;return d;
@@ -138,8 +141,9 @@ public:
     // the world's (world 0: the world did not move).
     bool WideList(bool fit,unsigned slot,int32_t velocity,int32_t world_velocity);
     void WideFixedObject(bool fixed){wide_hud=fixed;}
+    mk5wide::Ratio& WideRatio(unsigned slot){return wide.PlaneRatio(slot);}
     bool ShadowWrite(unsigned offset,uint16_t value);
     uint16_t ShadowRead(unsigned offset)const{const auto v=shadow_regs.at(offset==0?1:offset);return offset<=1?uint16_t(v&0x7fff):v;}
-    void WideEnd(bool complete){wide_plane.clear();wide_fit=false;wide_walk_drawn=complete;shadow_active=false;if(!complete)wide_staged.clear();}
+    void WideEnd(bool complete){wide_plane.clear();wide_fit=false;wide_walk_drawn=complete;shadow_active=false;if(!complete)wide_staged.clear();else wide.Composed(wide_menu);}
     uint64_t wide_faults=0,wide_streamer_skips=0;uint32_t wide_fault_pc=0;   // diagnostics, not state
 };

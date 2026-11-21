@@ -93,7 +93,7 @@ public:
     const std::vector<uint32_t>& backdrop_pixels() const { return backdrop_; }
     const mk5presentation::FighterFrame& fighter_frame() const { return fighters_; }
     const mk5blood::Shade& blood_shade() const { return frame_shade_; }   // the last complete frame's
-    static constexpr unsigned kWideWidth=512;   // a VRAM line
+    static constexpr unsigned kWideWidth=mk5wide::kLayerWidth;   // the 16:9 layer (mk5_wide.hpp)
     void EnableWide(){wide_on_=true;}
     const std::vector<uint32_t>& wide_pixels() const { return wide_; }   // kWideWidth x height(), the last complete frame
     int wide_shift() const { return wide_shift_; }   // its window offset (mk2::wide::WindowShift)
@@ -190,20 +190,21 @@ public:
             const unsigned margin=(kWideWidth-width_)/2;
             if(!rows_){wide_shift_work_=video.WideEnabled()?video.WideShiftOfRow(row>>9):0;wide_fitted_work_=video.WideEnabled()?video.WideFittedOfRow(row>>9):0;}
             // The wide layer when the shadow pass composes it (BootVideo::EnableWide), else VRAM itself.
+            const size_t base=size_t(row>>9)*mk5wide::kLayerWidth;   // the layer's line (mk5_wide.hpp)
             for(unsigned x=0;x<kWideWidth;++x){
-                const auto index=row+((column+x-margin)&511);
-                const uint16_t pen=video.WideEnabled()?video.WidePixel(index):video.vram[index];
+                const auto index=row+((column+x-margin)&511);const size_t at=base+x;
+                const uint16_t pen=video.WideEnabled()?video.WidePixel(at):video.vram[index];
                 const bool side=x<margin||x>=margin+width_;
                 wide_added_work_+=side&&pen!=video.vram[index];wide_centre_work_+=!side&&pen!=video.vram[index];
                 wide_work_[size_t(rows_)*kWideWidth+x]=enabled?ExpandRgb555(video.palette_ram[pen&0x7fff]):0xff000000;
                 if(wide_present_){
                     const int world=int(x)-int(margin)+wide_shift_work_,hud=int(x)-int(margin);
                     int16_t source=enabled?kRaw:kBlank;
-                    const bool fixed=video.WideEnabled()&&video.WideFixed(index);
+                    const bool fixed=video.WideEnabled()&&video.WideFixed(at);
                     if(enabled&&!fixed&&world>=0&&world<int(width_)&&pen==video.vram[row+((column+unsigned(world))&511)])source=int16_t(world);
                     else if(enabled&&(fixed||!video.WideEnabled())&&hud>=0&&hud<int(width_)&&pen==video.vram[index])source=int16_t(hud);
                     wide_source_work_[size_t(rows_)*kWideWidth+x]=source;
-                    wide_blood_work_[size_t(rows_)*kWideWidth+x]=source==kRaw&&video.WideEnabled()?video.WideBloodPixel(index):0;
+                    wide_blood_work_[size_t(rows_)*kWideWidth+x]=source==kRaw&&video.WideEnabled()?video.WideBloodPixel(at):0;
                 }
             }
         }

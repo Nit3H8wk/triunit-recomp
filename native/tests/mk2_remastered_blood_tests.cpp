@@ -87,25 +87,27 @@ void check_wide(const mk2::Program& program) {
     video.DrawBlood(page,xy(0,8),0,xy(400,254));
     unsigned margin=0,shared=0;
     for(unsigned dy=0;dy<11;++dy)for(int dx=0;dx<35;++dx){
-        const int x=origin+dx;const size_t index=(256+y-8+dy)*512+size_t(56+x);
-        if(x<0){need(video.BloodPixel(index)==0,"the arcade's layer keeps the arcade clip");margin+=video.WideBloodPixel(index)!=0;}
-        else{need(video.WideBloodPixel(index)==video.BloodPixel(index),"the wide layer's stain is the arcade's inside its columns");shared+=video.BloodPixel(index)!=0;}
+        const int x=origin+dx;const size_t row=256+y-8+dy,index=row*512+size_t(56+x);
+        const size_t wide=row*mk5wide::kLayerWidth+size_t(mk5wide::kWideMargin+x);   // the same screen pixel in the 16:9 layer
+        if(x<0){need(video.BloodPixel(index)==0,"the arcade's layer keeps the arcade clip");margin+=video.WideBloodPixel(wide)!=0;}
+        else{need(video.WideBloodPixel(wide)==video.BloodPixel(index),"the wide layer's stain is the arcade's inside its columns");shared+=video.BloodPixel(index)!=0;}
     }
     need(margin>20&&shared>20,"the stain reaches both the margin and the arcade's columns");
     need(video.vram==original,"the wide stain leaves arcade video memory intact");
-    const auto spot=[&]{for(size_t i=0;i<video.vram.size();++i)if((i&511)<56&&video.WideBloodPixel(i))return i;return size_t(0);}();
+    constexpr size_t W=mk5wide::kLayerWidth;   // a wide layer line (mk5_wide.hpp)
+    const auto spot=[&]{for(size_t i=0;i<mk5wide::kLayerSize;++i)if(i%W>=size_t(mk5wide::kExtra)&&i%W<size_t(mk5wide::kWideMargin)&&video.WideBloodPixel(i))return i;return size_t(0);}();
     need(spot!=0,"a margin stain pixel");
     // The scanout's wide presentation shows the margin part of the line over the wide layer's raw pixels.
     mk2::Scanout scanout(true);scanout.EnableWidePresentation();
     mk2::BoardBootControls board;
     board.io[1]=50;board.io[2]=250;board.io[3]=252;board.io[5]=20;board.io[6]=21;board.io[7]=288;board.io[8]=0xe410;board.io[27]=28;
-    board.vcount=20;board.display_address=uint16_t((spot/512)<<4);scanout.Line(board,video);
+    board.vcount=20;board.display_address=uint16_t((spot/W)<<4);scanout.Line(board,video);
     board.vcount=21;scanout.Line(board,video);
-    unsigned shown=0;const size_t row=spot&~size_t(511);
-    for(unsigned column=0;column<56;++column)
+    unsigned shown=0;const size_t row=spot/W*W;
+    for(unsigned column=0;column<unsigned(mk5wide::kWideMargin);++column)
         if(const auto blood=video.WideBloodPixel(row+column)){need(scanout.wide_presentation()[column]==blood,"a margin stain is presented");++shown;}
     need(shown>0,"the presented line crosses the margin stain");
-    video.MirrorWide(spot,1);
+    video.MirrorWide(spot/W*512+spot%W-size_t(mk5wide::kExtra),1);   // the VRAM pixel at the stain's layer column
     need(video.WideBloodPixel(spot)==0,"a later draw on the wide layer occludes the margin stain");
     video.SetWideShift(0);video.DrawBlood(page,xy(0,8),0,xy(400,254));
     need(video.WideBloodPixel(spot)!=0,"occlusion does not delete the margin stain");

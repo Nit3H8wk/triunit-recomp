@@ -155,7 +155,7 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered,Mk5StateHost host){
         const char* widescreen_flag=std::getenv("MK1_WIDESCREEN");
         const bool widescreen=remastered && o.visual && widescreen_flag && std::string(widescreen_flag)=="1";
         std::unique_ptr<Mk5Window> prepared_window;
-        if(o.visual)prepared_window=widescreen?std::make_unique<Mk5Window>(false,128,75):std::make_unique<Mk5Window>();
+        if(o.visual)prepared_window=widescreen?std::make_unique<Mk5Window>(false,mk5wide::kAcross,mk5wide::kDown):std::make_unique<Mk5Window>();
         error=3;Mk5MemoryBuffers m;Mk5BoardState f;f.cmos=c;auto& s=f.check.cpu;
         uint64_t before=s.reference_cycles;std::string stop="boot-input";BootDiState di;TaskBodyResult body,boot;bool body_executed=false;
         TaskBodyResult main;bool main_executed=false;uint64_t main_cycles=0,main_instructions=0,main_yields=0,main_loops=0;size_t main_calls=0,dma_commands=0,dma_completions=0;uint64_t drawn_pixels=0,shift_loads=0,shift_stores=0;
