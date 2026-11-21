@@ -25,7 +25,7 @@ class Scanout {
     mk5presentation::FighterFrame fighters_;
     // Widescreen: every VRAM column of each line, the visible ones at the centre, from the shadow pass's wide layer when it
     // runs (BootVideo::EnableWide). Raw colours of the original scanout, a debug view; not in save states (shortcut: the first frame after a load mixes both, until W4 carries it).
-    bool wide_on_=false;std::vector<uint32_t> wide_work_,wide_;uint64_t wide_added_work_=0,wide_added_=0,wide_centre_work_=0,wide_centre_=0;int wide_shift_work_=0,wide_shift_=0;
+    bool wide_on_=false;std::vector<uint32_t> wide_work_,wide_;uint64_t wide_added_work_=0,wide_added_=0,wide_centre_work_=0,wide_centre_=0;int wide_shift_work_=0,wide_shift_=0;unsigned wide_fitted_work_=0,wide_fitted_=0;
     // Save-state value fields; remastered_ is the edition, checked by the file header.
     template<class A> friend void Fields(A& a,Scanout& s){
         auto enabled=s.display_enabled_.to_string();
@@ -48,7 +48,8 @@ public:
     static constexpr unsigned kWideWidth=512;   // a VRAM line
     void EnableWide(){wide_on_=true;}
     const std::vector<uint32_t>& wide_pixels() const { return wide_; }   // kWideWidth x height(), the last complete frame
-    int wide_shift() const { return wide_shift_; }   // its window offset (mk2::wide::WindowShift); the centre is exact at 0
+    int wide_shift() const { return wide_shift_; }   // its window offset (mk2::wide::WindowShift)
+    unsigned wide_fitted() const { return wide_fitted_; }   // its planes fitted to the window (BootVideo::WidePlane); with none, the centre is exact at offset 0
     uint64_t wide_centre() const { return wide_centre_; }   // its visible pixels that differ from VRAM (0 when exact)
     uint64_t wide_added() const { return wide_added_; }   // its margin pixels the shadow drew beyond the arcade's own spill
     // Sample live memory before DPYADR advances; never rebuild past rows from final VRAM.
@@ -69,7 +70,7 @@ public:
         if (board.vcount==io[6]) {
             if (collecting_ && rows_==height_) {
                 complete_=work_;
-                if(wide_on_){wide_=wide_work_;wide_added_=wide_added_work_;wide_centre_=wide_centre_work_;wide_shift_=wide_shift_work_;}
+                if(wide_on_){wide_=wide_work_;wide_added_=wide_added_work_;wide_centre_=wide_centre_work_;wide_shift_=wide_shift_work_;wide_fitted_=wide_fitted_work_;}
                 if(remastered_){
                     for(const auto pixel:blood_cover_)blood_work_[pixel]=shade_.Apply(blood_work_[pixel]);
                     presentation_=blood_work_;
@@ -131,7 +132,7 @@ public:
         }
         if(wide_on_){
             const unsigned margin=(kWideWidth-width_)/2;
-            if(!rows_)wide_shift_work_=video.WideEnabled()?video.WideShiftOfRow(row>>9):0;
+            if(!rows_){wide_shift_work_=video.WideEnabled()?video.WideShiftOfRow(row>>9):0;wide_fitted_work_=video.WideEnabled()?video.WideFittedOfRow(row>>9):0;}
             // The wide layer when the shadow pass composes it (BootVideo::EnableWide), else VRAM itself.
             for(unsigned x=0;x<kWideWidth;++x){
                 const auto index=row+((column+x-margin)&511);

@@ -160,8 +160,15 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
         if(o.shadow){
             if(s.next_pc==mk2::wide::kKick)s.next_pc=mk2::wide::kKickEnd;
             if(s.next_pc==mk2::wide::kMarker&&shadow_walk)o.out.video.wide_shadow_post=true;
-            if(s.next_pc==mk2::wide::kCameraLoad&&shadow_walk)   // a list with a screen-fixed camera (HUD) keeps its place
+            if(s.next_pc==mk2::wide::kCameraLoad&&shadow_walk){   // a list with a screen-fixed camera (HUD) keeps its place
                 o.out.video.wide_hud=s.a[13]<mk2::wide::kScrollFirst||s.a[13]>mk2::wide::kScrollLast;
+                const auto ram_long=[&](uint32_t bit){const size_t i=(bit-0x01000000)/16;return int32_t(o.out.main_ram[i]|uint32_t(o.out.main_ram[i+1])<<16);};
+                const bool fit=mk2::wide::FitCamera(s.a[13]);   // a far plane: its velocity and the world's
+                o.out.video.WideList(fit,s.a[13],fit?ram_long(s.a[13]-mk2::wide::kVelocityGap):0,
+                                     fit?ram_long(mk2::wide::kWorldVelocity):0,o.program.graphics);
+            }
+            // Each table entry (a list or a callback) ends the previous one: a waiting plane is placed (per-plane fit).
+            if(s.next_pc==mk2::wide::kTableNext&&shadow_walk&&!o.out.video.WideList(false,0,0,0,o.program.graphics))o.shadow_fault=true;
             const uint32_t pc=s.next_pc;
             if(!shadow_walk&&pc==mk2::wide::kStreamerReturn){   // the streamer returned: the walk from its start, with the real registers
                 std::tie(s.a,s.b,s.status)=shadow_saved;s.next_pc=mk2::wide::kWalkStart;shadow_walk=true;continue;
@@ -187,7 +194,7 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
                 const bool hold=mode<16&&(mk2::wide::kHoldModes>>mode&1);
                 const int d=hold?(camera==held[0]?held[1]:0):mk2::wide::WindowShift(mode,camera,low,high);
                 if(!hold)held={camera,d};
-                o.out.video.SetWideShift(d);o.out.video.wide_hud=false;
+                o.out.video.SetWideShift(d);o.out.video.wide_hud=false;o.out.video.wide_world=camera;
                 shadow_saved={s.a,s.b,s.status};shadow_steps=0;o.shadow=true;o.shadow_fault=false;
                 o.Write32(mk2::wide::kClipTopLeft,mk2::wide::WideTopLeft(d));o.Write32(mk2::wide::kClipBottomRight,mk2::wide::WideBottomRight(d));
                 // Not while the interrupted main process is inside the real streamer: its lists are half updated.

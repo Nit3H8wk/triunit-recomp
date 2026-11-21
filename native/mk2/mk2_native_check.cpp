@@ -188,8 +188,8 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
             uint64_t all=0xcbf29ce484222325ull,centre=all,plain=all;
             for(size_t i=0;i<w.size();++i){all=(all^w[i])*0x100000001b3ull;if(i%n>=margin&&i%n<margin+width)centre=(centre^w[i])*0x100000001b3ull;}
             for(const uint32_t v:scanout.pixels())plain=(plain^v)*0x100000001b3ull;
-            std::printf("{\"wide\":%llu,\"all\":\"%016llx\",\"centre\":\"%016llx\",\"plain\":\"%016llx\",\"faults\":%llu,\"added\":%llu,\"centre_diff\":%llu,\"shift\":%d,\"fault_pc\":%u,\"streamer_skips\":%llu,\"streamer\":%d",(unsigned long long)scanout.frames(),
-                        (unsigned long long)all,(unsigned long long)centre,(unsigned long long)plain,(unsigned long long)live_video.margin_faults,(unsigned long long)scanout.wide_added(),(unsigned long long)scanout.wide_centre(),scanout.wide_shift(),unsigned(live_video.margin_fault_pc),(unsigned long long)live_video.margin_streamer_skips,int(live_video.margin_streamer));
+            std::printf("{\"wide\":%llu,\"all\":\"%016llx\",\"centre\":\"%016llx\",\"plain\":\"%016llx\",\"faults\":%llu,\"added\":%llu,\"centre_diff\":%llu,\"shift\":%d,\"fitted\":%u,\"fault_pc\":%u,\"streamer_skips\":%llu,\"streamer\":%d",(unsigned long long)scanout.frames(),
+                        (unsigned long long)all,(unsigned long long)centre,(unsigned long long)plain,(unsigned long long)live_video.margin_faults,(unsigned long long)scanout.wide_added(),(unsigned long long)scanout.wide_centre(),scanout.wide_shift(),scanout.wide_fitted(),unsigned(live_video.margin_fault_pc),(unsigned long long)live_video.margin_streamer_skips,int(live_video.margin_streamer));
             if(wide_dump.count(scanout.frames())){std::printf(",\"rgb\":\"");for(const uint32_t v:w)std::printf("%06x",unsigned(v&0xffffff));std::printf("\"");}
             std::printf("}\n");
         }

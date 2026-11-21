@@ -27,6 +27,8 @@ constexpr int kMargin=56;   // VRAM columns beyond each side of the 400 visible 
 // Each list's camera: at kCameraLoad A13 holds the address of the variable the walk reads as the list's camera. Lists whose
 // camera is a world or parallax scroll (kScrollFirst..kScrollLast) are scenery; any other camera is screen-fixed (HUD).
 constexpr uint32_t kCameraLoad=0xff804fc0,kScrollFirst=0x0105d260,kScrollLast=0x0105d370;
+// The walk's next table entry (MOVE *A3+,A0): the previous list or callback has ended.
+constexpr uint32_t kTableNext=0xff804f10;
 // The window offset: the camera x word (WORLDTLX) and the arena's camera limits (words), read in the fight modes (mode
 // word, bit per value: 2, 6, 7; modes 3 and 5 hold, see kHoldModes and mk2_task_batch.cpp). Limits wider than
 // kWorldMax (a finisher frees the camera) keep the arena's last limits.
@@ -35,6 +37,15 @@ constexpr unsigned kFightModes=0xc4;
 // Modes that keep the last fight frame's offset while the camera stays: 3 (the finisher's scene) and 5 (the round's end).
 constexpr unsigned kHoldModes=(1u<<3)|(1u<<5);
 constexpr int kWorldMax=4096;
+// Per-plane fit (BootVideo::WidePlane): the far planes, lists whose camera is a parallax scroll below the world's (kCameraX:
+// the fighting plane, fighters and floor never fit).
+inline bool FitCamera(uint32_t camera){return camera>=kScrollFirst&&camera<kCameraX;}
+// Each frame the scroll longs (16.16, from 0105D260; a camera word is the high word of its long) add their velocity longs,
+// kVelocityGap lower (FF804B60..FF804D50); the world's velocity is kWorldVelocity. A far plane's ratio is its velocity over
+// the world's, read per arena while the world camera moves. An end of a plane's art that the arcade screen itself shows at
+// some camera position within the limits (within kEndSlack pixels) belongs to the arena: that plane is not fitted.
+constexpr uint32_t kVelocityGap=0x130,kWorldVelocity=0x0105d220;
+constexpr int kEndSlack=4;
 // Screen pixels the wide window moves right (+) or left (-) from centred, so that it never shows beyond the arena's
 // world: its art ends where the arcade screen stands at each camera limit (the camera can pass a limit by a few pixels:
 // it counts as at the limit). 0 outside a fight or with unusable limits.
@@ -45,7 +56,10 @@ inline int WindowShift(unsigned mode,int camera,int minimum,int maximum){
     if(left<kMargin&&right<kMargin)return 0;   // an arena narrower than the wide screen: centred
     return left<kMargin?kMargin-left:right<kMargin?right-kMargin:0;
 }
-// The shadow's clip for a window shift (y<<16|x): screen x -56+d .. 456+d.
-constexpr uint32_t WideTopLeft(int d){return uint32_t(uint16_t(int16_t(d-kMargin)));}
-constexpr uint32_t WideBottomRight(int d){return (kArcadeBottomRight&0xffff0000u)|uint16_t(int16_t(400+kMargin+d));}
+// The shadow's clip for a window shift (y<<16|x): screen x -56+d .. 456+d, plus kReach on each side so that the streamer
+// builds, and the walk stages, the far planes' art beyond the window (the per-plane fit measures where it ends; the DMA
+// clip keeps the layer's 512 columns). Its 10-bit DMA x stays within -256..767.
+constexpr int kReach=112;
+constexpr uint32_t WideTopLeft(int d){return uint32_t(uint16_t(int16_t(d-kMargin-kReach)));}
+constexpr uint32_t WideBottomRight(int d){return (kArcadeBottomRight&0xffff0000u)|uint16_t(int16_t(400+kMargin+kReach+d));}
 }

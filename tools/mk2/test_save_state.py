@@ -196,14 +196,15 @@ class WideCaptureTests(unittest.TestCase):
             (off,off_s),(on,on_s)=session(False),session(True)
             self.assertEqual(lines(on,'present'),lines(off,'present'),'the capture changed a shown frame')
             wide=lines(on,'wide');self.assertGreater(len(wide),100,len(wide))
-            # The composed frame's visible centre is the arcade's frame wherever the window is centred (shift 0).
-            centred=[w for w in wide if w['shift']==0]
+            # The composed frame's visible centre is the arcade's frame wherever the window is centred (shift 0) and no far
+            # plane was fitted to it.
+            centred=[w for w in wide if w['shift']==0 and w['fitted']==0]
             self.assertEqual([w['centre'] for w in centred],[w['plain'] for w in centred],'the visible centre differs from the frame')
             self.assertEqual(len(wide),len(lines(on,'present')),'one capture per shown frame')
             # The shadow composes all 512 columns: no fault, and margin pixels beyond the arcade's own spill in the fights.
             self.assertEqual(wide[-1]['faults'],0,'a shadow pass was left incomplete')
             self.assertGreater(sum(w['added']>0 for w in wide),300,'the shadow added no margin art')
-            print('seconds without/with',round(off_s,2),round(on_s,2),'frames',len(wide),'shifted',len(wide)-len(centred),
+            print('seconds without/with',round(off_s,2),round(on_s,2),'frames',len(wide),'shifted',sum(w['shift']!=0 for w in wide),'fitted',sum(w['fitted']>0 for w in wide),
                   'shifts',sorted({w['shift'] for w in wide}),
                   'margin pixels added (quartiles)',sorted(w['added'] for w in wide)[::len(wide)//4])
         self.assertFalse(cleanup['exists_after'])
