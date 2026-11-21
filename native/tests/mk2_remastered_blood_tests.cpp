@@ -72,6 +72,47 @@ void check(mk2::BootVideo& video, mk2::Scanout& scanout, const mk2::Program& pro
     need(video.BloodPixel(index) == 0, "new combat clears both draw pages");
 }
 
+// Widescreen (W3c): a stain partly left of the arcade's first column is clipped there in the arcade's blood layer and drawn
+// whole over the wide layer, whose margin pixels show it; a later draw on the wide layer occludes it, the window offset
+// moves it, and new combat clears it. The arcade's own layer and VRAM stay as without the wide layer.
+void check_wide(const mk2::Program& program) {
+    mk2::BootVideo video;
+    video.EnableWide();video.EnableBlood(program);
+    const auto original=video.vram;
+    constexpr uint16_t slot=0x0400;
+    video.palette_ram[slot+4]=0x7c00;video.palette_ram[slot+6]=0x7083;video.palette_ram[slot+11]=0x4400;
+    constexpr int origin=-20;constexpr unsigned y=216;
+    video.KeepBlood(int16_t(origin),y,false,0x0404);
+    constexpr auto page=xy(56,256);
+    video.DrawBlood(page,xy(0,8),0,xy(400,254));
+    unsigned margin=0,shared=0;
+    for(unsigned dy=0;dy<11;++dy)for(int dx=0;dx<35;++dx){
+        const int x=origin+dx;const size_t index=(256+y-8+dy)*512+size_t(56+x);
+        if(x<0){need(video.BloodPixel(index)==0,"the arcade's layer keeps the arcade clip");margin+=video.WideBloodPixel(index)!=0;}
+        else{need(video.WideBloodPixel(index)==video.BloodPixel(index),"the wide layer's stain is the arcade's inside its columns");shared+=video.BloodPixel(index)!=0;}
+    }
+    need(margin>20&&shared>20,"the stain reaches both the margin and the arcade's columns");
+    need(video.vram==original,"the wide stain leaves arcade video memory intact");
+    const auto spot=[&]{for(size_t i=0;i<video.vram.size();++i)if((i&511)<56&&video.WideBloodPixel(i))return i;return size_t(0);}();
+    need(spot!=0,"a margin stain pixel");
+    // The scanout's wide presentation shows the margin part of the line over the wide layer's raw pixels.
+    mk2::Scanout scanout(true);scanout.EnableWidePresentation();
+    mk2::BoardBootControls board;
+    board.io[1]=50;board.io[2]=250;board.io[3]=252;board.io[5]=20;board.io[6]=21;board.io[7]=288;board.io[8]=0xe410;board.io[27]=28;
+    board.vcount=20;board.display_address=uint16_t((spot/512)<<4);scanout.Line(board,video);
+    board.vcount=21;scanout.Line(board,video);
+    unsigned shown=0;const size_t row=spot&~size_t(511);
+    for(unsigned column=0;column<56;++column)
+        if(const auto blood=video.WideBloodPixel(row+column)){need(scanout.wide_presentation()[column]==blood,"a margin stain is presented");++shown;}
+    need(shown>0,"the presented line crosses the margin stain");
+    video.MirrorWide(spot,1);
+    need(video.WideBloodPixel(spot)==0,"a later draw on the wide layer occludes the margin stain");
+    video.SetWideShift(0);video.DrawBlood(page,xy(0,8),0,xy(400,254));
+    need(video.WideBloodPixel(spot)!=0,"occlusion does not delete the margin stain");
+    video.ClearBlood();
+    need(video.WideBloodPixel(spot)==0,"new combat clears the wide stains");
+}
+
 // The program's palette fades (mk5_blood_shade.hpp): with the floor under the stain dimmed from 93 to 45 (Sum of its
 // RGB555), to black and back, with no draw in between, the presented stain dims with it (rounded per channel), shows
 // its kept colours again, exactly, and never brightens; the arcade raster stays canonical.
@@ -194,6 +235,7 @@ int main(int argc, char** argv) try {
     mk2::Scanout scanout(true);
     check(video, scanout, program);
     fades(program);
+    check_wide(program);
     std::cout << "PASS MK2 Remastered floor splash; fades " << checks << " checks, " << negatives << " negatives\n";
     return 0;
 } catch (const std::exception& error) {

@@ -27,10 +27,12 @@ class Scanout {
     // runs (BootVideo::EnableWide). Raw colours of the original scanout, a debug view; not in save states (shortcut: the first frame after a load mixes both, until W4 carries it).
     bool wide_on_=false;std::vector<uint32_t> wide_work_,wide_;uint64_t wide_added_work_=0,wide_added_=0,wide_centre_work_=0,wide_centre_=0;int wide_shift_work_=0,wide_shift_=0;unsigned wide_fitted_work_=0,wide_fitted_=0;
     // Widescreen presentation (Remastered, W3): each wide pixel's arcade column, where its pen is the arcade's own at that
-    // column (the world's x = L-56+d, else the HUD's x = L-56), so the Remastered layers of that column apply; kRaw where
+    // column (the world's x = L-56+d; a pixel of a screen-fixed draw, BootVideo::WideFixed, the HUD's x = L-56), so the
+    // Remastered layers of that column apply; kRaw where
     // only the shadow pass has it (margins, fitted planes): its raw colour, as scenery; kBlank on a blanked line.
     static constexpr int16_t kRaw=-1,kBlank=-2;
     bool wide_present_=false;std::vector<int16_t> wide_source_work_,wide_source_;
+    std::vector<uint32_t> wide_blood_work_,wide_blood_;   // the floor stain on a kRaw pixel (0: none), dimmed as the frame's
     std::vector<uint32_t> wide_presentation_,wide_backdrop_;mk5presentation::FighterFrame wide_fighters_;
     void ComposeWide(){
         const size_t n=size_t(kWideWidth)*height_;const int move=int(kWideWidth-width_)/2-wide_shift_;
@@ -47,9 +49,10 @@ class Scanout {
                     if(fighter_backdrop)f.backdrop[i]=fighters_.backdrop[a];}
                 continue;
             }
-            const uint32_t scenery=source==kRaw?(raw&0xffffff)|mk5stage::scenery:0;
-            wide_presentation_[i]=raw;if(backdrop)wide_backdrop_[i]=scenery;
-            if(fighters){f.underlay[i]=raw&0xffffff;f.opaque_order[i]=UINT64_MAX;if(fighter_backdrop)f.backdrop[i]=scenery;}
+            const uint32_t blood=wide_blood_[i]?frame_shade_.Apply(wide_blood_[i]):0,shown=blood?blood:raw;
+            const uint32_t scenery=source==kRaw&&!blood?(raw&0xffffff)|mk5stage::scenery:0;
+            wide_presentation_[i]=shown;if(backdrop)wide_backdrop_[i]=scenery;
+            if(fighters){f.underlay[i]=shown&0xffffff;f.opaque_order[i]=UINT64_MAX;if(fighter_backdrop)f.backdrop[i]=scenery;}
         }
         if(fighters)for(auto layer:fighters_.layers){layer.x+=move;f.layers.push_back(std::move(layer));}   // the fighters are world
     }
@@ -99,7 +102,7 @@ public:
             width_=width;height_=height;work_.resize(size_t(width)*height);
             if(remastered_)blood_work_.resize(work_.size());
             if(wide_on_)wide_work_.resize(size_t(kWideWidth)*height);
-            if(wide_present_)wide_source_work_.resize(size_t(kWideWidth)*height);
+            if(wide_present_){wide_source_work_.resize(size_t(kWideWidth)*height);wide_blood_work_.resize(size_t(kWideWidth)*height);}
         }
         if (board.vcount==io[6]) {
             if (collecting_ && rows_==height_) {
@@ -125,7 +128,7 @@ public:
                         if(!fighters_.backdrop.empty())fighters_.backdrop[pixel]&=~mk5stage::scenery;
                     }
                 }
-                if(wide_present_){wide_source_=wide_source_work_;ComposeWide();}
+                if(wide_present_){wide_source_=wide_source_work_;wide_blood_=wide_blood_work_;ComposeWide();}
             }
             collecting_=false;return;
         }
@@ -178,9 +181,11 @@ public:
                 if(wide_present_){
                     const int world=int(x)-int(margin)+wide_shift_work_,hud=int(x)-int(margin);
                     int16_t source=enabled?kRaw:kBlank;
-                    if(enabled&&world>=0&&world<int(width_)&&pen==video.vram[row+((column+unsigned(world))&511)])source=int16_t(world);
-                    else if(enabled&&hud>=0&&hud<int(width_)&&pen==video.vram[index])source=int16_t(hud);
+                    const bool fixed=video.WideEnabled()&&video.WideFixed(index);
+                    if(enabled&&!fixed&&world>=0&&world<int(width_)&&pen==video.vram[row+((column+unsigned(world))&511)])source=int16_t(world);
+                    else if(enabled&&(fixed||!video.WideEnabled())&&hud>=0&&hud<int(width_)&&pen==video.vram[index])source=int16_t(hud);
                     wide_source_work_[size_t(rows_)*kWideWidth+x]=source;
+                    wide_blood_work_[size_t(rows_)*kWideWidth+x]=source==kRaw&&video.WideEnabled()?video.WideBloodPixel(index):0;
                 }
             }
         }
