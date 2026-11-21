@@ -1,4 +1,5 @@
 #pragma once
+#include "../include/mk5_wide.hpp"
 #include <cstdint>
 // Widescreen shadow pass (mk2_task_batch.cpp, BootOps::shadow): address-only facts of MK2 L3.1, recovered locally from
 // the user's ROM. Bit addresses: program FF800000.., RAM 01000000..
@@ -25,7 +26,7 @@ constexpr uint32_t kFreeList=0x01060130;constexpr size_t kPoolObjects=4096;
 // RAM: the clip longs (top-left, bottom-right as y<<16|x) and the page origin long (its high word: the page's first row).
 constexpr uint32_t kClipTopLeft=0x01060150,kClipBottomRight=0x01060170,kPageOrigin=0x0105d050;
 constexpr uint32_t kArcadeBottomRight=0x00fe0190;   // x 400
-constexpr int kMargin=56;   // VRAM columns beyond each side of the 400 visible ones
+constexpr int kMargin=mk5wide::kMargin;   // VRAM columns beyond each side of the 400 visible ones
 // Each list's camera: at kCameraLoad A13 holds the address of the variable the walk reads as the list's camera. Lists whose
 // camera is a world or parallax scroll (kScrollFirst..kScrollLast) are scenery; any other camera is screen-fixed (HUD).
 constexpr uint32_t kCameraLoad=0xff804fc0,kScrollFirst=0x0105d260,kScrollLast=0x0105d370;
@@ -38,7 +39,9 @@ constexpr uint32_t kCameraX=0x0105d350,kCameraMin=0x0105ecf0,kCameraMax=0x0105ed
 constexpr unsigned kFightModes=0xc4;
 // Modes that keep the last fight frame's offset while the camera stays: 3 (the finisher's scene) and 5 (the round's end).
 constexpr unsigned kHoldModes=(1u<<3)|(1u<<5);
-constexpr int kWorldMax=4096;
+constexpr int kWorldMax=mk5wide::kWorldMax;
+inline bool Shifting(unsigned mode){return mode<16&&(kFightModes>>mode&1);}
+inline bool Holding(unsigned mode){return mode<16&&(kHoldModes>>mode&1);}
 // Per-plane fit (BootVideo::WidePlane): the far planes, lists whose camera is a parallax scroll below the world's (kCameraX:
 // the fighting plane, fighters and floor never fit).
 inline bool FitCamera(uint32_t camera){return camera>=kScrollFirst&&camera<kCameraX;}
@@ -47,21 +50,15 @@ inline bool FitCamera(uint32_t camera){return camera>=kScrollFirst&&camera<kCame
 // the world's, read per arena while the world camera moves. An end of a plane's art that the arcade screen itself shows at
 // some camera position within the limits (within kEndSlack pixels) belongs to the arena: that plane is not fitted.
 constexpr uint32_t kVelocityGap=0x130,kWorldVelocity=0x0105d220;
-constexpr int kEndSlack=4;
+constexpr int kEndSlack=mk5wide::kEndSlack;
 // Screen pixels the wide window moves right (+) or left (-) from centred, so that it never shows beyond the arena's
 // world: its art ends where the arcade screen stands at each camera limit (the camera can pass a limit by a few pixels:
 // it counts as at the limit). 0 outside a fight or with unusable limits.
-inline int WindowShift(unsigned mode,int camera,int minimum,int maximum){
-    if(mode>15||!(kFightModes>>mode&1)||minimum>maximum)return 0;
-    camera=camera<minimum?minimum:camera>maximum?maximum:camera;
-    const int left=camera-minimum,right=maximum-camera;
-    if(left<kMargin&&right<kMargin)return 0;   // an arena narrower than the wide screen: centred
-    return left<kMargin?kMargin-left:right<kMargin?right-kMargin:0;
-}
+inline int WindowShift(unsigned mode,int camera,int minimum,int maximum){return Shifting(mode)?mk5wide::WindowShift(camera,minimum,maximum):0;}
 // The shadow's clip for a window shift (y<<16|x): screen x -56+d .. 456+d, plus kReach on each side so that the streamer
 // builds, and the walk stages, the far planes' art beyond the window (the per-plane fit measures where it ends; the DMA
 // clip keeps the layer's 512 columns). Its 10-bit DMA x stays within -256..767.
-constexpr int kReach=112;
+constexpr int kReach=mk5wide::kReach;
 constexpr uint32_t WideTopLeft(int d){return uint32_t(uint16_t(int16_t(d-kMargin-kReach)));}
 constexpr uint32_t WideBottomRight(int d){return (kArcadeBottomRight&0xffff0000u)|uint16_t(int16_t(400+kMargin+kReach+d));}
 }

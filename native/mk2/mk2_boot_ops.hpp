@@ -829,7 +829,7 @@ public:
             // Each floor line is one unscaled 400-pixel row: the same row of the floor art from the wide window's left edge
             // (56 - d pixels earlier) and 512 wide.
             if(entry[6]==400 && entry[7]==1 && !(entry[1]&0x10)){
-                const unsigned code=(entry[1]>>12)&7,bpp=code?code:8;const int lead=mk2::wide::kMargin-out.video.wide_shift;
+                const unsigned code=(entry[1]>>12)&7,bpp=code?code:8;const int lead=mk2::wide::kMargin-out.video.wide.shift;
                 const uint32_t source=(entry[2]|uint32_t(entry[3])<<16)-uint32_t(lead)*bpp;
                 entry[2]=uint16_t(source);entry[3]=uint16_t(source>>16);entry[4]=uint16_t(entry[4]-lead);entry[6]=512;
             }
