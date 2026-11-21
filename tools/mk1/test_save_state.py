@@ -30,6 +30,30 @@ class SaveStateTests(unittest.TestCase):
 
 
 
+class WideCaptureTests(unittest.TestCase):
+    """Widescreen (W1-W3): the legal tape versus-walls (a versus session whose second fight takes both fighters to the
+    right, then the left wall of the arena) in the Remastered edition without and with the shadow pass: the same game
+    (shown frames and Remastered layers, PCM, CPU, cycles, RAM, VRAM, palette, CMOS), no shadow fault, the wide frame's
+    centre exact in every centred frame with no fitted plane (raw and presented), frames shifted at both camera limits and
+    margins with the arena's art. Harness: native/tests/mk5_widescreen_tests.cpp."""
+    @unittest.skipUnless((ROOT/'roms/mk1').is_dir(),'requires authenticated ROMs')
+    def test_shadow_pass_keeps_the_game_and_the_arcade_centre(self):
+        from tools.setup import mk1
+        mk1.inc_dir();seed=mk1.seed_path().resolve()
+        objects=json.loads((ROOT/'tools/mk1/runtime-inputs.json').read_text('utf-8'))['objects']
+        with q.scratch_tree() as (scratch,cleanup):
+            srcs=[ROOT/'native/tests/mk5_widescreen_tests.cpp']+[ROOT/p for p in objects if Path(p).stem not in routes.EXCLUDE]
+            exe,_=routes.build(scratch,srcs)
+            tape=scratch/'versus-walls.tsv';tape.write_bytes(routes.render_tape(routes.HERE/'tapes/versus-walls.json'))
+            env={'PATH':str(q.DEFAULT_CC.parent)+os.pathsep+os.environ['PATH'],'TEMP':str(scratch),'TMP':str(scratch),
+                 'MK1_GAME_VOLUME':'0'}
+            r=q.command([exe,ROOT,tape,seed],scratch,cwd=ROOT,env=env,timeout=1800,output_limit=1<<20)
+            self.assertTrue(r['passed'],q.compact(r))
+            result=json.loads(r['stdout'].strip().splitlines()[-1]);print(result)
+            self.assertGreater(result['shifted'],1000);self.assertGreater(result['centred_exact'],2000)
+        self.assertFalse(cleanup['exists_after'])
+
+
 def write_tracks(folder,gain_db):
     """Synthetic user tracks (tones, 48 kHz stereo, 2 s, repeat window) for every MK1 slot, under the test scratch."""
     folder.mkdir(parents=True)
@@ -59,9 +83,10 @@ class WindowStateTests(unittest.TestCase):
             write_tracks(scratch/'tracks',0);write_tracks(scratch/'other-tracks',-1)
             env={'PATH':str(q.DEFAULT_CC.parent)+os.pathsep+os.environ['PATH'],'TEMP':str(scratch),'TMP':str(scratch)}
             runs=[]
-            def session(plan,samples,tracks=None,cmos=False):
+            def session(plan,samples,tracks=None,cmos=False,wide=False):
                 runs.append(plan);output=scratch/f'cmos-pending-{len(runs)}.bin'
                 extra={'MK1_MUSIC_MODE':'remastered','MK1_MUSIC_DIRECTORY':str(scratch/tracks)}if tracks else{'MK1_MUSIC_MODE':'original'}
+                if wide:extra.update(MK1_WIDESCREEN='1',MK2_TEST_PRESENT_HASHES='1')
                 dsw=[a for prefix in ('','boot-','task-','body-','main-') for a in (f'--{prefix}dsw-word','65279')]
                 dsw+=[a for prefix in ('','body-','active-') for a in (f'--{prefix}irq-in01','0xffffffff',f'--{prefix}irq-in2-dsw','4278190079')]
                 r=q.command([exe,'--roms',ROOT/'roms','--stage','visual','--window-frames','0','--irq-pending','0x400',
@@ -80,6 +105,20 @@ class WindowStateTests(unittest.TestCase):
                 slot=next((scratch/'saves/mk1').glob('*/'+name));self.assertGreater(slot.stat().st_size,1<<20)
                 second=session('load@10',60,tracks)
                 self.assertIn('MK1 state loaded from saves/mk1/',second);self.assertNotIn('not loaded',second)
+            # Widescreen (W4): the Remastered slot saved without it loads into a widescreen session (its wide layer starts
+            # over from VRAM); a widescreen session saves and loads its own; a session without widescreen loads that one too.
+            self.assertIn('MK1 state loaded from saves/mk1/',session('load@10',60,'tracks',wide=True))
+            wide=session('save@40,load@80',200,'tracks',wide=True)
+            self.assertIn('MK1 state saved: saves/mk1/',wide);self.assertIn('MK1 state loaded from memory',wide)
+            # With a constant input the frames after the load repeat, over all their columns, the frames after the save.
+            rows=wide.splitlines();after=lambda mark:[json.loads(l)['all'] for l in rows[next(i for i,l in enumerate(rows) if mark in l):]
+                                                     if l.startswith('{"present"')][:30]
+            self.assertEqual(after('MK1 state loaded from memory'),after('MK1 state saved'),'a widescreen load does not resume the saved frames')
+            self.assertEqual(len(after('MK1 state saved')),30)
+            self.assertTrue(all(json.loads(l)['width']==512 for l in rows if l.startswith('{"present"')))
+            for widescreen in (True,False):
+                again=session('load@10',60,'tracks',wide=widescreen)
+                self.assertIn('MK1 state loaded from saves/mk1/',again);self.assertNotIn('not loaded',again)
             retracked=session('load@10',60,'other-tracks')
             self.assertIn('MK1 save state not loaded: MK1 save state was made with other music tracks',retracked)
             session('',30,cmos=True)
@@ -117,8 +156,8 @@ class CmosGuardTests(unittest.TestCase):
 
 class RunAheadTests(unittest.TestCase):
     """Run-ahead (F6) through the product loop of mk5_boot_flow_cli.cpp with the test window (constant input) and the
-    test PCM sink, Original and Remastered with music: 300 frames shown with run-ahead are the next real frames of a
-    session without it, and the PCM delivered is the same."""
+    test PCM sink, Original, Remastered with music and Remastered widescreen (its 512 columns): 300 frames shown with
+    run-ahead are the next real frames of a session without it, and the PCM delivered is the same."""
     @unittest.skipUnless((ROOT/'roms/mk1').is_dir(),'requires authenticated ROMs')
     def test_shows_the_next_real_frame_and_keeps_the_audio(self):
         from tools.setup import mk1
@@ -134,8 +173,9 @@ class RunAheadTests(unittest.TestCase):
                  'MK2_TEST_PRESENT_HASHES':'1','MK2_TEST_PCM_HASHES':'1','MK2_TEST_CLOSE_AFTER_SAMPLES':'100000000'}
             dsw=[a for prefix in ('','boot-','task-','body-','main-') for a in (f'--{prefix}dsw-word','65279')]
             dsw+=[a for prefix in ('','body-','active-') for a in (f'--{prefix}irq-in01','0xffffffff',f'--{prefix}irq-in2-dsw','4278190079')]
-            for edition,extra in (('original',{'MK1_MUSIC_MODE':'original'}),
-                                  ('remastered',{'MK1_MUSIC_MODE':'remastered','MK1_MUSIC_DIRECTORY':str(scratch/'tracks')})):
+            remastered={'MK1_MUSIC_MODE':'remastered','MK1_MUSIC_DIRECTORY':str(scratch/'tracks')}
+            for edition,extra in (('original',{'MK1_MUSIC_MODE':'original'}),('remastered',remastered),
+                                  ('widescreen',dict(remastered,MK1_WIDESCREEN='1'))):
                 def session(ahead):
                     flags=dict(env,**extra,**({'MK2_TEST_RUN_AHEAD':'1'} if ahead else {}))
                     r=q.command([exe,'--roms',ROOT/'roms','--stage','visual','--window-frames','300','--irq-pending','0x400',
@@ -145,7 +185,9 @@ class RunAheadTests(unittest.TestCase):
                     self.assertTrue(r['passed'] and game and game['stop']=='window-frame-limit',out[-1500:])
                     return out
                 off,on=session(False),session(True)
-                frames=shown_ahead(self,lines(off,'present'),lines(on,'present'));checkpoints=same_pcm(self,off,on)
+                # All the columns (a widescreen frame's 512 included) of each shown frame and its backdrop.
+                shown=lambda out:[json.loads(l)['all'] for l in out.splitlines() if l.startswith('{"present"')]
+                frames=shown_ahead(self,shown(off),shown(on));checkpoints=same_pcm(self,off,on)
                 print(edition,'frames compared',frames,'PCM checkpoints',checkpoints)
         self.assertFalse(cleanup['exists_after'])
 

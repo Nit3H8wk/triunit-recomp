@@ -6,7 +6,8 @@
 #include "mk5_protection.hpp"
 #include "mk5_sound_status.hpp"
 
-enum class TaskBodyStop {DswInput,SoundInput,DiInput,IrqHandler,TemporalBarrier,Untranslated,Budget,MainLoop,DiLimit,DecompressorComplete,TaskEntry,Epoch};
+// Shadow: internal to ContinueMain, the widescreen shadow pass changed the next PC (the driver dispatches it again).
+enum class TaskBodyStop {DswInput,SoundInput,DiInput,IrqHandler,TemporalBarrier,Untranslated,Budget,MainLoop,DiLimit,DecompressorComplete,TaskEntry,Epoch,Shadow};
 // One hardware snapshot of the cabinet inputs for the whole power-on run:
 // ports.in01 = IN0|IN1<<16, ports.in2_dsw = IN2|DSW<<16 (DSW also at 01600030h),
 // the sound-board status byte, and the declared host raster epoch.
@@ -70,6 +71,21 @@ class Mk5TaskBodyRunner {
           r.graph_steps,r.main_di_target,r.main_di_limit,*r.video,r.active_handler,r.cmos_write_enabled,r.data_bank,
           r.dma_palette,r.protection,r.sound_status);
     }
+    // Widescreen shadow pass (mk5_widescreen.hpp, Mk5LiveVideo wide layer), once per built frame after the real walk's first
+    // instruction has been counted: with the clip longs widened in a RAM journal, the scenery streamer (unless the game is
+    // inside it) and the whole walk run as generated code with no cycles, no interrupt, no instruction count and no hook;
+    // only ROM, RAM and the DMA registers are reached (the DMA commands draw the wide layer only). Then the journal and
+    // the registers are undone and the real walk runs. Any other access, PC or exception ends the pass as a fault.
+    bool shadow=false,shadow_walk=false,shadow_refused=false,resume_walk=false;
+    std::vector<std::pair<uint32_t,uint16_t>> shadow_journal;
+    std::array<uint32_t,16> shadow_a{};std::array<uint32_t,15> shadow_b{};uint32_t shadow_status=0;
+    size_t shadow_returns=0,shadow_writes=0;uint32_t shadow_stack_reads=0,shadow_lowest_sp=0;
+    uint64_t shadow_quanta=0,shadow_cycles=0,shadow_steps=0;
+    void wide_pre(uint32_t pc);
+    void shadow_pre(uint32_t pc);
+    void shadow_restore();
+    void shadow_stop(bool complete);
+    void shadow_failed();
     void video_update();
     bool uncounted()const{return subroutine || (active_handler && !main_mode && !boot_mode);}
     void guard()const;
@@ -107,6 +123,8 @@ public:
     TaskBodyResult ContinueMain(const TaskBodyInputs&,uint32_t new_di_limit);
     void AttachVideo(const VerifiedMk5GlyphBank&,bool remastered=false);
     const Mk5LiveVideo& Video()const{return *video;}
+    // Widescreen (Remastered presentation): the shadow pass composes the 512-column frame from now on.
+    void EnableWide(){if(!video)throw std::logic_error("MK1 widescreen requires the attached video");video->EnableWide();}
     // Host-only history retention. The live CPU, memory, device state and
     // every continuation remain untouched; qualification keeps full histories.
     Mk5DiagnosticTrim CompactDiagnostics();

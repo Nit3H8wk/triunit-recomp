@@ -40,11 +40,15 @@ void Mk5Scanout::line(const Mk5ScanlineEvent& edge,const std::array<uint16_t,32>
                     if(!fighter_complete.backdrop.empty())fighter_complete.backdrop[pixel]=backdrop_work[pixel];
                 }
             }
+            if(wide_video){
+                wide_complete=wide_work;wide_centre_=wide_centre_work;wide_shift_=wide_shift_work;wide_fitted_=wide_fitted_work;
+                if(wide_present){wide_source=wide_source_work;wide_blood=wide_blood_work;ComposeWide();}
+            }
         }
         collecting=false;return;
     }
     if(edge.vcount==io[5]){
-        collecting=true;rows_=0;scenery_visible=false;blood_cover.clear();fighter_blood.clear();blood_shade={};
+        collecting=true;rows_=0;scenery_visible=false;blood_cover.clear();fighter_blood.clear();blood_shade={};wide_centre_work=0;
         if(presentation && presentation->FighterVideo().enabled())fighter_work.Begin(width_,height_);
     }
     if(!collecting || edge.vcount<io[5] || edge.vcount>=io[6])return;
@@ -77,7 +81,55 @@ void Mk5Scanout::line(const Mk5ScanlineEvent& edge,const std::array<uint16_t,32>
         for(unsigned x=0;x<width_;++x)
             if(presentation->FighterVideo().Blood(row+((col+x)&511)))fighter_blood.push_back(rows_*width_+x);
     }
+    if(wide_video)wide_line(row,col,enabled);
     ++rows_;
+}
+void Mk5Scanout::wide_line(unsigned row,unsigned col,bool enabled){
+    const auto& layer=wide_video->WideLayer();const unsigned margin=(kWideWidth-width_)/2;const size_t n=size_t(kWideWidth)*height_;
+    if(!rows_){
+        wide_work.assign(n,0);
+        if(wide_present){wide_source_work.assign(n,kBlank);wide_blood_work.assign(n,0);}
+        wide_shift_work=layer.Enabled()?layer.ShiftOfRow(row>>9):0;wide_fitted_work=layer.Enabled()?layer.FittedOfRow(row>>9):0;
+    }
+    for(unsigned x=0;x<kWideWidth;++x){
+        const auto index=row+((col+x-margin)&511);const size_t dest=size_t(rows_)*kWideWidth+x;
+        const uint16_t pen=layer.Enabled()?layer.pens[index]:memory.vram[index];
+        wide_centre_work+=x>=margin && x<margin+width_ && pen!=memory.vram[index];
+        wide_work[dest]=enabled?expand_rgb(memory.palette.at(pen&0x7fff)):0;
+        if(!wide_present)continue;
+        const int world=int(x)-int(margin)+wide_shift_work,hud=int(x)-int(margin);
+        const bool fixed=layer.Enabled() && layer.fixed[index];
+        int16_t source=enabled?kRaw:kBlank;
+        if(enabled && !fixed && world>=0 && world<int(width_) && pen==memory.vram[row+((col+unsigned(world))&511)])source=int16_t(world);
+        else if(enabled && (fixed || !layer.Enabled()) && hud>=0 && hud<int(width_) && pen==memory.vram[index])source=int16_t(hud);
+        wide_source_work[dest]=source;
+        wide_blood_work[dest]=source==kRaw && layer.Enabled()?wide_video->WideBloodPixel(index):0;
+    }
+}
+// The wide frame of the Remastered layers: a pixel with an arcade column takes that column's data (colour with blood,
+// backdrop, fighter order and cover); a pixel only the shadow has is its raw colour as scenery, or its floor stain dimmed
+// as the frame's. The fighter layers are world: they move with the window.
+void Mk5Scanout::ComposeWide(){
+    const size_t n=size_t(kWideWidth)*height_;const int move=int(kWideWidth-width_)/2-wide_shift_;
+    const bool backdrop=!backdrop_complete.empty(),fighters=fighter_complete.serial!=0,fighter_backdrop=fighters && !fighter_complete.backdrop.empty();
+    wide_presentation_.resize(n);wide_backdrop_.assign(backdrop?n:0,0);
+    auto& f=wide_fighters_;f.serial=fighter_complete.serial;f.layers.clear();
+    f.underlay.assign(fighters?n:0,0);f.backdrop.assign(fighter_backdrop?n:0,0);f.opaque_order.assign(fighters?n:0,0);f.covered.assign(fighters?n:0,0);
+    for(size_t i=0;i<n;++i){
+        const int source=wide_source[i];const uint32_t raw=wide_complete[i];
+        if(source>=0){
+            const size_t a=i/kWideWidth*width_+size_t(source);
+            wide_presentation_[i]=complete[a];if(backdrop)wide_backdrop_[i]=backdrop_complete[a];
+            if(fighters){f.underlay[i]=fighter_complete.underlay[a];f.opaque_order[i]=fighter_complete.opaque_order[a];f.covered[i]=fighter_complete.covered[a];
+                if(fighter_backdrop)f.backdrop[i]=fighter_complete.backdrop[a];}
+            continue;
+        }
+        const uint32_t blood=wide_blood[i]?frame_shade.Apply(wide_blood[i]):0,shown=blood?blood:raw;
+        const uint32_t scenery=source==kRaw && !blood?(raw&0xffffff)|mk5stage::scenery:0;
+        wide_presentation_[i]=shown;if(backdrop)wide_backdrop_[i]=scenery;
+        if(fighters){f.underlay[i]=shown&0xffffff;f.opaque_order[i]=UINT64_MAX;if(fighter_backdrop)f.backdrop[i]=scenery;}
+    }
+    if(fighters)for(auto layer:fighter_complete.layers){layer.x+=move;f.layers.push_back(std::move(layer));}
 }
 void Mk5Scanout::SavePpm(const std::filesystem::path& path)const{
     if(!frames_)throw std::runtime_error("MK5 no complete scanout frame");

@@ -2,6 +2,7 @@
 #include "mk5_audio_link.hpp"
 #include "mk5_read_map.hpp"
 #include "mk5_hitbox.hpp"
+#include "mk5_widescreen.hpp"
 #include <algorithm>
 #include <stdexcept>
 
@@ -30,6 +31,9 @@ void Mk5TaskBodyRunner::guard()const{
         throw std::runtime_error("MK5 task-body: task stack outside guest RAM");
 }
 void Mk5TaskBodyRunner::pre(uint32_t pc){
+    if(shadow){shadow_pre(pc);return;}
+    // The real walk's first instruction after the shadow pass: counted and checked before the pass.
+    if(resume_walk && pc==mk5widescreen::kWalkStart){resume_walk=false;s.next_original_pc=pc;return;}
     s.next_original_pc=pc;last_pre_pc=pc;++graph_steps;
     video_update();
     // A subroutine run and the quiet task-phase DI handler are one call/event
@@ -61,8 +65,84 @@ void Mk5TaskBodyRunner::pre(uint32_t pc){
         if(video)video->BindHeldProp(s.a[8]);
         break;
     }
+    if(main_mode && video && video->WideEnabled())wide_pre(pc);
+}
+// Widescreen frame events of the real run, once per executed instruction (after every stop pre can raise).
+void Mk5TaskBodyRunner::wide_pre(uint32_t pc){
+    namespace w=mk5widescreen;auto& v=*video;
+    const auto word=[&](uint32_t bit){return m.ram[(bit-0x01000000)/16];};
+    const auto ram_long=[&](uint32_t bit){return uint32_t(word(bit))|uint32_t(word(bit+16))<<16;};
+    switch(pc){
+    case w::kDisplayIrq:v.WideEndUnbuilt();return;
+    case w::kBuilder:v.WideFrame(ram_long(w::kPageOrigin)>>16&0x1ff);return;   // after the page clear
+    case w::kStreamer:v.wide_streaming=true;return;
+    case w::kStreamerEnd:v.wide_streaming=false;return;
+    case w::kWalkEnd:v.WideRealWalk(false);return;
+    case w::kWalkStart:break;
+    default:return;
+    }
+    v.WideRealWalk(true);
+    if(ram_long(w::kClipTopLeft)!=0 || ram_long(w::kClipBottomRight)!=w::kArcadeBottomRight)return;
+    const unsigned mode=word(w::kMode);
+    const int d=v.WideBegin(w::Shifting(mode),w::Holding(mode),int16_t(word(w::kCameraX)),int16_t(word(w::kCameraMin)),
+                            int16_t(word(w::kCameraMax)));
+    shadow_a=s.a;shadow_b=s.b;shadow_status=s.status;shadow_returns=f.check.returns.size();shadow_writes=s.writes.size();
+    shadow_stack_reads=f.check.stack_read_count;shadow_lowest_sp=f.check.lowest_sp;shadow_quanta=irq.elapsed_quanta();
+    shadow_cycles=s.reference_cycles;shadow_steps=0;shadow_journal.clear();shadow=true;shadow_refused=false;
+    write(pc,w::kClipTopLeft,32,w::WideTopLeft(d));write(pc,w::kClipBottomRight,32,w::WideBottomRight(d));
+    shadow_walk=v.wide_streaming;   // not while the interrupted run is inside the real streamer: its planes are half built
+    if(!shadow_walk){push(pc,w::kStreamerReturn);s.next_original_pc=w::kStreamer;throw TaskBodyStop::Shadow;}
+}
+void Mk5TaskBodyRunner::shadow_pre(uint32_t pc){
+    namespace w=mk5widescreen;
+    constexpr uint64_t kShadowSteps=4000000;
+    s.next_original_pc=pc;
+    if(++shadow_steps>kShadowSteps)throw TaskBodyStop::Untranslated;
+    if(!shadow_walk){
+        if(pc==w::kStreamerReturn){   // the streamer returned: the walk from its start, with the real registers
+            s.a=shadow_a;s.b=shadow_b;s.status=shadow_status;s.next_original_pc=w::kWalkStart;shadow_walk=true;
+            throw TaskBodyStop::Shadow;
+        }
+        if(pc==w::kStreamerPopStatus){s.status=pop();s.next_original_pc=pc+16;throw TaskBodyStop::Shadow;}   // POPST
+        if(!w::StreamerCode(pc))throw TaskBodyStop::Untranslated;
+        return;
+    }
+    if(pc==w::kWalkEnd){shadow_stop(video->WideList(false,0,0,0) && !shadow_refused);throw TaskBodyStop::Shadow;}
+    if(!w::WalkCode(pc))throw TaskBodyStop::Untranslated;
+    if(pc==w::kFixedTest){video->WideFixedObject((s.a[7]&1)!=0);return;}
+    for(const auto call:w::kListCalls)if(pc==call){   // a list starts: A0 its head
+        const uint32_t scroll=w::FarScroll(s.a[0]);
+        const auto ram_long=[&](uint32_t bit){const size_t i=(bit-0x01000000)/16;return int32_t(m.ram[i]|uint32_t(m.ram[i+1])<<16);};
+        if(!video->WideList(scroll!=0,(scroll-w::kScrollFirst)/0x20,scroll?ram_long(scroll-w::kVelocityGap):0,
+                            scroll?ram_long(w::kWorldScroll-w::kVelocityGap):0))shadow_refused=true;
+        return;
+    }
+}
+// Undo the pass: RAM from the journal, the registers and the host histories; time never moved.
+void Mk5TaskBodyRunner::shadow_restore(){
+    for(auto it=shadow_journal.rbegin();it!=shadow_journal.rend();++it)m.ram[it->first]=it->second;
+    shadow_journal.clear();s.a=shadow_a;s.b=shadow_b;s.status=shadow_status;
+    f.check.returns.resize(shadow_returns);s.writes.resize(shadow_writes);
+    f.check.stack_read_count=shadow_stack_reads;f.check.lowest_sp=shadow_lowest_sp;
+    if(irq.elapsed_quanta()!=shadow_quanta || s.reference_cycles!=shadow_cycles)
+        throw std::logic_error("MK1 widescreen shadow pass reached the interrupt controller");
+}
+void Mk5TaskBodyRunner::shadow_stop(bool complete){
+    shadow_restore();shadow=false;video->WideEnd(complete);
+    if(!complete){++video->wide_faults;video->wide_fault_pc=s.next_original_pc;}
+    resume_walk=true;s.next_original_pc=mk5widescreen::kWalkStart;
+}
+// A fault: in the streamer, this frame's walk runs without it; in the walk, the pass ends incomplete.
+void Mk5TaskBodyRunner::shadow_failed(){
+    namespace w=mk5widescreen;
+    if(shadow_walk){const uint32_t pc=s.next_original_pc;shadow_stop(false);video->wide_fault_pc=pc;return;}
+    shadow_restore();++video->wide_streamer_skips;
+    const int d=video->WideLayer().shift;
+    write(w::kWalkStart,w::kClipTopLeft,32,w::WideTopLeft(d));write(w::kWalkStart,w::kClipBottomRight,32,w::WideBottomRight(d));
+    shadow_walk=true;s.next_original_pc=w::kWalkStart;
 }
 void Mk5TaskBodyRunner::step(uint32_t pc,uint32_t next,uint32_t cycles){
+    if(shadow){s.next_original_pc=next;return;}
     if(!uncounted())result.instructions.push_back({pc,next,cycles});
     if(immediate_irq){immediate_irq=false;irq.AdvanceCycles(cycles);video_update();throw TaskBodyStop::IrqHandler;}
     s.next_original_pc=next;irq.AdvanceCycles(cycles);
@@ -126,6 +206,9 @@ uint16_t Mk5TaskBodyRunner::vram_word(uint32_t a){
 uint32_t Mk5TaskBodyRunner::read(uint32_t pc,uint32_t a,unsigned width,bool sign){
     uint32_t v=0;
     if(width<1 || width>32)throw TaskBodyStop::Untranslated;
+    // The shadow pass reads no device with state or host effects (CMOS, cabinet ports, sound board, protection).
+    if(shadow && ((a>=0x01400000 && a<0x01420000) || (a>=0x01600000 && a<0x01600050) || (a>=0x01d00000 && a<0x01d00010) ||
+                  (a>=0x01b00000 && a<0x01b70000)))throw TaskBodyStop::Untranslated;
     if(a>=0x01000000 && uint64_t(a)+width<=0x01400000){
         for(unsigned b=0;b<width;++b){uint32_t at=a+b;v|=uint32_t((m.ram.at((at-0x01000000)/16)>>(at&15))&1)<<b;}
     }else if(a>=0x01400000 && a<0x01420000 && !(a&15) && width==8){v=uint8_t(f.cmos.at((a-0x01400000)/16));
@@ -184,7 +267,7 @@ uint32_t Mk5TaskBodyRunner::read(uint32_t pc,uint32_t a,unsigned width,bool sign
         if(boot_mode){mk5audio::GameAudioSync(s.reference_cycles);v=boot_inputs.sound_status;}
         else{if(!inputs.sound_status)throw TaskBodyStop::SoundInput;mk5audio::GameAudioSync(s.reference_cycles);v=main_mode?sound_status.Read():*inputs.sound_status;}
     }
-    else if(video && a>=0x01a80000 && a<0x01a80100 && !(a&15) && width==16){v=video->Read((a-0x01a80000)/16);}
+    else if(video && a>=0x01a80000 && a<0x01a80100 && !(a&15) && width==16){v=shadow?video->ShadowRead((a-0x01a80000)/16):video->Read((a-0x01a80000)/16);}
     else if(a==0x01a80010 && width==16){
         // Busy-wait reads the live last normalized DMA command, not a fake idle.
         bool found=false;for(auto i=s.writes.rbegin();i!=s.writes.rend();++i)if(i->address_bit==a){v=i->value;found=true;break;}if(!found)throw TaskBodyStop::Untranslated;
@@ -198,6 +281,18 @@ uint32_t Mk5TaskBodyRunner::read(uint32_t pc,uint32_t a,unsigned width,bool sign
 }
 void Mk5TaskBodyRunner::write(uint32_t pc,uint32_t a,unsigned width,uint32_t v){
     if(width<1 || width>32)throw TaskBodyStop::Untranslated;
+    if(shadow){   // RAM through the journal; the DMA registers draw the wide layer only; nothing else
+        if(a>=0x01000000 && uint64_t(a)+width<=0x01400000){
+            for(uint32_t at=a&~15u;uint64_t(at)<uint64_t(a)+width;at+=16){const uint32_t i=(at-0x01000000)/16;shadow_journal.push_back({i,m.ram[i]});}
+            for(unsigned b=0;b<width;++b){uint32_t at=a+b;auto& word=m.ram[(at-0x01000000)/16];unsigned shift=at&15;word=uint16_t((word&~(1u<<shift))|(((v>>b)&1)<<shift));}
+            return;
+        }
+        if(video && a>=0x01a80000 && a<0x01a80100 && !(a&15) && (width==16 || width==32)){
+            for(unsigned b=0;b<width;b+=16)if(!video->ShadowWrite((a+b-0x01a80000)/16,uint16_t(v>>b)))shadow_refused=true;
+            return;
+        }
+        throw TaskBodyStop::Untranslated;
+    }
     if(a>=0x01000000 && uint64_t(a)+width<=0x01400000){
         for(unsigned b=0;b<width;++b){uint32_t at=a+b;auto& word=m.ram.at((at-0x01000000)/16);unsigned shift=at&15;word=uint16_t((word&~(1u<<shift))|(((v>>b)&1)<<shift));}
         if(width==32 && (a==0x01051230 || a==0x01051510 || a==0x01008000) && video)
@@ -247,6 +342,7 @@ void Mk5TaskBodyRunner::write(uint32_t pc,uint32_t a,unsigned width,uint32_t v){
 void Mk5TaskBodyRunner::push(uint32_t pc,uint32_t v){if(s.a[15]<0x010958d0)throw std::runtime_error("MK5 task stack exhausted");s.a[15]-=32;write(pc,s.a[15],32,v);f.check.lowest_sp=std::min(f.check.lowest_sp,s.a[15]);}
 uint32_t Mk5TaskBodyRunner::pop(){uint32_t v=read(s.next_original_pc,s.a[15],32);s.a[15]+=32;++f.check.stack_read_count;return v;}
 uint32_t Mk5TaskBodyRunner::shift_load(uint32_t bit){
+    if(shadow)throw TaskBodyStop::Untranslated;
     if(video)return video->ShiftLoad(bit);
     // VRAM-to-shift-register transfer (DPYCTL SRT): one 1024-pixel row.
     size_t index=bit>>3;if(index+1024>m.vram.size())throw std::runtime_error("MK5 shiftreg range");
@@ -256,6 +352,7 @@ uint32_t Mk5TaskBodyRunner::pixblt_b_xy(uint32_t pc){
     // TMS34010 PIXBLT B,XY (pinned 34010gfx.hxx pixblt_b, non-linear
     // destination): binary source expanded to COLOR1/COLOR0, replace or
     // transparent replace, no window, executed in one step with its cycles.
+    if(shadow)throw TaskBodyStop::Untranslated;
     const auto& io=irq.io();
     for(unsigned r:{8u,11u,20u,21u})if(!irq.Started() && !irq.Requested(r))throw TaskBodyStop::Untranslated;
     const unsigned psize=io[21];const uint16_t control=io[11];
@@ -301,7 +398,7 @@ void Mk5TaskBodyRunner::native_block(uint32_t pc){
     // control audit) through the power-on graph, run here as a subroutine
     // until it pops the caller's frame, inside the same IRQ-free horizon as
     // before. Budget and instruction counts see one call, as the graphs expect.
-    if(main_mode && (s.status&0x0fffffff)!=0x00200030)throw TaskBodyStop::Untranslated;
+    if(shadow || (main_mode && (s.status&0x0fffffff)!=0x00200030))throw TaskBodyStop::Untranslated;
     if(pc==0xffe2a930 && !inputs.dsw && !boot_mode)throw TaskBodyStop::DswInput;
     uint64_t max=pc==0xffe2a930?311:10000;
     if(!irq.CanRunIrqFree(max))throw TaskBodyStop::TemporalBarrier;

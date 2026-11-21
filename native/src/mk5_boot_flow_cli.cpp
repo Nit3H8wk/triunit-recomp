@@ -6,6 +6,7 @@
 #include "mk5_audio_link.hpp"
 #include "mk5_save_state.hpp"
 #include "mk5_profile_presentation.hpp"
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <set>
@@ -150,8 +151,11 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered,Mk5StateHost host){
         // These operations must not drain a live bounded audio queue.
         std::unique_ptr<VerifiedMk5GlyphBank> glyph_bank;
         if(o.main_loop)glyph_bank=std::make_unique<VerifiedMk5GlyphBank>(LoadMk5GlyphBank(o.roms));
+        // Widescreen (MK1_WIDESCREEN=1, Remastered window only): the shadow pass's 512 columns, shown 4:3 x 512/400.
+        const char* widescreen_flag=std::getenv("MK1_WIDESCREEN");
+        const bool widescreen=remastered && o.visual && widescreen_flag && std::string(widescreen_flag)=="1";
         std::unique_ptr<Mk5Window> prepared_window;
-        if(o.visual)prepared_window=std::make_unique<Mk5Window>();
+        if(o.visual)prepared_window=widescreen?std::make_unique<Mk5Window>(false,128,75):std::make_unique<Mk5Window>();
         error=3;Mk5MemoryBuffers m;Mk5BoardState f;f.cmos=c;auto& s=f.check.cpu;
         uint64_t before=s.reference_cycles;std::string stop="boot-input";BootDiState di;TaskBodyResult body,boot;bool body_executed=false;
         TaskBodyResult main;bool main_executed=false;uint64_t main_cycles=0,main_instructions=0,main_yields=0,main_loops=0;size_t main_calls=0,dma_commands=0,dma_completions=0;uint64_t drawn_pixels=0,shift_loads=0,shift_stores=0;
@@ -186,6 +190,7 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered,Mk5StateHost host){
                     runner.AttachVideo(*glyph_bank,blood_decals);
                     std::unique_ptr<Mk5Scanout> screen;
                     if(o.decompressor)screen=std::make_unique<Mk5Scanout>(irq,m,blood_decals?&runner.Video():nullptr);
+                    if(widescreen && screen){runner.EnableWide();screen->EnableWidePresentation(runner.Video());}
                     std::unique_ptr<Mk5Window> window;uint64_t shown_frame=0;auto active_base=o.body.active_di;
                     // F5/F7: one slot per edition, in memory and in saves/mk1/<program sha>/, between two ContinueMain calls.
                     const auto slot_path=std::filesystem::path(L"saves/mk1")/kMk5ProgramSha256/(remastered?L"slot1-remastered.state":L"slot1.state");
@@ -220,6 +225,16 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered,Mk5StateHost host){
                     // Training mode (F8): the window draws the inputs and the boxes the strike check tests (mk5_hitbox.hpp).
                     mk5hitbox::enabled=prepared_window&&prepared_window->Training();
                     const auto boxes=[&]{mk5hitbox::Capture(mk5hitbox::kMk1,m.ram);return mk5hitbox::Take();};
+                    const auto present=[&]{
+                        if(screen->wide_presentation_enabled()){
+                            auto world=boxes();   // the world's boxes move with the window
+                            const int move=int(Mk5Scanout::kWideWidth-screen->width())/2-screen->wide_shift();
+                            for(auto& box:world)box.x+=move;
+                            window->Present(screen->wide_presentation(),Mk5Scanout::kWideWidth,screen->height(),
+                                            screen->wide_backdrop_pixels(),screen->wide_fighter_frame(),world);
+                        }else window->Present(screen->pixels(),screen->width(),screen->height(),
+                                              screen->backdrop_pixels(),screen->fighter_frame(),boxes());
+                    };
                     const uint64_t call_limit=o.visual?(o.window_frames?20000ull+uint64_t(o.window_frames)*16:uint64_t(-1)):o.main_slices;
                     for(uint64_t call=0;call<call_limit;++call){
                         if(o.visual && !window && call>=20000){window_stop="window-start-budget";break;}
@@ -236,8 +251,7 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered,Mk5StateHost host){
                                 auto metrics=status.str();metrics.resize(metrics.size()-2);metrics+=",\"x1\":"+coordinate(0)+",\"x2\":"+coordinate(1)+",\"presentation\":"+window->presentation_json()+"}\n";live_status.Write(metrics);
                             }
                             if(!run_ahead || !window->RunAhead()){
-                                window->Present(screen->pixels(),screen->width(),screen->height(),
-                                                screen->backdrop_pixels(),screen->fighter_frame(),boxes());
+                                present();
                                 shown_frame=screen->frames();if(o.window_frames && window->frames()>=o.window_frames){window_stop="window-frame-limit";break;}
                             }
                         }
@@ -255,8 +269,7 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered,Mk5StateHost host){
                                     const auto next=runner.ContinueMain(o.body,o.main_di_limit);
                                     if(next.stop!=TaskBodyStop::Budget && next.stop!=TaskBodyStop::DiLimit)break; // the real run meets it
                                 }
-                                if(!closed && screen->frames()>real)window->Present(screen->pixels(),screen->width(),screen->height(),
-                                                                                     screen->backdrop_pixels(),screen->fighter_frame(),boxes());
+                                if(!closed && screen->frames()>real)present();
                                 runner.CompactDiagnostics();mk5audio::TrimGameAudioDiagnostics();
                                 ahead.Load(fields);mk5audio::SetGameAudioSpeculative(false);o.body.active_di=inputs;
                                 shown_frame=real;

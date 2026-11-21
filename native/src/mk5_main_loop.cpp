@@ -24,7 +24,13 @@ TaskBodyResult Mk5TaskBodyRunner::ContinueMain(const TaskBodyInputs& in,uint32_t
                 active_handler=true;
             }
             execute_main();
-        }catch(TaskBodyStop stop){if(stop==TaskBodyStop::IrqHandler && s.next_original_pc==0xffc98bd0 && inputs.active_di && video)continue;result.stop=stop;break;}
+        }catch(TaskBodyStop stop){
+            // Widescreen: the shadow pass redirected the next PC, or ended by a fault (it never stops a call).
+            if(stop==TaskBodyStop::Shadow)continue;
+            if(shadow){shadow_failed();continue;}
+            if(stop==TaskBodyStop::IrqHandler && s.next_original_pc==0xffc98bd0 && inputs.active_di && video)continue;
+            result.stop=stop;break;
+        }catch(const std::exception&){if(!shadow)throw;shadow_failed();}
     }
     mk5audio::GameAudioSync(s.reference_cycles);
     result.pc=s.next_original_pc;result.reference_cycles=s.reference_cycles-before;expected_pc=s.next_original_pc;expected_sp=s.a[15];expected_cycles=s.reference_cycles;return result;

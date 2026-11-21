@@ -238,7 +238,7 @@ fs::path customBezel(const fs::path& root,size_t game){
  return fs::is_regular_file(image,error)?image:fs::path{};
 }
 std::vector<wchar_t> nativeEnvironment(const mklauncher::Config& c,const VideoConfig& v,const fs::path& music,bool modernVideo,bool validateGraphics,
-                                      const fs::path& bezelImage,const mk5controls::Config& controls,bool widescreen=false){
+                                      const fs::path& bezelImage,const mk5controls::Config& controls,const wchar_t* widescreen=nullptr){
  std::map<std::wstring,std::wstring,EnvironmentLess> values;auto* original=GetEnvironmentStringsW();if(!original)throw std::runtime_error("native process environment");
  for(const auto* cursor=original;*cursor;cursor+=wcslen(cursor)+1){
   const std::wstring row=cursor;const auto eq=row.find(L'=',row[0]==L'='?1:0);
@@ -262,7 +262,7 @@ std::vector<wchar_t> nativeEnvironment(const mklauncher::Config& c,const VideoCo
  {const auto text=mk5controls::format(controls);values[L"MK1_CONTROLS"]=std::wstring(text.begin(),text.end());}
  values[L"MK1_AUDIO_LATENCY"]=c.audioLatency==2?L"safe":L"balanced";values[L"MK1_MUSIC_MODE"]=c.remastered?L"remastered":L"original";values[L"MK1_GRAPHICS_VALIDATE"]=validateGraphics?L"1":L"0";
  if(c.remastered)values[L"MK1_MUSIC_DIRECTORY"]=music.wstring();
- if(widescreen)values[L"MK2_WIDESCREEN"]=L"1";
+ if(widescreen)values[widescreen]=L"1";   // MK1_WIDESCREEN or MK2_WIDESCREEN: the game's Remastered launch only
  std::vector<wchar_t> block;for(const auto& value:values){const auto row=value.first+L"="+value.second;block.insert(block.end(),row.begin(),row.end());block.push_back(0);}block.push_back(0);return block;
 }
 std::wstring nativeError(const char* error){
@@ -820,7 +820,7 @@ bool Backend::launchNative(const fs::path& manifest,const fs::path& settings,boo
   const auto music=customAudio(root_,L"mk2");
   if(selected.remastered&&!spec.playable)throw std::runtime_error("native experiment supports original audio only");
   auto environment=nativeEnvironment(selected,selected.video(),music,spec.modernVideo,diagnostics||!spec.liveWithoutPixelCheck,customBezel(root_,1),loadControls(),
-                                     selected.remastered&&selected.video().widescreen);auto expectedPath=spec.executable;expectedPath.make_preferred();
+                                     selected.remastered&&selected.video().widescreen?L"MK2_WIDESCREEN":nullptr);auto expectedPath=spec.executable;expectedPath.make_preferred();
   std::wstring started=std::wstring(compatibleGames[1].name)+L" nativo iniciado.";
   mk2::PrepareCmosProfile(spec.profile,spec.seed);
   const auto log=spec.root/L"logs/native-experiment-latest.log";unlinked(log);fs::create_directories(log.parent_path());unlinked(log);
@@ -886,7 +886,8 @@ bool Backend::launch(unsigned frames){
   STARTUPINFOW si{};si.cb=sizeof(si);si.dwFlags=STARTF_USESHOWWINDOW|STARTF_USESTDHANDLES;si.wShowWindow=SW_HIDE;si.hStdInput=input.h;si.hStdOutput=output.h;si.hStdError=output.h;
   PROCESS_INFORMATION pi{};
   // MK1: session.ps1 sets the other MK1_* values itself; HDR and the custom frame reach the game only through this environment.
-  auto environment=gameIndex_==0?nativeEnvironment(config,v,{},modernVideo,false,customBezel(root_,0),loadControls()):std::vector<wchar_t>{};
+  auto environment=gameIndex_==0?nativeEnvironment(config,v,{},modernVideo,false,customBezel(root_,0),loadControls(),
+                                                   config.remastered&&v.widescreen?L"MK1_WIDESCREEN":nullptr):std::vector<wchar_t>{};
   if(!CreateProcessW(powershell.c_str(),command.data(),nullptr,nullptr,TRUE,CREATE_NO_WINDOW|(environment.empty()?0:CREATE_UNICODE_ENVIRONMENT),
                      environment.empty()?nullptr:environment.data(),root_.c_str(),&si,&pi))throw std::runtime_error("start session");
   CloseHandle(pi.hThread);process_=pi.hProcess;processId_=pi.dwProcessId;exitCode_=STILL_ACTIVE;stopping_=false;gameWindow_=nullptr;gamePid_=0;nextDiscovery_=0;

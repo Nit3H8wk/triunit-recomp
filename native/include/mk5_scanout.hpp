@@ -22,11 +22,47 @@ class Mk5Scanout {
     std::vector<unsigned> fighter_blood;
     mk5presentation::FighterCapture fighter_work;
     mk5presentation::FighterFrame fighter_complete;
+    // Widescreen: every VRAM column of each line, the visible ones at the centre, from the shadow pass's wide layer
+    // (Mk5LiveVideo::EnableWide) or VRAM itself; raw colours. Per frame: its window offset, its fitted planes and its visible
+    // pixels that differ from VRAM (0 when exact).
+    const Mk5LiveVideo* wide_video=nullptr;
+    std::vector<uint32_t> wide_work,wide_complete;
+    uint64_t wide_centre_work=0,wide_centre_=0;int wide_shift_work=0,wide_shift_=0;unsigned wide_fitted_work=0,wide_fitted_=0;
+    // Widescreen presentation (Remastered): each wide pixel's arcade column, where its pen is the arcade's own at that column
+    // (the world's x = L-56+d; a pixel of a screen-fixed draw, the HUD's x = L-56), so the Remastered layers of that column
+    // apply; kRaw where only the shadow pass has it (margins, fitted planes): its raw colour, as scenery, with the wide floor
+    // stain; kBlank on a blanked line. The composed frame is not state: ComposeWide makes it from the rest.
+    static constexpr int16_t kRaw=-1,kBlank=-2;
+    bool wide_present=false;
+    std::vector<int16_t> wide_source_work,wide_source;
+    std::vector<uint32_t> wide_blood_work,wide_blood;
+    std::vector<uint32_t> wide_presentation_,wide_backdrop_;mk5presentation::FighterFrame wide_fighters_;
+    void wide_line(unsigned row,unsigned col,bool enabled);
+    void ComposeWide();
     void line(const Mk5ScanlineEvent&,const std::array<uint16_t,32>&);
     template<class A> friend void Fields(A& a,Mk5Scanout& s){   // save states, the partial frame included
         a(s.width_,s.height_,s.rows_,s.frames_,s.last_frame_quanta_,s.collecting,s.scenery_visible,s.work,s.complete,
           s.backdrop_work,s.backdrop_complete,s.blood_cover,s.fighter_work,s.fighter_complete,s.blood_shade,s.frame_shade,
           s.fighter_blood);
+        s.WideFields(a);
+    }
+    // Widescreen state (W4) with a presence mark, kept when the session captures the wide layer: a session without it drops
+    // a file's; one with it that loads a state without it starts from blank wide frames until the next one completes.
+    template<class A> void WideFields(A& a){
+        const bool enabled=wide_video!=nullptr;bool present=enabled;a(present);
+        if(present)a(wide_work,wide_complete,wide_centre_work,wide_centre_,wide_shift_work,wide_shift_,wide_fitted_work,wide_fitted_,
+                     wide_source_work,wide_source,wide_blood_work,wide_blood);
+        if constexpr(A::reading){
+            const size_t n=size_t(kWideWidth)*height_;
+            if(!enabled){wide_work.clear();wide_complete.clear();wide_source_work.clear();wide_source.clear();wide_blood_work.clear();wide_blood.clear();}
+            else if(!present){
+                wide_work.assign(n,0);wide_complete=wide_work;wide_shift_work=wide_shift_=0;wide_fitted_work=wide_fitted_=0;
+                wide_centre_work=wide_centre_=0;
+                if(wide_present){wide_source_work.assign(n,kBlank);wide_source=wide_source_work;wide_blood_work.assign(n,0);wide_blood=wide_blood_work;}
+            }
+            if(wide_present && wide_complete.size()==n && wide_source.size()==n && wide_blood.size()==n && complete.size()==size_t(width_)*height_)
+                ComposeWide();
+        }
     }
 public:
     Mk5Scanout(Mk5IrqController&,const Mk5MemoryBuffers&,const Mk5LiveVideo* presentation=nullptr);
@@ -40,5 +76,17 @@ public:
     const std::vector<uint32_t>& backdrop_pixels()const{return backdrop_complete;}
     const mk5presentation::FighterFrame& fighter_frame()const{return fighter_complete;}
     const mk5blood::Shade& blood_frame_shade()const{return frame_shade;}   // the last complete frame's
+    static constexpr unsigned kWideWidth=512;   // a VRAM line
+    void EnableWide(const Mk5LiveVideo& video){wide_video=&video;}
+    const std::vector<uint32_t>& wide_pixels()const{return wide_complete;}   // kWideWidth x height(), the last complete frame
+    int wide_shift()const{return wide_shift_;}   // its window offset (mk5wide::WindowShift)
+    unsigned wide_fitted()const{return wide_fitted_;}   // its far planes fitted to the window: with none, the centre is exact
+    uint64_t wide_centre()const{return wide_centre_;}
+    // Widescreen presentation (Remastered, from the attached video): the frame, backdrop and fighter layers over kWideWidth.
+    void EnableWidePresentation(const Mk5LiveVideo& video){wide_video=&video;wide_present=presentation!=nullptr;}
+    bool wide_presentation_enabled()const{return wide_present;}
+    const std::vector<uint32_t>& wide_presentation()const{return wide_presentation_;}
+    const std::vector<uint32_t>& wide_backdrop_pixels()const{return wide_backdrop_;}
+    const mk5presentation::FighterFrame& wide_fighter_frame()const{return wide_fighters_;}
     void SavePpm(const std::filesystem::path&)const;
 };
