@@ -24,7 +24,7 @@ class Scanout {
     mk5presentation::FighterCapture fighter_work_;
     mk5presentation::FighterFrame fighters_;
     // Widescreen: every VRAM column of each line, the visible ones at the centre, from the shadow pass's wide layer when it
-    // runs (BootVideo::EnableWide). Raw colours of the original scanout, a debug view; not in save states (shortcut: the first frame after a load mixes both, until W4 carries it).
+    // runs (BootVideo::EnableWide). Raw colours of the original scanout.
     bool wide_on_=false;std::vector<uint32_t> wide_work_,wide_;uint64_t wide_added_work_=0,wide_added_=0,wide_centre_work_=0,wide_centre_=0;int wide_shift_work_=0,wide_shift_=0;unsigned wide_fitted_work_=0,wide_fitted_=0;
     // Widescreen presentation (Remastered, W3): each wide pixel's arcade column, where its pen is the arcade's own at that
     // column (the world's x = L-56+d; a pixel of a screen-fixed draw, BootVideo::WideFixed, the HUD's x = L-56), so the
@@ -63,6 +63,24 @@ class Scanout {
           s.work_,s.complete_,s.blood_work_,s.presentation_,s.blood_cover_,s.backdrop_work_,s.backdrop_,
           s.fighter_work_,s.fighters_,s.shade_,s.frame_shade_,s.fighter_blood_);
         if constexpr(A::reading)s.display_enabled_=std::bitset<289>(enabled);
+        s.WideFields(a);
+    }
+    // Widescreen state (W4), kept when the session captures the wide layer (as BootVideo::WideFields): the composed frame
+    // is not state, ComposeWide makes it again from the rest.
+    template<class A> void WideFields(A& a){
+        const bool enabled=wide_on_;bool present=enabled;a(present);
+        if(present)a(wide_work_,wide_,wide_added_work_,wide_added_,wide_centre_work_,wide_centre_,wide_shift_work_,wide_shift_,
+                     wide_fitted_work_,wide_fitted_,wide_source_work_,wide_source_,wide_blood_work_,wide_blood_);
+        if constexpr(A::reading){
+            const size_t n=size_t(kWideWidth)*height_;
+            if(!enabled){wide_work_.clear();wide_.clear();wide_source_work_.clear();wide_source_.clear();wide_blood_work_.clear();wide_blood_.clear();}
+            else if(!present){   // a state saved without widescreen: blank wide frames until the next one completes
+                wide_work_.assign(n,0xff000000);wide_=wide_work_;wide_shift_work_=wide_shift_=0;wide_fitted_work_=wide_fitted_=0;
+                wide_added_work_=wide_added_=wide_centre_work_=wide_centre_=0;
+                if(wide_present_){wide_source_work_.assign(n,kBlank);wide_source_=wide_source_work_;wide_blood_work_.assign(n,0);wide_blood_=wide_blood_work_;}
+            }
+            if(wide_present_&&wide_.size()==n&&wide_source_.size()==n&&wide_blood_.size()==n&&presentation_.size()==size_t(width_)*height_)ComposeWide();
+        }
     }
 public:
     explicit Scanout(bool remastered=false):remastered_(remastered){}

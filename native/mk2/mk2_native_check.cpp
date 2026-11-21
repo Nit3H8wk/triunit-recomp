@@ -274,8 +274,7 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
             };
             mk2::state::Snapshot ahead;
             while(!stop_requested) {
-                // The window stops it when the frame does not fit; widescreen has no run-ahead until its state is snapshotted (W4).
-                hold_frames=window->RunAhead()&&!widescreen;
+                hold_frames=window->RunAhead();   // the window stops it when the frame does not fit
                 if(!hold_frames) {
                     const auto target=continuation.State().ready.cycles+mk2::live_detail::kRequestCycles;
                     continuation=mk2::ResumeValidLiveHost(program,std::move(continuation),*machine,target);

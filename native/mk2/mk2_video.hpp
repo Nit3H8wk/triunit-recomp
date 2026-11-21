@@ -6,7 +6,6 @@
 #include "../include/mk5_blood_shade.hpp"
 #include <algorithm>
 #include <map>
-#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -378,7 +377,8 @@ struct BootVideo {
     bool wide_shadow_post=false,wide_real_post=false;uint32_t wide_post_key=0;bool wide_post_keyed=false;
     // How an entry reaches the layer: x moved by shift columns and, when width < 512, the columns [0, width) stretched to
     // the 512 (the per-plane fit, WidePlane).
-    struct WideDraw{std::array<uint16_t,12> entry;int shift,width;bool fixed;};   // fixed: a screen-fixed (HUD) draw
+    struct WideDraw{std::array<uint16_t,12> entry;int shift,width;bool fixed;   // fixed: a screen-fixed (HUD) draw
+        template<class A> friend void Fields(A& a,WideDraw& d){a(d.entry,d.shift,d.width,d.fixed);}};
     std::vector<WideDraw> wide_pending;
     // Per-plane fit: the entries of a far plane's list (mk2::wide::FitCamera) wait in wide_plane until the list ends
     // (WidePlane), so the plane is placed as a whole.
@@ -401,8 +401,8 @@ struct BootVideo {
     std::array<unsigned,2> wide_page_fitted{};   // the planes fitted in each page's composition
     // Each far camera's ratio in this arena: its velocity and the world's in a frame where the world moved.
     int wide_world=0;   // this build's world camera x (mk2_task_batch.cpp)
-    struct WideRatio{int64_t plane,world;};std::array<std::optional<WideRatio>,8> wide_ratio{};
-    std::array<int,2> wide_ratio_limits{};const std::optional<WideRatio>* wide_plane_ratio=nullptr;
+    struct WideRatio{int64_t plane=0,world=0;};std::array<WideRatio,8> wide_ratio{};   // world 0: not known yet
+    std::array<int,2> wide_ratio_limits{};const WideRatio* wide_plane_ratio=nullptr;
     void EnableWide(){wide_=vram;wide_fixed_.assign(vram.size(),0);}   // from what VRAM already holds
     bool WideEnabled()const{return !wide_.empty();}
     uint16_t WidePixel(size_t index)const{return wide_[index];}
@@ -456,8 +456,8 @@ struct BootVideo {
     // camera position within the arena's limits, its scroll moving by its ratio. Unknown (the world has not moved in this
     // arena yet, or no limits): not shown.
     bool WideEndShown(int end,bool left_end)const{
-        if(!wide_limits[2]||!wide_plane_ratio||!*wide_plane_ratio)return false;
-        const auto& r=**wide_plane_ratio;
+        if(!wide_limits[2]||!wide_plane_ratio||!wide_plane_ratio->world)return false;
+        const auto& r=*wide_plane_ratio;
         const int64_t camera=std::clamp(wide_world,wide_limits[0],wide_limits[1]),screen=end-mk2::wide::kMargin+wide_shift;
         return left_end?screen*r.world+r.plane*(camera-wide_limits[0])>mk2::wide::kEndSlack*r.world
                        :screen*r.world-r.plane*(wide_limits[1]-camera)<(400-mk2::wide::kEndSlack)*r.world;
@@ -565,6 +565,24 @@ private:
     template<class A> friend void Fields(A& a,BootVideo& v){
         a(v.palette_ram,v.vram,v.shift_register,v.dma_palette,v.dma_registers,v.backdrop_list,v.world_object_list,
           v.backdrop,v.fighters,v.fighter_objects,v.draw_queue,v.blood_draw,v.blood_stains,v.blood_layer,v.blood_pen,v.blood_floor);
+        v.WideFields(a);
+    }
+    // Widescreen state (W4), kept when the session has the wide layer: a session without it drops a file's, and one with
+    // it starts over from VRAM when the file has none (a state saved without widescreen). The shadow pass never spans a
+    // chunk boundary, so its own per-pass values are not state.
+    template<class A> void WideFields(A& a){
+        const bool enabled=WideEnabled();bool present=enabled;a(present);
+        if(present)a(wide_,wide_blood_,wide_fixed_,wide_page_shift,wide_page_fitted,wide_cleared,wide_held,wide_limits,wide_ratio,
+                     wide_ratio_limits,wide_kept,wide_frame_started,wide_shift,wide_page,wide_world,margin_streamer,margin_streaming,
+                     wide_walk_entries,wide_walk_drawn,wide_shadow_post,wide_real_post,wide_post_key,wide_post_keyed,wide_pending);
+        if constexpr(A::reading){
+            if(enabled==present)return;
+            wide_.clear();wide_blood_.clear();wide_fixed_.clear();wide_walk_entries.clear();wide_pending.clear();
+            wide_page_shift={};wide_page_fitted={};wide_cleared={{true,true}};wide_held={};wide_limits={};wide_ratio={};wide_ratio_limits={};
+            wide_kept=wide_frame_started=wide_walk_drawn=wide_shadow_post=wide_real_post=wide_post_keyed=false;
+            wide_shift=0;wide_page=0;wide_world=0;wide_post_key=0;margin_streamer=margin_streaming=false;
+            if(enabled)EnableWide();
+        }
     }
     static unsigned PaletteOffset(uint32_t address) {
         if (address < 0x01800000 || address > 0x0187fff0 || (address & 15))

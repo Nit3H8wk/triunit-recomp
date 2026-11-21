@@ -21,7 +21,8 @@ BootDiInputs Mk5Window::Inputs(BootDiInputs base)const{
     ++impl->samples;base.in01=impl->input;return base;
 }
 // MK2_TEST_PRESENT_HASHES: one line per presented frame with the FNV-1a of its pixels and backdrop (run-ahead tests) over
-// the 400 columns at its centre (a widescreen frame's arcade columns when its window is centred), and its width.
+// the 400 columns at its centre (a widescreen frame's arcade columns when its window is centred), over all its columns
+// ("all"), and its width.
 void Mk5Window::Present(const std::vector<uint32_t>& pixels,unsigned width,unsigned height,
                         const std::vector<uint32_t>& backdrop,const mk5presentation::FighterFrame&,
                         const std::vector<mk5training::Box>& boxes){
@@ -29,10 +30,12 @@ void Mk5Window::Present(const std::vector<uint32_t>& pixels,unsigned width,unsig
     ++impl->presentations;
     if(!std::getenv("MK2_TEST_PRESENT_HASHES"))return;
     uint64_t hash=0xcbf29ce484222325ull;
-    const unsigned margin=width>400?(width-400)/2:0;
+    const unsigned margin=width>400?(width-400)/2:0;uint64_t all=hash;
     for(const auto* frame:{&pixels,&backdrop})if(frame->size()==size_t(width)*height)
-        for(unsigned y=0;y<height;++y)for(unsigned x=margin;x<width-margin;++x)hash=(hash^(*frame)[size_t(y)*width+x])*0x100000001b3ull;
-    std::printf("{\"present\":\"%016llx\",\"width\":%u,\"boxes\":[",(unsigned long long)hash,width);
+        for(unsigned y=0;y<height;++y)for(unsigned x=0;x<width;++x){
+            const uint32_t v=(*frame)[size_t(y)*width+x];all=(all^v)*0x100000001b3ull;
+            if(x>=margin&&x<width-margin)hash=(hash^v)*0x100000001b3ull;}
+    std::printf("{\"present\":\"%016llx\",\"all\":\"%016llx\",\"width\":%u,\"boxes\":[",(unsigned long long)hash,(unsigned long long)all,width);
     for(size_t i=0;i<boxes.size();++i)std::printf("%s[%d,%d,%d,%d,%d]",i?",":"",boxes[i].x,boxes[i].y,boxes[i].w,boxes[i].h,int(boxes[i].kind));
     std::printf("]}\n");
 }

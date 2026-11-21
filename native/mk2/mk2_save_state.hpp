@@ -10,7 +10,7 @@
 #include "mk5_program.hpp"
 
 namespace mk2 {
-inline constexpr uint32_t kSaveStateVersion=3;   // 3: the floor blood's fade references (mk5_blood_shade.hpp)
+inline constexpr uint32_t kSaveStateVersion=4;   // 3: the floor blood's fade references (mk5_blood_shade.hpp); 4: widescreen
 inline constexpr const char* kSaveStateRevision="mk2 L3.1";
 inline constexpr const char* kSaveStateMagic="TRIUNIT-MK2-STATE";
 
