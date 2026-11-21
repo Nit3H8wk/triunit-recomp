@@ -149,6 +149,7 @@ struct Mk5Window::Impl {
     mutable std::atomic<unsigned> controller_count{0};
     std::mutex stats_mutex;mk5timing::Stats producer_timing,display_timing,prepare_timing;
     bool bezel=true,fullscreen=true,legacy_pacing=false,high_refresh=false,tearing=false,immediate_headroom=false;
+    unsigned across=4,down=3;   // the frame's physical aspect (Mk5Window)
     int sync_mode=1,color_mode=0,brightness=100;
     unsigned scalefx_amount=0,scale_mode=0,cas_amount=0,bilateral_amount=0;
     bool smaa_enabled=false;
@@ -1060,14 +1061,14 @@ struct Mk5Window::Impl {
         barrier(drawn,rest,D3D12_RESOURCE_STATE_RENDER_TARGET);
         const auto rtv=rtv_at(hdr?scene_rtv():index);
         const float black[4]={0,0,0,1};commands->OMSetRenderTargets(1,&rtv,FALSE,nullptr);commands->ClearRenderTargetView(rtv,black,0,nullptr);
-        auto area=crt.phosphor()?mk5crt::phosphor_viewport(target_width,target_height,image_height):mk5crt::viewport(target_width,target_height,image_height,crt.enabled());
+        auto area=crt.phosphor()?mk5crt::phosphor_viewport(target_width,target_height,image_height,across,down):mk5crt::viewport(target_width,target_height,image_height,crt.enabled(),across,down);
         mk5crt::Viewport bounds{0,0,float(target_width),float(target_height)};
         commands->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         commands->SetGraphicsRootSignature(root.Get());
         if(bezel){
             area=bezel_area(tv,image_height,crt);bounds=area;
         }
-        area=mk5video::scaled_viewport(bounds,area,image_width,image_height,scale_mode);
+        area=mk5video::scaled_viewport(bounds,area,image_width,image_height,scale_mode,across,down);
         viewport_width=unsigned(area.width);viewport_height=unsigned(area.height);
         source_aspect=scale_mode>=1&&scale_mode<=4&&area.width>=image_width&&area.width*image_height==area.height*image_width;
         crt_integer_vertical=crt.enabled()&&std::fmod(area.height,float(image_height))==0;
@@ -1130,7 +1131,7 @@ struct Mk5Window::Impl {
                 throw std::runtime_error("D3D12 pixel-aligned presentation requires per-monitor DPI awareness");
             WNDCLASSW c{};c.lpfnWndProc=proc;c.hInstance=GetModuleHandleW(nullptr);c.lpszClassName=L"Mk5TemporalScanout";c.hCursor=LoadCursorW(nullptr,IDC_ARROW);
             if(!RegisterClassW(&c) && GetLastError()!=ERROR_CLASS_ALREADY_EXISTS)throw std::runtime_error("MK5 window registration failed");
-            RECT rect{0,0,800,508};AdjustWindowRect(&rect,WS_OVERLAPPEDWINDOW,FALSE);
+            RECT rect{0,0,LONG(800*across*3/(down*4)),508};AdjustWindowRect(&rect,WS_OVERLAPPEDWINDOW,FALSE);
             hwnd=CreateWindowExW(0,c.lpszClassName,L"TriUnit Recomp | Alt+Enter fullscreen exclusivo | Esc",WS_OVERLAPPEDWINDOW,CW_USEDEFAULT,CW_USEDEFAULT,rect.right-rect.left,rect.bottom-rect.top,nullptr,nullptr,c.hInstance,this);
             if(!hwnd)throw std::runtime_error("MK5 window creation failed");
             if(fullscreen){MONITORINFO monitor{};monitor.cbSize=sizeof(monitor);GetMonitorInfoW(MonitorFromWindow(hwnd.load(),MONITOR_DEFAULTTONEAREST),&monitor);const auto& r=monitor.rcMonitor;SetWindowLongPtrW(hwnd.load(),GWL_STYLE,WS_POPUP|WS_VISIBLE);SetWindowPos(hwnd.load(),HWND_TOP,r.left,r.top,r.right-r.left,r.bottom-r.top,SWP_FRAMECHANGED);}
@@ -1183,9 +1184,10 @@ struct Mk5Window::Impl {
     }
     void check_failure(){std::lock_guard<std::mutex> lock(state_mutex);if(!failure.empty())throw std::runtime_error(failure);}
 };
-Mk5Window::Mk5Window(bool immediate_headroom):impl(std::make_unique<Impl>()){
-    impl->immediate_headroom=immediate_headroom;
+Mk5Window::Mk5Window(bool immediate_headroom,unsigned across,unsigned down):impl(std::make_unique<Impl>()){
+    impl->immediate_headroom=immediate_headroom;impl->across=across;impl->down=down;
     impl->settings();
+    if(across*3!=down*4)impl->bezel=false;   // the TV frame's glass is 4:3
     LARGE_INTEGER frequency{};if(!QueryPerformanceFrequency(&frequency)||frequency.QuadPart<=0)throw std::runtime_error("MK5 presentation clock failed");
     impl->frequency=frequency.QuadPart;impl->interval=(impl->frequency*146234+4000000)/8000000;
     impl->pace_timer=make_pace_timer();
@@ -1300,5 +1302,5 @@ std::string Mk5Window::presentation_json()const{
       <<",\"hdr\":\""<<std::array<const char*,4>{"off","hdr10","windows-sdr","unsupported"}[size_t(impl->hdr_state.load())]<<"\""
       <<",\"hdr_paper_nits\":"<<impl->hdr_settings.paper<<",\"hdr_peak_nits\":"<<impl->hdr_settings.peak<<",\"hdr_highlights\":"<<impl->hdr_settings.highlights
       <<",\"hdr_validation_frames\":"<<impl->hdr_validation_frames<<",\"hdr_validation_mismatches\":"<<impl->hdr_validation_mismatches
-      <<",\"move_size_enter\":"<<impl->move_enter<<",\"move_size_exit\":"<<impl->move_exit<<",\"physical_aspect\":\""<<(impl->source_aspect?"source":"4:3")<<"\"}";return s.str();
+      <<",\"move_size_enter\":"<<impl->move_enter<<",\"move_size_exit\":"<<impl->move_exit<<",\"physical_aspect\":\""<<(impl->source_aspect?"source":impl->across*3==impl->down*4?"4:3":"wide")<<"\"}";return s.str();
 }

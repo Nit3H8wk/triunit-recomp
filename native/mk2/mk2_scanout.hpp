@@ -26,6 +26,33 @@ class Scanout {
     // Widescreen: every VRAM column of each line, the visible ones at the centre, from the shadow pass's wide layer when it
     // runs (BootVideo::EnableWide). Raw colours of the original scanout, a debug view; not in save states (shortcut: the first frame after a load mixes both, until W4 carries it).
     bool wide_on_=false;std::vector<uint32_t> wide_work_,wide_;uint64_t wide_added_work_=0,wide_added_=0,wide_centre_work_=0,wide_centre_=0;int wide_shift_work_=0,wide_shift_=0;unsigned wide_fitted_work_=0,wide_fitted_=0;
+    // Widescreen presentation (Remastered, W3): each wide pixel's arcade column, where its pen is the arcade's own at that
+    // column (the world's x = L-56+d, else the HUD's x = L-56), so the Remastered layers of that column apply; kRaw where
+    // only the shadow pass has it (margins, fitted planes): its raw colour, as scenery; kBlank on a blanked line.
+    static constexpr int16_t kRaw=-1,kBlank=-2;
+    bool wide_present_=false;std::vector<int16_t> wide_source_work_,wide_source_;
+    std::vector<uint32_t> wide_presentation_,wide_backdrop_;mk5presentation::FighterFrame wide_fighters_;
+    void ComposeWide(){
+        const size_t n=size_t(kWideWidth)*height_;const int move=int(kWideWidth-width_)/2-wide_shift_;
+        const bool backdrop=!backdrop_.empty(),fighters=fighters_.serial!=0,fighter_backdrop=fighters&&!fighters_.backdrop.empty();
+        wide_presentation_.resize(n);wide_backdrop_.assign(backdrop?n:0,0);
+        auto& f=wide_fighters_;f.serial=fighters_.serial;f.layers.clear();
+        f.underlay.assign(fighters?n:0,0);f.backdrop.assign(fighter_backdrop?n:0,0);f.opaque_order.assign(fighters?n:0,0);f.covered.assign(fighters?n:0,0);
+        for(size_t i=0;i<n;++i){
+            const int source=wide_source_[i];const uint32_t raw=wide_[i];
+            if(source>=0){
+                const size_t a=i/kWideWidth*width_+size_t(source);
+                wide_presentation_[i]=presentation_[a];if(backdrop)wide_backdrop_[i]=backdrop_[a];
+                if(fighters){f.underlay[i]=fighters_.underlay[a];f.opaque_order[i]=fighters_.opaque_order[a];f.covered[i]=fighters_.covered[a];
+                    if(fighter_backdrop)f.backdrop[i]=fighters_.backdrop[a];}
+                continue;
+            }
+            const uint32_t scenery=source==kRaw?(raw&0xffffff)|mk5stage::scenery:0;
+            wide_presentation_[i]=raw;if(backdrop)wide_backdrop_[i]=scenery;
+            if(fighters){f.underlay[i]=raw&0xffffff;f.opaque_order[i]=UINT64_MAX;if(fighter_backdrop)f.backdrop[i]=scenery;}
+        }
+        if(fighters)for(auto layer:fighters_.layers){layer.x+=move;f.layers.push_back(std::move(layer));}   // the fighters are world
+    }
     // Save-state value fields; remastered_ is the edition, checked by the file header.
     template<class A> friend void Fields(A& a,Scanout& s){
         auto enabled=s.display_enabled_.to_string();
@@ -52,6 +79,12 @@ public:
     unsigned wide_fitted() const { return wide_fitted_; }   // its planes fitted to the window (BootVideo::WidePlane); with none, the centre is exact at offset 0
     uint64_t wide_centre() const { return wide_centre_; }   // its visible pixels that differ from VRAM (0 when exact)
     uint64_t wide_added() const { return wide_added_; }   // its margin pixels the shadow drew beyond the arcade's own spill
+    // Widescreen presentation (Remastered): the frame, backdrop and fighter layers over kWideWidth columns.
+    void EnableWidePresentation(){wide_on_=true;wide_present_=remastered_;}
+    bool wide_presentation_enabled() const { return wide_present_; }
+    const std::vector<uint32_t>& wide_presentation() const { return wide_presentation_; }
+    const std::vector<uint32_t>& wide_backdrop_pixels() const { return wide_backdrop_; }
+    const mk5presentation::FighterFrame& wide_fighter_frame() const { return wide_fighters_; }
     // Sample live memory before DPYADR advances; never rebuild past rows from final VRAM.
     void Line(const BoardBootControls& board, const BootVideo& video) {
         const auto& io=board.io;
@@ -66,6 +99,7 @@ public:
             width_=width;height_=height;work_.resize(size_t(width)*height);
             if(remastered_)blood_work_.resize(work_.size());
             if(wide_on_)wide_work_.resize(size_t(kWideWidth)*height);
+            if(wide_present_)wide_source_work_.resize(size_t(kWideWidth)*height);
         }
         if (board.vcount==io[6]) {
             if (collecting_ && rows_==height_) {
@@ -91,6 +125,7 @@ public:
                         if(!fighters_.backdrop.empty())fighters_.backdrop[pixel]&=~mk5stage::scenery;
                     }
                 }
+                if(wide_present_){wide_source_=wide_source_work_;ComposeWide();}
             }
             collecting_=false;return;
         }
@@ -140,6 +175,13 @@ public:
                 const bool side=x<margin||x>=margin+width_;
                 wide_added_work_+=side&&pen!=video.vram[index];wide_centre_work_+=!side&&pen!=video.vram[index];
                 wide_work_[size_t(rows_)*kWideWidth+x]=enabled?ExpandRgb555(video.palette_ram[pen&0x7fff]):0xff000000;
+                if(wide_present_){
+                    const int world=int(x)-int(margin)+wide_shift_work_,hud=int(x)-int(margin);
+                    int16_t source=enabled?kRaw:kBlank;
+                    if(enabled&&world>=0&&world<int(width_)&&pen==video.vram[row+((column+unsigned(world))&511)])source=int16_t(world);
+                    else if(enabled&&hud>=0&&hud<int(width_)&&pen==video.vram[index])source=int16_t(hud);
+                    wide_source_work_[size_t(rows_)*kWideWidth+x]=source;
+                }
             }
         }
         if(remastered_ && video.FightersEnabled()){

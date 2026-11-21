@@ -60,15 +60,16 @@ struct Settings {
 // Whole source remains visible even below 1x. At small sizes, beam modulation is
 // analytically faded to avoid subpixel vertical aliasing; no source row is cropped.
 struct Viewport{float x,y,width,height;};
-inline Viewport viewport(unsigned width,unsigned height,unsigned source_height,bool crt){
- float h=std::min(float(height),float(width)*.75f);
+// The source's physical aspect is across/down (4:3 by default; a widescreen MK2 frame is 4:3 x 512/400 = 128:75).
+inline Viewport viewport(unsigned width,unsigned height,unsigned source_height,bool crt,unsigned across=4,unsigned down=3){
+ float h=std::min(float(height),across==4&&down==3?float(width)*.75f:float(width)*down/across);
  if(crt&&source_height&&h>=source_height)h=std::floor(h/source_height)*source_height;
- const float w=h*4/3;return {(width-w)/2,(height-h)/2,w,h};
+ const float w=h*across/down;return {(width-w)/2,(height-h)/2,w,h};
 }
-inline Viewport phosphor_viewport(unsigned width,unsigned height,unsigned source_height){
- unsigned h=std::min(height,std::max(1u,width*3/4));
+inline Viewport phosphor_viewport(unsigned width,unsigned height,unsigned source_height,unsigned across=4,unsigned down=3){
+ unsigned h=std::min(height,std::max(1u,width*down/across));
  if(source_height&&h>=source_height)h=h/source_height*source_height;
- const unsigned w=std::min(width,(h*4+1)/3);
+ const unsigned w=std::min(width,(h*across+down/2)/down);
  return {float((width-w)/2),float((height-h)/2),float(w),float(h)};
 }
 inline float srgb_decode(float x){return x<.04045f?x/12.92f:std::pow((x+.055f)/1.055f,2.4f);}

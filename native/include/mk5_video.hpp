@@ -7,9 +7,10 @@ namespace mk5video {
 enum class Sampling { nearest, linear, sharp_bilinear, bicubic };
 inline constexpr std::array<std::string_view,4> sampling_names{"nearest","linear","sharp-bilinear","bicubic"};
 
-inline mk5crt::Viewport scaled_viewport(mk5crt::Viewport bounds,mk5crt::Viewport fit,unsigned width,unsigned height,unsigned mode){
+inline mk5crt::Viewport scaled_viewport(mk5crt::Viewport bounds,mk5crt::Viewport fit,unsigned width,unsigned height,unsigned mode,
+                                       unsigned across=4,unsigned down=3){
     if(!mode || !width || !height)return fit;
-    const float pixel_width=mode==5?height*4.f/3:float(width);
+    const float pixel_width=mode==5?height*float(across)/down:float(width);
     unsigned factor=unsigned(std::min(bounds.width/pixel_width,bounds.height/height));
     if(!factor)return fit;
     if(mode>=2 && mode<=4)factor=std::min(mode,factor);

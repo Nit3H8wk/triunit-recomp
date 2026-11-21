@@ -456,6 +456,7 @@ def fast(cc, sanitizer, scratch, graphics=False):
             ("hdr-window", ["native/tests/mk5_scalefx_window_tests.cpp", "native/src/mk5_window.cpp"], ["-DUNICODE", "-D_UNICODE", "-ld3d12", "-ldxgi", "-ld3dcompiler", "-ldxguid", "-lgdi32", "-lwindowscodecs", "-lole32", "-luuid"], ["hdr"]),
             ("frame-window", ["native/tests/mk5_scalefx_window_tests.cpp", "native/src/mk5_window.cpp"], ["-DUNICODE", "-D_UNICODE", "-ld3d12", "-ldxgi", "-ld3dcompiler", "-ldxguid", "-lgdi32", "-lwindowscodecs", "-lole32", "-luuid"], ["frame"]),
             ("training-window", ["native/tests/mk5_scalefx_window_tests.cpp", "native/src/mk5_window.cpp"], ["-DUNICODE", "-D_UNICODE", "-ld3d12", "-ldxgi", "-ld3dcompiler", "-ldxguid", "-lgdi32", "-lwindowscodecs", "-lole32", "-luuid"], ["training"]),
+            ("wide-window", ["native/tests/mk5_scalefx_window_tests.cpp", "native/src/mk5_window.cpp"], ["-DUNICODE", "-D_UNICODE", "-ld3d12", "-ldxgi", "-ld3dcompiler", "-ldxguid", "-lgdi32", "-lwindowscodecs", "-lole32", "-luuid"], ["wide"]),
             ("scalefx", ["native/tests/mk5_scalefx_tests.cpp"], ["-ld3d12", "-ldxgi", "-ld3dcompiler", "-ldxguid"], []),
             ("smaa", ["native/tests/mk5_smaa_tests.cpp"], ["-ld3d12", "-ldxgi", "-ld3dcompiler", "-ldxguid"], []),
             ("presentation", [f"{CURRENT}/presentation_contract.cpp", "native/src/mk5_window.cpp"],

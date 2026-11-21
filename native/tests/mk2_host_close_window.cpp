@@ -8,7 +8,7 @@ struct Mk5Window::Impl {
     unsigned close_after=unsigned(std::stoul(std::getenv("MK2_TEST_CLOSE_AFTER_SAMPLES")?std::getenv("MK2_TEST_CLOSE_AFTER_SAMPLES"):"1"));
     uint32_t input=uint32_t(std::stoul(std::getenv("MK2_TEST_INPUT")?std::getenv("MK2_TEST_INPUT"):"ffffffef",nullptr,16));
 };
-Mk5Window::Mk5Window(bool):impl(std::make_unique<Impl>()){}
+Mk5Window::Mk5Window(bool,unsigned,unsigned):impl(std::make_unique<Impl>()){}
 Mk5Window::~Mk5Window()=default;
 bool Mk5Window::Pump(){
     if(impl->closed && std::getenv("MK2_TEST_FAILURE_AFTER_FALSE"))throw std::runtime_error("published fake GPU driver failure");
@@ -20,16 +20,19 @@ BootDiInputs Mk5Window::Inputs(BootDiInputs base)const{
     if(impl->closed)throw std::runtime_error("input queried after window close");
     ++impl->samples;base.in01=impl->input;return base;
 }
-// MK2_TEST_PRESENT_HASHES: one line per presented frame with the FNV-1a of its pixels and backdrop (run-ahead tests).
-void Mk5Window::Present(const std::vector<uint32_t>& pixels,unsigned,unsigned,
+// MK2_TEST_PRESENT_HASHES: one line per presented frame with the FNV-1a of its pixels and backdrop (run-ahead tests) over
+// the 400 columns at its centre (a widescreen frame's arcade columns when its window is centred), and its width.
+void Mk5Window::Present(const std::vector<uint32_t>& pixels,unsigned width,unsigned height,
                         const std::vector<uint32_t>& backdrop,const mk5presentation::FighterFrame&,
                         const std::vector<mk5training::Box>& boxes){
     if(impl->closed)throw std::runtime_error("presentation submitted after window close");
     ++impl->presentations;
     if(!std::getenv("MK2_TEST_PRESENT_HASHES"))return;
     uint64_t hash=0xcbf29ce484222325ull;
-    for(const auto* frame:{&pixels,&backdrop})for(const uint32_t v:*frame)hash=(hash^v)*0x100000001b3ull;
-    std::printf("{\"present\":\"%016llx\",\"boxes\":[",(unsigned long long)hash);
+    const unsigned margin=width>400?(width-400)/2:0;
+    for(const auto* frame:{&pixels,&backdrop})if(frame->size()==size_t(width)*height)
+        for(unsigned y=0;y<height;++y)for(unsigned x=margin;x<width-margin;++x)hash=(hash^(*frame)[size_t(y)*width+x])*0x100000001b3ull;
+    std::printf("{\"present\":\"%016llx\",\"width\":%u,\"boxes\":[",(unsigned long long)hash,width);
     for(size_t i=0;i<boxes.size();++i)std::printf("%s[%d,%d,%d,%d,%d]",i?",":"",boxes[i].x,boxes[i].y,boxes[i].w,boxes[i].h,int(boxes[i].kind));
     std::printf("]}\n");
 }

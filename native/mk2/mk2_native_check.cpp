@@ -95,8 +95,11 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
     const char* music_mode=std::getenv("MK1_MUSIC_MODE");
     const bool remastered=music_mode && std::string(music_mode)=="remastered";
     if(music_mode && !remastered && std::string(music_mode)!="original")throw std::runtime_error("invalid MK2 music mode");
+    // Widescreen (MK2_WIDESCREEN=1, Remastered window only): the shadow pass's 512 columns are shown, 4:3 x 512/400.
+    const char* widescreen_flag=std::getenv("MK2_WIDESCREEN");
+    const bool widescreen=remastered&&show_window&&!test_switch&&widescreen_flag&&std::string(widescreen_flag)=="1";
     std::unique_ptr<Mk5Window> window;
-    if (show_window) window=std::make_unique<Mk5Window>(cmos_live&&!remastered);
+    if (show_window) window=widescreen?std::make_unique<Mk5Window>(cmos_live&&!remastered,128,75):std::make_unique<Mk5Window>(cmos_live&&!remastered);
     mk5hitbox::enabled=window&&window->Training();   // training mode (F8): boxes the strike check tests
     bool stop_requested=false,valid_host_admitted=false,live_boundary_validated=false;
     // Run-ahead (F6): the real frames are held; the frame after each one, run from a snapshot, is shown, then undone.
@@ -134,8 +137,9 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
     // Widescreen W0/W1 debug view (MK2_WIDE=1): per frame, FNV-1a of the 512 columns (the shadow pass's wide layer), of
     // their visible centre and of the scanout's own frame, and the shadow passes left incomplete so far;
     // MK2_WIDE_DUMP=<frame,...> adds those frames' 512 columns as hex RGB.
-    const bool wide=std::getenv("MK2_WIDE")!=nullptr;std::set<uint64_t> wide_dump;
-    if(wide){
+    const bool wide_debug=std::getenv("MK2_WIDE")!=nullptr,wide=wide_debug||widescreen;std::set<uint64_t> wide_dump;
+    if(widescreen)scanout.EnableWidePresentation();
+    if(wide_debug){
         scanout.EnableWide();
         if(const char* list=std::getenv("MK2_WIDE_DUMP"))for(const char* c=list;*c;){char* end=nullptr;wide_dump.insert(std::strtoull(c,&end,10));c=*end?end+1:end;}
     }
@@ -183,7 +187,7 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
     machine->SetScanlineObserver([&](const auto& edge,const auto& live_video) {
         const auto before=scanout.frames();scanout.Line(edge,live_video);
         if (scanout.frames()==before) return;
-        if(wide){
+        if(wide_debug){
             const auto& w=scanout.wide_pixels();const unsigned n=mk2::Scanout::kWideWidth,width=scanout.width(),margin=(n-width)/2;
             uint64_t all=0xcbf29ce484222325ull,centre=all,plain=all;
             for(size_t i=0;i<w.size();++i){all=(all^w[i])*0x100000001b3ull;if(i%n>=margin&&i%n<margin+width)centre=(centre^w[i])*0x100000001b3ull;}
@@ -211,7 +215,13 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
             if(cmos_host||cmos_live||test_switch) {
                 if(!pump_host(94875+uint64_t(edge.scanline_events-1)*6325))return;
             } else if (!window->Pump()) throw std::runtime_error("native diagnostic window closed");
-            if(!hold_frames || speculating)window->Present(scanout.presentation(),scanout.width(),scanout.height(),
+            if(widescreen && (!hold_frames || speculating)){
+                auto boxes=mk5hitbox::Take();   // the world's boxes move with the window
+                const int move=int(mk2::Scanout::kWideWidth-scanout.width())/2-scanout.wide_shift();
+                for(auto& box:boxes)box.x+=move;
+                window->Present(scanout.wide_presentation(),mk2::Scanout::kWideWidth,scanout.height(),
+                                scanout.wide_backdrop_pixels(),scanout.wide_fighter_frame(),boxes);
+            }else if(!hold_frames || speculating)window->Present(scanout.presentation(),scanout.width(),scanout.height(),
                                                            scanout.backdrop_pixels(),scanout.fighter_frame(),mk5hitbox::Take());
         }
     });
@@ -264,7 +274,8 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
             };
             mk2::state::Snapshot ahead;
             while(!stop_requested) {
-                hold_frames=window->RunAhead();   // the window stops it when the frame does not fit
+                // The window stops it when the frame does not fit; widescreen has no run-ahead until its state is snapshotted (W4).
+                hold_frames=window->RunAhead()&&!widescreen;
                 if(!hold_frames) {
                     const auto target=continuation.State().ready.cycles+mk2::live_detail::kRequestCycles;
                     continuation=mk2::ResumeValidLiveHost(program,std::move(continuation),*machine,target);

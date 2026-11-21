@@ -187,8 +187,8 @@ class WideCaptureTests(unittest.TestCase):
                 '-Wno-unused-parameter','-Wno-missing-field-initializers','-I'+str(q.ROOT/'native/include'),*sources,
                 '-lbcrypt','-luser32','-lgdi32','-lwinmm','-o',exe],scratch,env=env,timeout=300)
             self.assertTrue(build['passed'],q.compact(build))
-            def session(wide):
-                flags=dict(MK2_TEST_PRESENT_HASHES='1')
+            def session(wide,**extra):
+                flags=dict(MK2_TEST_PRESENT_HASHES='1',**extra)
                 if wide:flags['MK2_WIDE']='1'
                 result=q.command([exe,q.ROOT/'roms/mk2','--window','--through','first-fight'],scratch,cwd=scratch,timeout=600,
                                  output_limit=8<<20,env=dict(env,**flags))
@@ -207,6 +207,17 @@ class WideCaptureTests(unittest.TestCase):
             print('seconds without/with',round(off_s,2),round(on_s,2),'frames',len(wide),'shifted',sum(w['shift']!=0 for w in wide),'fitted',sum(w['fitted']>0 for w in wide),
                   'shifts',sorted({w['shift'] for w in wide}),
                   'margin pixels added (quartiles)',sorted(w['added'] for w in wide)[::len(wide)//4])
+            # Widescreen presentation (Remastered, MK2_WIDESCREEN=1): 512-column frames whose centre is the Remastered frame
+            # (pixels and backdrop) wherever the window is centred and no far plane was fitted.
+            (plain,_),(widescreen,_)=session(False,MK1_MUSIC_MODE='remastered'),session(True,MK1_MUSIC_MODE='remastered',MK2_WIDESCREEN='1')
+            frames=lambda out:[json.loads(l) for l in out.splitlines() if l.startswith('{"present"')]
+            plain,shown,layer=frames(plain),frames(widescreen),lines(widescreen,'wide')
+            self.assertEqual((len(shown),len(layer)),(len(plain),len(plain)))
+            self.assertEqual({(f['width']) for f in shown},{512});self.assertEqual({f['width'] for f in plain},{400})
+            exact=[n for n,w in enumerate(layer) if w['shift']==0 and w['fitted']==0]
+            self.assertGreater(len(exact),600,len(exact))
+            self.assertEqual([shown[n]['present'] for n in exact],[plain[n]['present'] for n in exact],'the widescreen centre differs')
+            self.assertEqual([f['boxes'] for f in shown],[f['boxes'] for f in plain])   # no boxes without training mode
         self.assertFalse(cleanup['exists_after'])
 
 

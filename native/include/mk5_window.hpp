@@ -13,7 +13,8 @@ BootDiInputs Mk5KeyboardInputs(const std::array<bool,256>& keys,BootDiInputs bas
 class Mk5Window {
     struct Impl;std::unique_ptr<Impl> impl;
 public:
-    explicit Mk5Window(bool immediate_headroom=false);~Mk5Window();
+    // across/down: the presented frame's physical aspect (4:3; a widescreen frame is wider and shows no TV frame).
+    explicit Mk5Window(bool immediate_headroom=false,unsigned across=4,unsigned down=3);~Mk5Window();
     Mk5Window(const Mk5Window&)=delete;
     Mk5Window& operator=(const Mk5Window&)=delete;
     bool Pump();
