@@ -69,7 +69,7 @@ constexpr VideoNumber videoNumbers[]={
 };
 constexpr VideoToggle videoToggles[]={
  {"scalefx",&VideoConfig::scalefx},{"bezel",&VideoConfig::bezel},{"highrefresh",&VideoConfig::highRefresh},
- {"smaa",&VideoConfig::smaa},{"fullscreen",&VideoConfig::fullscreen}
+ {"smaa",&VideoConfig::smaa},{"fullscreen",&VideoConfig::fullscreen},{"widescreen",&VideoConfig::widescreen}
 };
 constexpr VideoConfig videoDefaults;
 constexpr const wchar_t* filters[]={L"nearest",L"linear",L"sharp-bilinear",L"bicubic"};
@@ -99,6 +99,7 @@ void validate(mklauncher::Config& c,int game=0){
  if(c.gameVolume<0||c.gameVolume>100)c.gameVolume=100;
  if(!validFps(c.fps))c.fps=60;
  c.videos[0].hdrHighlights=0; // the Original edition keeps the SDR image at paper white
+ c.videos[0].widescreen=false; // and the arcade's 4:3
  if(c.audioLatency<1||c.audioLatency>2)c.audioLatency=1;
  c.uiVolume=0; // Legacy key; coin feedback follows the Windows output volume.
  // MK2 v1 (authenticated core) has neither the remastered music nor the native presenter options; MK3 has the native
@@ -237,11 +238,11 @@ fs::path customBezel(const fs::path& root,size_t game){
  return fs::is_regular_file(image,error)?image:fs::path{};
 }
 std::vector<wchar_t> nativeEnvironment(const mklauncher::Config& c,const VideoConfig& v,const fs::path& music,bool modernVideo,bool validateGraphics,
-                                      const fs::path& bezelImage,const mk5controls::Config& controls){
+                                      const fs::path& bezelImage,const mk5controls::Config& controls,bool widescreen=false){
  std::map<std::wstring,std::wstring,EnvironmentLess> values;auto* original=GetEnvironmentStringsW();if(!original)throw std::runtime_error("native process environment");
  for(const auto* cursor=original;*cursor;cursor+=wcslen(cursor)+1){
   const std::wstring row=cursor;const auto eq=row.find(L'=',row[0]==L'='?1:0);
-  if(eq!=std::wstring::npos&&_wcsnicmp(row.c_str(),L"MK1_",4)!=0)values[row.substr(0,eq)]=row.substr(eq+1);
+  if(eq!=std::wstring::npos&&_wcsnicmp(row.c_str(),L"MK1_",4)!=0&&_wcsnicmp(row.c_str(),L"MK2_WIDESCREEN=",15)!=0)values[row.substr(0,eq)]=row.substr(eq+1);
  }FreeEnvironmentStringsW(original);
  const auto& preset=mk5video::presets[size_t(v.scanlines)];
  values[L"MK1_SCANLINES"]=preset.scanlines;values[L"MK1_CRT_PRESET"]=preset.crt;
@@ -261,6 +262,7 @@ std::vector<wchar_t> nativeEnvironment(const mklauncher::Config& c,const VideoCo
  {const auto text=mk5controls::format(controls);values[L"MK1_CONTROLS"]=std::wstring(text.begin(),text.end());}
  values[L"MK1_AUDIO_LATENCY"]=c.audioLatency==2?L"safe":L"balanced";values[L"MK1_MUSIC_MODE"]=c.remastered?L"remastered":L"original";values[L"MK1_GRAPHICS_VALIDATE"]=validateGraphics?L"1":L"0";
  if(c.remastered)values[L"MK1_MUSIC_DIRECTORY"]=music.wstring();
+ if(widescreen)values[L"MK2_WIDESCREEN"]=L"1";
  std::vector<wchar_t> block;for(const auto& value:values){const auto row=value.first+L"="+value.second;block.insert(block.end(),row.begin(),row.end());block.push_back(0);}block.push_back(0);return block;
 }
 std::wstring nativeError(const char* error){
@@ -817,7 +819,8 @@ bool Backend::launchNative(const fs::path& manifest,const fs::path& settings,boo
   if(!spec.modernVideo&&needsModernVideo(selected.video()))throw std::runtime_error("Atualize o pacote nativo do MK2 para usar os novos filtros e modos de escala.");
   const auto music=customAudio(root_,L"mk2");
   if(selected.remastered&&!spec.playable)throw std::runtime_error("native experiment supports original audio only");
-  auto environment=nativeEnvironment(selected,selected.video(),music,spec.modernVideo,diagnostics||!spec.liveWithoutPixelCheck,customBezel(root_,1),loadControls());auto expectedPath=spec.executable;expectedPath.make_preferred();
+  auto environment=nativeEnvironment(selected,selected.video(),music,spec.modernVideo,diagnostics||!spec.liveWithoutPixelCheck,customBezel(root_,1),loadControls(),
+                                     selected.remastered&&selected.video().widescreen);auto expectedPath=spec.executable;expectedPath.make_preferred();
   std::wstring started=std::wstring(compatibleGames[1].name)+L" nativo iniciado.";
   mk2::PrepareCmosProfile(spec.profile,spec.seed);
   const auto log=spec.root/L"logs/native-experiment-latest.log";unlinked(log);fs::create_directories(log.parent_path());unlinked(log);

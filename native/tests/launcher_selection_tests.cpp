@@ -18,7 +18,7 @@ void verifyFrameCadence(){
 auto videoValues(const VideoConfig& v){
  return std::tie(v.scanlines,v.filter,v.sync,v.color,v.brightness,v.scalefxAmount,v.scaleMode,
                  v.cas,v.bilateral,v.scalefx,v.bezel,v.highRefresh,v.smaa,v.fullscreen,
-                 v.hdr,v.hdrPaper,v.hdrPeak,v.hdrHighlights);
+                 v.hdr,v.hdrPaper,v.hdrPeak,v.hdrHighlights,v.widescreen);
 }
 template<class T>
 void cycleVideo(App& app,int id,T VideoConfig::*field,std::initializer_list<T> values){
@@ -47,7 +47,15 @@ void videoMatrix(App& app,int game){
   app.key('3');
   cycleVideo(app,250,&VideoConfig::sync,{1,2,0});
   cycleVideo(app,251,&VideoConfig::highRefresh,{false,true});
-  cycleVideo(app,209,&VideoConfig::bezel,{true,false});
+  if(app.widescreenAvailable()){   // native MK2, Remastered profile: SCREEN cycles TV FRAME, 4:3, WIDESCREEN
+   const auto actions=app.actions();app.focus=int(std::find(actions.begin(),actions.end(),209)-actions.begin());
+   for(auto [bezel,wide]:{std::pair{true,false},{false,false},{false,true}}){
+    verify(app.video().bezel==bezel&&app.video().widescreen==wide,"SCREEN must cycle TV FRAME, 4:3 and WIDESCREEN");app.key(VK_RETURN);}
+   verify(app.video().bezel&&!app.video().widescreen,"SCREEN must wrap to the TV frame");
+  }else{
+   cycleVideo(app,209,&VideoConfig::bezel,{true,false});
+   verify(!app.video().widescreen,"widescreen stays off outside the native MK2 Remastered profile");
+  }
   cycleVideo(app,videoFullscreen,&VideoConfig::fullscreen,{true,false});
   app.act(displayPage);
   cycleVideo(app,hdrMode,&VideoConfig::hdr,{1,0});

@@ -32,7 +32,7 @@ int child(int argc,wchar_t** argv){
   {L"MK1_HIGH_REFRESH",L"1"},{L"MK1_FULLSCREEN",L"0"},{L"MK1_AUDIO_LATENCY",L"safe"},
   {L"MK1_MUSIC_MODE",L"original"},{L"MK1_GRAPHICS_VALIDATE",publicNative?L"0":L"1"},{L"PATH",L"Z:/no-python-or-compiler"}})
   require(env(pair.first)==pair.second,"native presentation environment");
- require(env(L"MK1_CRT_GAIN").empty()&&env(L"MK1_DIAGNOSTIC_LEGACY_PACING").empty(),"ambient override survived");
+ require(env(L"MK1_CRT_GAIN").empty()&&env(L"MK1_DIAGNOSTIC_LEGACY_PACING").empty()&&env(L"MK2_WIDESCREEN").empty(),"ambient override survived");
  WNDCLASSW cls{};cls.lpfnWndProc=proc;cls.hInstance=GetModuleHandleW(nullptr);cls.lpszClassName=L"Mk5TemporalScanout";
  require(RegisterClassW(&cls)!=0,"fake hidden class");
  const auto window=CreateWindowW(cls.lpszClassName,L"Hidden native adapter fixture",WS_POPUP,0,0,1,1,nullptr,nullptr,cls.hInstance,nullptr);
@@ -86,7 +86,7 @@ int wmain(int argc,wchar_t** argv){try {
  manifestWrite();auto remastered=std::string(originalSettings.begin(),originalSettings.end());remastered.replace(remastered.find("Remastered=0"),12,"Remastered=1");
  write(settings,remastered);require(!backend.launchNativeExperiment(manifest,settings)&&!fs::exists(profile),"unsupported native soundtrack accepted");
  require(!backend.config.remastered&&backend.config.fullscreen,"failed native Settings leaked into collection");write(settings,std::string(originalSettings.begin(),originalSettings.end()));
- manifestWrite();Environment path(L"PATH",L"Z:/no-python-or-compiler"),gain(L"MK1_CRT_GAIN",L"4"),pacing(L"MK1_DIAGNOSTIC_LEGACY_PACING",L"1");
+ manifestWrite();Environment path(L"PATH",L"Z:/no-python-or-compiler"),gain(L"MK1_CRT_GAIN",L"4"),pacing(L"MK1_DIAGNOSTIC_LEGACY_PACING",L"1"),wide(L"MK2_WIDESCREEN",L"1");
  require(backend.launchNativeExperiment(manifest,settings),"native prebuilt start");require(backend.config.fullscreen&&backend.config.video().scanlines==0,"native Settings leaked into collection state");fs::remove(manifest);stop(backend,profile);
  require(backend.exitCode()==0,"native completion propagation");require(mk2::LoadCmosProfile(profile).image==bytes(seed),"unchanged fake profile bytes");
  require(bytes(settings)==originalSettings,"Settings file was modified");

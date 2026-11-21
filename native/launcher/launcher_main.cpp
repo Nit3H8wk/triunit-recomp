@@ -217,6 +217,8 @@ struct App {
     VideoConfig& video(){return draft.video(videoRemastered);}
     const VideoConfig& video()const{return draft.video(videoRemastered);}
     bool scaleFxActive()const{return nativeVideo()&&video().scalefx;}
+    // Widescreen: the native MK2's Remastered profile (DISPLAY > SCREEN: TV FRAME, 4:3, WIDESCREEN).
+    bool widescreenAvailable()const{return selected==1&&backend.nativeMk2Installed()&&videoRemastered;}
     bool gameVolumeEnabled()const{return nativeVideo();}
     int menuMusicLevel()const{
         const auto& preferences=settings&&category==launcherTab?draftLauncher:launcher;
@@ -510,7 +512,8 @@ struct App {
         if(id==205)draft.audioLatency=draft.audioLatency==1?2:1;
         if(id==207)video().color=(video().color+1)%3;
         if(id==208)video().brightness=video().brightness==120?80:video().brightness+10;
-        if(id==209)video().bezel=!video().bezel;
+        if(id==209&&widescreenAvailable()){auto& v=video();if(v.widescreen){v.widescreen=false;v.bezel=true;}else if(v.bezel)v.bezel=false;else v.widescreen=true;}
+        else if(id==209)video().bezel=!video().bezel;
         if(id==255&&nativeVideo())video().scalefx=!video().scalefx;
         if(id==videoCas&&nativeVideo())video().cas=video().cas>=100?0:std::min(video().cas+25,100);
         if(id==videoSmaa&&nativeVideo())video().smaa=!video().smaa;
@@ -1114,7 +1117,9 @@ struct App {
             }else{
                 row(250,470,L"GAME SYNC",L"VRR needs G-Sync / FreeSync on in the monitor and the driver.",std::array<std::wstring,3>{L"V-SYNC",L"VRR / ADAPTIVE",L"IMMEDIATE"}[size_t(v.sync)]);
                 row(251,530,L"HIGH REFRESH",L"Shows the original frames again at the desktop refresh rate.",nativeVideo()?(v.highRefresh?L"ON":L"OFF"):L"UNAVAILABLE",nativeVideo());
-                row(209,590,L"TV FRAME",L"CRT television around the game. Your own: custom_bezel/<game>/bezel.png.",v.bezel?L"ON":L"OFF");
+                if(widescreenAvailable())row(209,590,L"SCREEN",L"Widescreen shows the arena beyond the arcade's 4:3, without the TV frame.",
+                                             v.widescreen?L"WIDESCREEN":v.bezel?L"TV FRAME":L"4:3");
+                else row(209,590,L"TV FRAME",L"CRT television around the game. Your own: custom_bezel/<game>/bezel.png.",v.bezel?L"ON":L"OFF");
                 row(videoFullscreen,650,L"GAME FULLSCREEN",L"Window mode when this version starts.",v.fullscreen?L"ON":L"WINDOW",nativeVideo());
                 row(hdrMode,710,L"HDR",L"HDR10 when Windows HDR is on; brightness on DISPLAY CONTROLS > HDR.",v.hdr?L"AUTO":L"OFF",nativeVideo());
             }
