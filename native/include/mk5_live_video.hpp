@@ -3,6 +3,7 @@
 #include "mk5_fighter_video.hpp"
 #include "mk5_blood_shade.hpp"
 #include "mk5_wide.hpp"
+#include <algorithm>
 #include <array>
 #include <map>
 #include <tuple>
@@ -53,13 +54,26 @@ class Mk5LiveVideo {
     // A staged draw: its registers (VRAM x at the virtual camera), its object, how it reaches the layer (a fitted far plane
     // moves and stretches, mk5wide::Fit, and replaces the arcade's own draw of the object).
     // mirror: the draw's mirror image about a mirrored plane's end (mk5wide::Fit): its right end's column, or minus its left one.
-    struct WideEntry{std::array<uint16_t,18> regs;uint32_t object;int shift,width;bool fixed,fitted;int mirror=0;
-        template<class A> friend void Fields(A& a,WideEntry& e){a(e.regs,e.object,e.shift,e.width,e.fixed,e.fitted,e.mirror);}};
+    // ring: a copy of a wrapping far-plane part (WideWrap) one ring length away; it never reaches the arcade's columns.
+    struct WideEntry{std::array<uint16_t,18> regs;uint32_t object;int shift,width;bool fixed,fitted;int mirror=0;bool ring=false;
+        template<class A> friend void Fields(A& a,WideEntry& e){a(e.regs,e.object,e.shift,e.width,e.fixed,e.fitted,e.mirror,e.ring);}};
+    // The parts of the far-plane groups the game wraps around a ring (mk5widescreen::kWrapTest): each one's ring length and
+    // the frame its group was last tested (the process runs every 8 frames; a part not tested for kWrapKeep frames is forgotten).
+    struct WideWrapPart{uint32_t object;int length;uint32_t seen;
+        template<class A> friend void Fields(A& a,WideWrapPart& w){a(w.object,w.length,w.seen);}};
+    static constexpr uint32_t kWrapKeep=24;
+    std::vector<WideWrapPart> wide_wrap;uint32_t wide_frames=0;
+    void WideStageRing(const WideEntry& e,std::vector<WideEntry>& to)const;
     std::vector<WideEntry> wide_staged;size_t wide_cursor=0;
     // The shadow's draw being staged: a screen-fixed object (the drawer's test), a far plane whose draws wait for the list's
     // end (the per-plane fit).
     bool wide_hud=false,wide_fit=false;mk5wide::Ratio* wide_plane_ratio=nullptr;
     std::vector<WideEntry> wide_plane;
+    // The palette slots' ROM pointers when the shadow pass starts (mk5widescreen::kPaletteTable); not state (the pass never
+    // spans a ContinueMain call). A shadow draw in a slot the pass booked for another palette is left out: its colours are
+    // not loaded yet (the arcade has not built the object).
+    std::array<uint32_t,64> wide_palettes{};
+    void WidePalettes(std::array<uint32_t,64>& to)const;
     void WideStage(const WideEntry& e);
     const WideEntry* WideMerge(uint32_t object);
     void WideFlush(size_t end);
@@ -74,12 +88,12 @@ class Mk5LiveVideo {
     // VRAM when the file has none. The shadow pass never spans a ContinueMain call: its own per-pass values are not state.
     template<class A> void WideFields(A& a){
         const bool enabled=wide.Enabled();bool present=enabled;a(present);
-        if(present){wide.LayerFields(a);a(wide_walk_drawn,wide_walk,wide_streaming,wide_staged,wide_cursor);}
+        if(present){wide.LayerFields(a);a(wide_walk_drawn,wide_walk,wide_streaming,wide_staged,wide_cursor,wide_wrap,wide_frames);}
         if constexpr(A::reading){
             if(enabled==present)return;
             const bool blood=!blood_layer.empty();wide.Reset();wide_walk_drawn=wide_walk=wide_streaming=false;
-            wide_staged.clear();wide_cursor=0;
-            if(enabled)wide.Enable(m.vram,blood);
+            wide_staged.clear();wide_cursor=0;wide_wrap.clear();wide_frames=0;
+            if(enabled)wide.Enable(m.vram,blood,mk5wide::Layer<uint8_t>::kEdge);
         }
     }
     void DrawBlood(const ResetTrace&, bool arena_visible);
@@ -117,11 +131,19 @@ public:
     uint32_t FillXY(ResetTrace&);
     // Widescreen. EnableWide before the run; the runner drives the frame (WideFrame, WideEndUnbuilt) and the shadow pass
     // (WideBegin, WideList, ShadowWrite/ShadowRead for its DMA registers, WideEnd).
-    void EnableWide(){wide.Enable(m.vram,!blood_layer.empty(),true);}
+    void EnableWide(){wide.Enable(m.vram,!blood_layer.empty(),mk5wide::Layer<uint8_t>::kEdge);}
     bool WideEnabled()const{return wide.Enabled();}
     const mk5wide::Layer<uint8_t>& WideLayer()const{return wide;}
     uint32_t WideBloodPixel(size_t index)const{const auto shade=wide.blood.empty()?0:wide.blood[index];return shade?blood_sprite.colors[shade]:0;}
-    void WideFrame(unsigned page_row){wide.StartFrame(page_row,m.vram,blood_layer);wide_walk_drawn=false;wide_staged.clear();wide_cursor=0;}
+    void WideFrame(unsigned page_row){
+        wide.StartFrame(page_row,m.vram,blood_layer);wide_walk_drawn=false;wide_staged.clear();wide_cursor=0;++wide_frames;
+        wide_wrap.erase(std::remove_if(wide_wrap.begin(),wide_wrap.end(),[&](const WideWrapPart& w){return wide_frames-w.seen>kWrapKeep;}),wide_wrap.end());
+    }
+    // A part of a group the game wraps around a ring of this length (mk5widescreen::kWrapTest).
+    void WideWrap(uint32_t object,int length){
+        for(auto& w:wide_wrap)if(w.object==object){w.length=length;w.seen=wide_frames;return;}
+        wide_wrap.push_back({object,length,wide_frames});
+    }
     void WideEndUnbuilt();
     // The real walk starts / ends: its draws merge the staged ones; at its end the rest of them are drawn.
     void WideRealWalk(bool inside){
@@ -136,14 +158,14 @@ public:
         const int d=wide.Offset(shifting||demo,holding,camera,low,high,mk5wide::kWorldMax);
         wide.SetShift(d);wide.arena=fight;wide.menu=menu;
         shadow_regs=regs;wide_hud=wide_fit=false;wide_plane.clear();wide_staged.clear();wide_cursor=0;
-        shadow_active=true;return d;
+        WidePalettes(wide_palettes);shadow_active=true;return d;
     }
     bool shadow_active=false;   // no VRAM, layer or timing effect may happen while it is set
     bool wide_streaming=false;  // the real streamer is running (the shadow does not run it then)
     // A list starts in the shadow walk: the waiting plane is placed. A far plane brings its ratio slot and its velocity and
     // the world's (world 0: the world did not move).
     bool WideList(bool fit,unsigned slot,int32_t velocity,int32_t world_velocity);
-    bool Opaque(std::array<uint16_t,18> regs)const;
+    mk5wide::Layer<uint8_t>::Cover Opaque(std::array<uint16_t,18> regs)const;
     void WideFixedObject(bool fixed){wide_hud=fixed;}
     mk5wide::Ratio& WideRatio(unsigned slot){return wide.PlaneRatio(slot);}
     bool ShadowWrite(unsigned offset,uint16_t value);

@@ -55,6 +55,16 @@ constexpr unsigned kAttractMode=1;
 // Menu modes (fighter select 4, battle plan 7, 13): their screens have no arena even where their objects follow a camera.
 constexpr unsigned kMenuModes=(1u<<4)|(1u<<7)|(1u<<13);
 inline bool Menu(unsigned mode){return mode<16&&(kMenuModes>>mode&1);}
+// A far plane the game wraps around a ring (The Pit's clouds, process FFCBA5A0): every 8 frames, for each group (A8, its
+// leader; +1B0h the next), kWrapTest tests its x and moves a group gone past the screen's right edge left by the ring's
+// length (the immediate of the MOVI at kWrapLength, negated) with all its parts (kPartLink chain, FFC87420). The wide screen
+// shows the ring's copies of those parts at +-length outside the arcade's columns (Mk5LiveVideo::WideWrap).
+constexpr uint32_t kWrapTest=0xffcba660,kWrapLength=0xffcba710,kPartLink=0x20;
+constexpr unsigned kWrapParts=64;
+// The palette slots' table (the allocator FFCE10E0 searches kPaletteSlots entries from kPaletteTable, kPaletteEntry apart):
+// each the long of the palette's ROM pointer in the slot (then its use count). A palette the shadow's streamer allocates is
+// only booked in that table, which the journal undoes: its colours are not in the palette RAM.
+constexpr uint32_t kPaletteTable=0x0104fc20,kPaletteEntry=0x40;constexpr unsigned kPaletteSlots=0x3c;
 // The shadow's clip (y<<16|x): screen x -67 .. 467 of the virtual camera plus mk5wide::kReach on each side.
 constexpr uint32_t WideTopLeft(){return uint32_t(uint16_t(int16_t(-mk5wide::kWideMargin-mk5wide::kReach)));}
 constexpr uint32_t WideBottomRight(){

@@ -214,16 +214,17 @@ class WideCaptureTests(unittest.TestCase):
             (off,off_s),(on,on_s)=session(False),session(True)
             self.assertEqual(lines(on,'present'),lines(off,'present'),'the capture changed a shown frame')
             wide=lines(on,'wide');self.assertGreater(len(wide),100,len(wide))
-            # The composed frame's visible centre is the arcade's frame wherever the window is centred (shift 0) and no far
-            # plane was fitted to it.
-            centred=[w for w in wide if w['shift']==0 and w['fitted']==0]
+            # The composed frame's visible centre is the arcade's frame wherever the window is centred (shift 0), no far plane
+            # was fitted to it and the background continuation filled none of the edge columns the arcade leaves in the page
+            # clear's pen (mk5wide::Layer::edge_fill, counted apart).
+            centred=[w for w in wide if w['shift']==0 and w['fitted']==0 and w['filled']==0]
             self.assertEqual([w['centre'] for w in centred],[w['plain'] for w in centred],'the visible centre differs from the frame')
             self.assertEqual(len(wide),len(lines(on,'present')),'one capture per shown frame')
             # The shadow composes all 534 columns: no fault, and margin pixels beyond the arcade's own spill in the fights.
             self.assertEqual(wide[-1]['faults'],0,'a shadow pass was left incomplete')
             self.assertGreater(sum(w['added']>0 for w in wide),300,'the shadow added no margin art')
             print('seconds without/with',round(off_s,2),round(on_s,2),'frames',len(wide),'shifted',sum(w['shift']!=0 for w in wide),'fitted',sum(w['fitted']>0 for w in wide),
-                  'shifts',sorted({w['shift'] for w in wide}),
+                  'shifts',sorted({w['shift'] for w in wide}),'filled',sum(w['filled']>0 for w in wide),
                   'margin pixels added (quartiles)',sorted(w['added'] for w in wide)[::len(wide)//4])
             # Widescreen presentation (Remastered, MK2_WIDESCREEN=1): 534-column frames whose centre is the Remastered frame
             # (pixels and backdrop) wherever the window is centred and no far plane was fitted.
@@ -232,7 +233,7 @@ class WideCaptureTests(unittest.TestCase):
             plain,shown,layer=frames(plain),frames(widescreen),lines(widescreen,'wide')
             self.assertEqual((len(shown),len(layer)),(len(plain),len(plain)))
             self.assertEqual({(f['width']) for f in shown},{534});self.assertEqual({f['width'] for f in plain},{400})
-            exact=[n for n,w in enumerate(layer) if w['shift']==0 and w['fitted']==0]
+            exact=[n for n,w in enumerate(layer) if w['shift']==0 and w['fitted']==0 and w['filled']==0]
             self.assertGreater(len(exact),600,len(exact))
             self.assertEqual([shown[n]['present'] for n in exact],[plain[n]['present'] for n in exact],'the widescreen centre differs')
             self.assertEqual([f['boxes'] for f in shown],[f['boxes'] for f in plain])   # no boxes without training mode

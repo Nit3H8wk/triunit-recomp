@@ -27,6 +27,9 @@ constexpr uint32_t kFreeList=0x01060130;constexpr size_t kPoolObjects=4096;
 constexpr uint32_t kClipTopLeft=0x01060150,kClipBottomRight=0x01060170,kPageOrigin=0x0105d050;
 constexpr uint32_t kArcadeBottomRight=0x00fe0190;   // x 400
 constexpr int kMargin=mk5wide::kMargin;   // VRAM columns beyond each side of the 400 visible ones
+// Screens without an arena whose art stops short of the arcade's edge (the story and the DCS logo leave the last 7 columns
+// in the page clear's pen): the wide layer's background continuation also covers those pixels (mk5wide::Layer::edge_fill).
+constexpr int kEdgeFill=7;
 // Each list's camera: at kCameraLoad A13 holds the address of the variable the walk reads as the list's camera. Lists whose
 // camera is a world or parallax scroll (kScrollFirst..kScrollLast) are scenery; any other camera is screen-fixed (HUD).
 constexpr uint32_t kCameraLoad=0xff804fc0,kScrollFirst=0x0105d260,kScrollLast=0x0105d370;

@@ -10,7 +10,7 @@
 #include "mk5_program.hpp"
 
 namespace mk2 {
-inline constexpr uint32_t kSaveStateVersion=7;   // 3: the floor blood's fade references (mk5_blood_shade.hpp); 4: widescreen; 5: 16:9 layer; 6: mirrored planes; 7: backdrop margins
+inline constexpr uint32_t kSaveStateVersion=8;   // 3: the floor blood's fade references (mk5_blood_shade.hpp); 4: widescreen; 5: 16:9 layer; 6: mirrored planes; 7: backdrop margins; 8: filled edge columns
 inline constexpr const char* kSaveStateRevision="mk2 L3.1";
 inline constexpr const char* kSaveStateMagic="TRIUNIT-MK2-STATE";
 

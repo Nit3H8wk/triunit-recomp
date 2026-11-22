@@ -78,6 +78,11 @@ void Mk5TaskBodyRunner::wide_pre(uint32_t pc){
     case w::kStreamer:v.wide_streaming=true;return;
     case w::kStreamerEnd:v.wide_streaming=false;return;
     case w::kWalkEnd:v.WideRealWalk(false);return;
+    case w::kWrapTest:{   // a wrapping group (A8): its parts and the ring's length, from the MOVI immediate
+        const int length=int(rom32(p,w::kWrapLength)&0xffff);uint32_t part=s.a[8];
+        for(unsigned n=0;n<w::kWrapParts && part>=0x01000000 && part<0x01400000 && !(part&15);++n){v.WideWrap(part,length);part=ram_long(part+w::kPartLink);}
+        return;
+    }
     case w::kWalkStart:break;
     default:return;
     }
