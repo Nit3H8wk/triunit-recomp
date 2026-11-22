@@ -167,7 +167,24 @@ struct Layer {
         const int c=int(vram_index&511)+kExtra-move;
         return c>=0&&c<kLayerWidth?int64_t(vram_index>>9)*kLayerWidth+c:-1;
     }
-    void Write(size_t index,uint16_t pen,bool screen_fixed=false){pens[index]=pen;fixed[index]=screen_fixed;if(!blood.empty())blood[index]=Blood{};}
+    void Write(size_t index,uint16_t pen,bool screen_fixed=false){
+        pens[index]=booked[(pen>>8)&0x7f]?uint16_t(pen|kBooked):pen;fixed[index]=screen_fixed;if(!blood.empty())blood[index]=Blood{};
+    }
+    // A palette slot the shadow pass booked this build (the game has not built the object, so its colours are not loaded):
+    // a draw in it writes its pen | kBooked, whose colour is the palette's own in the ROM (the slot's pointer: a count word,
+    // then the colours, as the game loads them), kept per page (the page it was drawn on). read: a ROM word at a bit address.
+    static constexpr uint16_t kBooked=0x8000;
+    std::array<bool,128> booked{};std::array<std::vector<uint16_t>,2> rom_palette;
+    template<class Read> void Book(unsigned slot,uint32_t pointer,Read read){
+        auto& to=rom_palette[page];if(to.empty())to.assign(0x8000,0);
+        const unsigned count=std::min(unsigned(read(pointer)),256u);
+        for(unsigned k=0;k<count;++k)to[slot*256+k]=uint16_t(read(pointer+16+16*k));
+        booked[slot&0x7f]=true;
+    }
+    uint16_t Colour(size_t index,uint16_t pen,const uint16_t* palette)const{
+        const auto& rom=rom_palette[(index/kLayerWidth>>8)&1];
+        return pen&kBooked&&!rom.empty()?rom[pen&0x7fff]:palette[pen&0x7fff];
+    }
     // CPU writes and line copies (the page clear) are screen-fixed at their VRAM column; a whole line fills the layer's line
     // from the VRAM ring.
     void Mirror(const std::vector<uint16_t>& vram,size_t start,size_t count){
@@ -237,7 +254,7 @@ struct Layer {
         page=(page_row>>8)&1;
         kept=!cleared[page]&&page_shift[page];
         if(!kept)PlainPage(page,vram,arcade_blood,!cleared[page]);
-        cleared[page]=false;shift=page_shift[page];frame_started=true;page_fitted[page]=0;composed=false;
+        cleared[page]=false;shift=page_shift[page];frame_started=true;page_fitted[page]=0;composed=false;booked.fill(false);
     }
     // A Backdrop screen's frame is complete (the next display interrupt): its margins take its background. render(regs,
     // under) draws layer registers (their clip included) into the layer as scenery, inside the arcade's columns (under) only
@@ -374,7 +391,7 @@ struct Layer {
     }
     // Save-state fields (W4): the layer, the pages' offsets and fits and the arena's window facts.
     template<class A> void LayerFields(A& a){a(pens,blood,fixed,page_shift,page_fitted,cleared,held,limits,ratio,ratio_limits,kept,frame_started,shift,page,world,
-                                                clear_pen,arena,menu,composed,edge_draws,palette_uses,image_rows,image_lines,image_palette,image_dirty,placements);}
+                                                clear_pen,arena,menu,composed,edge_draws,palette_uses,image_rows,image_lines,image_palette,image_dirty,placements,booked,rom_palette);}
     void Reset(){const int fill=edge_fill;*this=Layer{};edge_fill=fill;}
 };
 }

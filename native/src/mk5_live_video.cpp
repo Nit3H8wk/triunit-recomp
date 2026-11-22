@@ -300,8 +300,15 @@ bool Mk5LiveVideo::ShadowWrite(unsigned offset,uint16_t value){
     if(index!=1 || !(value&0x8000)){shadow_regs[index]=value;return true;}
     auto r=shadow_regs;r[1]=value;shadow_regs=r;
     DmaShape d;if(!Shape(r,gfx,d))return false;
-    if(const unsigned slot=(r[8]>>8)&0x7f;slot<mk5widescreen::kPaletteSlots &&
-       ram_pointer(m,mk5widescreen::kPaletteTable+slot*mk5widescreen::kPaletteEntry)!=wide_palettes[slot])return true;
+    // A slot the pass booked for another palette: its colours come from the ROM (mk5wide::Layer::Book); left out when the
+    // slot holds no ROM palette.
+    if(const unsigned slot=(r[8]>>8)&0x7f;slot<mk5widescreen::kPaletteSlots && !wide.booked[slot]){
+        const uint32_t pointer=ram_pointer(m,mk5widescreen::kPaletteTable+slot*mk5widescreen::kPaletteEntry);
+        if(pointer!=wide_palettes[slot]){
+            if(!wide_rom || pointer<0xff800000u || size_t(pointer-0xff800000u)/8+2*257>wide_rom->size())return true;
+            wide.Book(slot,pointer,[&](uint32_t bit){const size_t at=(bit-0xff800000u)/8;return uint16_t((*wide_rom)[at]|(*wide_rom)[at+1]<<8);});
+        }
+    }
     const WideEntry e{r,cpu.a[0],0,mk5wide::kLayerWidth,wide_hud,false};
     if(!wide_hud && wide_fit)wide.arena=true;   // a far plane's draw: an arena (the menus and attract screens draw in the world list)
     if(wide_fit){wide_plane.push_back(e);WideStageRing(e,wide_plane);}else{WideStage(e);WideStageRing(e,wide_staged);}

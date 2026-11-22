@@ -70,9 +70,9 @@ class Mk5LiveVideo {
     bool wide_hud=false,wide_fit=false;mk5wide::Ratio* wide_plane_ratio=nullptr;
     std::vector<WideEntry> wide_plane;
     // The palette slots' ROM pointers when the shadow pass starts (mk5widescreen::kPaletteTable); not state (the pass never
-    // spans a ContinueMain call). A shadow draw in a slot the pass booked for another palette is left out: its colours are
-    // not loaded yet (the arcade has not built the object).
-    std::array<uint32_t,64> wide_palettes{};
+    // spans a ContinueMain call). A shadow draw in a slot the pass booked for another palette (the arcade has not built the
+    // object, so its colours are not loaded) takes its colours from the ROM (mk5wide::Layer::Book).
+    std::array<uint32_t,64> wide_palettes{};const std::vector<uint8_t>* wide_rom=nullptr;   // the program image (Layer::Book)
     void WidePalettes(std::array<uint32_t,64>& to)const;
     void WideStage(const WideEntry& e);
     const WideEntry* WideMerge(uint32_t object);
@@ -131,7 +131,7 @@ public:
     uint32_t FillXY(ResetTrace&);
     // Widescreen. EnableWide before the run; the runner drives the frame (WideFrame, WideEndUnbuilt) and the shadow pass
     // (WideBegin, WideList, ShadowWrite/ShadowRead for its DMA registers, WideEnd).
-    void EnableWide(){wide.Enable(m.vram,!blood_layer.empty(),mk5wide::Layer<uint8_t>::kEdge);}
+    void EnableWide(const std::vector<uint8_t>& program){wide_rom=&program;wide.Enable(m.vram,!blood_layer.empty(),mk5wide::Layer<uint8_t>::kEdge);}
     bool WideEnabled()const{return wide.Enabled();}
     const mk5wide::Layer<uint8_t>& WideLayer()const{return wide;}
     uint32_t WideBloodPixel(size_t index)const{const auto shade=wide.blood.empty()?0:wide.blood[index];return shade?blood_sprite.colors[shade]:0;}

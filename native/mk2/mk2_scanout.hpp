@@ -217,7 +217,7 @@ public:
                 const int at=int(x)-int(margin);
                 const bool fills=!side&&pen!=own&&own==clear&&(at<fill||at>=int(width_)-fill);   // edge_fill
                 added+=side&&pen!=own;centre+=!side&&pen!=own&&!fills;filled+=fills;
-                out[x]=enabled?ExpandRgb555(palette[pen&0x7fff]):0xff000000;
+                out[x]=enabled?ExpandRgb555(pen&0x8000?video.wide.Colour(base+x,pen,palette):palette[pen&0x7fff]):0xff000000;   // Layer::Book
                 if(sources){
                     const int world=int(x)-int(margin)+shift,hud=int(x)-int(margin);
                     int16_t source=enabled?kRaw:kBlank;

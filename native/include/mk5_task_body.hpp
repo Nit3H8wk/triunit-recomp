@@ -124,7 +124,7 @@ public:
     void AttachVideo(const VerifiedMk5GlyphBank&,bool remastered=false);
     const Mk5LiveVideo& Video()const{return *video;}
     // Widescreen (Remastered presentation): the shadow pass composes the 512-column frame from now on.
-    void EnableWide(){if(!video)throw std::logic_error("MK1 widescreen requires the attached video");video->EnableWide();}
+    void EnableWide(){if(!video)throw std::logic_error("MK1 widescreen requires the attached video");video->EnableWide(p.bytes);}
     // Host-only history retention. The live CPU, memory, device state and
     // every continuation remain untouched; qualification keeps full histories.
     Mk5DiagnosticTrim CompactDiagnostics();

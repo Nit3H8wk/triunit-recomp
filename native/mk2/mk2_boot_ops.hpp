@@ -814,11 +814,16 @@ public:
         }
         Finish(fill_remaining_ ? s.next_pc : next, cycles);
     }
-    // A shadow entry in a palette slot that the pass itself booked for another palette (BootVideo::wide_palettes).
-    bool WideBooked(const std::array<uint16_t,12>& entry)const{
+    // A shadow entry in a palette slot that the pass itself booked for another palette (BootVideo::wide_palettes): its colours
+    // come from the ROM (mk5wide::Layer::Book); true (left out) when the slot holds no ROM palette.
+    bool WideBooked(const std::array<uint16_t,12>& entry){
         const unsigned slot=(entry[8]>>8)&0x7f;if(slot>=mk2::wide::kPaletteSlots)return false;
         const size_t i=(mk2::wide::kPaletteTable+slot*mk2::wide::kPaletteEntry-0x01000000)/16;
-        return (out.main_ram[i]|uint32_t(out.main_ram[i+1])<<16)!=out.video.wide_palettes[slot];
+        const uint32_t pointer=out.main_ram[i]|uint32_t(out.main_ram[i+1])<<16;
+        if(pointer==out.video.wide_palettes[slot]||out.video.wide.booked[slot])return false;
+        if(pointer<0xff800000u||size_t(pointer-0xff800000u)/8+2*257>program.bytes.size())return true;
+        out.video.wide.Book(slot,pointer,[&](uint32_t bit){const size_t at=(bit-0xff800000u)/8;return uint16_t(program.bytes[at]|program.bytes[at+1]<<8);});
+        return false;
     }
     void Mmtm(uint16_t mask, uint32_t next, bool bank_b = false, unsigned base = 15) {
         if (base > 15)

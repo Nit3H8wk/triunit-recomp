@@ -409,7 +409,7 @@ struct BootVideo {
     // columns is not on the arcade screen yet (a fast plane pops in at the edge): it is left out, unless its plane is fitted.
     std::vector<uint32_t> wide_free;
     // The palette slots' ROM pointers when the shadow pass starts (mk2::wide::kPaletteTable); not state (the pass never spans
-    // a batch). A shadow draw in a slot the pass booked for another palette is left out: its colours are not loaded yet.
+    // a batch). A shadow draw in a slot the pass booked for another palette takes its colours from the ROM (Layer::Book).
     std::array<uint32_t,mk2::wide::kPaletteSlots> wide_palettes{};
     bool WideFresh(uint32_t object)const{return std::binary_search(wide_free.begin(),wide_free.end(),object);}
     // An entry's columns in the layer [first, last) from its x (10-bit DMA x read as -256..767), width, X step and flip.
@@ -521,12 +521,12 @@ struct BootVideo {
     bool RenderLayer(const std::array<uint16_t,18>& r,const std::vector<uint8_t>& graphics,int width=mk5wide::kLayerWidth,bool fixed=false,bool under=false){
         // mk5wide::Layer::Write through plain pointers (the render's stores cannot move the layer).
         uint16_t* const pens=wide.pens.data();uint8_t* const marks=wide.fixed.data();uint16_t* const stains=wide.blood.empty()?nullptr:wide.blood.data();
-        const size_t size=wide.pens.size();
+        const size_t size=wide.pens.size();const uint16_t booked=wide.booked[(r[8]>>8)&0x7f]?wide.kBooked:0;   // Layer::Book
         try{
             Render(r[1],r,r[8],graphics,[&](size_t index,uint16_t pen,bool write){
                 if(!write||index>=size)return;
                 if(under&&mk5wide::Layer<uint16_t>::Arcade(int(index%mk5wide::kLayerWidth))&&pens[index]!=wide.clear_pen[index/mk5wide::kLayerWidth])return;
-                mk5wide::Stretch(index,width,[&](size_t i){pens[i]=pen;marks[i]=fixed;if(stains)stains[i]=0;});
+                mk5wide::Stretch(index,width,[&](size_t i){pens[i]=uint16_t(pen|booked);marks[i]=fixed;if(stains)stains[i]=0;});
             },[]{},mk5wide::kLayerWidth,Passes::write);
         }catch(const std::runtime_error&){return false;}
         return true;

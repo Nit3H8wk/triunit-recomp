@@ -99,7 +99,7 @@ void Mk5Scanout::wide_line(unsigned row,unsigned col,bool enabled){
         // arcade drops at its screen's edge (Mk5LiveVideo::WideOutside).
         constexpr unsigned kEdge=4;
         wide_centre_work+=x>=margin+kEdge && x<margin+width_-kEdge && pen!=memory.vram[index];
-        wide_work[dest]=enabled?expand_rgb(memory.palette.at(pen&0x7fff)):0;
+        wide_work[dest]=enabled?expand_rgb(pen&0x8000?layer.Colour(at,pen,memory.palette.data()):memory.palette.at(pen&0x7fff)):0;   // Layer::Book
         if(!wide_present)continue;
         const int world=int(x)-int(margin)+wide_shift_work,hud=int(x)-int(margin);
         const bool fixed=layer.Enabled() && layer.fixed[at];
