@@ -397,8 +397,9 @@ struct BootVideo {
     // How an entry reaches the layer: x moved by shift columns and, when width < kLayerWidth, the columns [0, width)
     // stretched to the layer's (the per-plane fit, WidePlane).
     // mirror: the draw's mirror image about a mirrored plane's end (mk5wide::Fit): its right end's column, or minus its left one.
-    struct WideDraw{std::array<uint16_t,12> entry;int shift,width;bool fixed;int mirror=0;   // fixed: a screen-fixed (HUD) draw
-        template<class A> friend void Fields(A& a,WideDraw& d){a(d.entry,d.shift,d.width,d.fixed,d.mirror);}};
+    // outside: an object the arcade has not built yet (WideFresh) with the window centred: its margin columns only.
+    struct WideDraw{std::array<uint16_t,12> entry;int shift,width;bool fixed;int mirror=0;bool outside=false;   // fixed: a screen-fixed (HUD) draw
+        template<class A> friend void Fields(A& a,WideDraw& d){a(d.entry,d.shift,d.width,d.fixed,d.mirror,d.outside);}};
     std::vector<WideDraw> wide_pending;
     // Per-plane fit: the entries of a far plane's list (mk2::wide::FitCamera) wait in wide_plane until the list ends
     // (WidePlane), so the plane is placed as a whole.
@@ -406,7 +407,8 @@ struct BootVideo {
     bool wide_fit=false;std::vector<WideStaged> wide_plane;
     // The objects on the pool's free list when the shadow pass starts (sorted): one the shadow walk stages was built by the
     // shadow's own streamer run. The real streamer builds only every 8 frames, so such an object that reaches the arcade's
-    // columns is not on the arcade screen yet (a fast plane pops in at the edge): it is left out, unless its plane is fitted.
+    // columns is not on the arcade screen yet: while the window is centred it draws only its margin columns
+    // (WideDraw::outside), unless its plane is fitted.
     std::vector<uint32_t> wide_free;
     // The palette slots' ROM pointers when the shadow pass starts (mk2::wide::kPaletteTable); not state (the pass never spans
     // a batch). A shadow draw in a slot the pass booked for another palette takes its colours from the ROM (Layer::Book).
@@ -435,14 +437,14 @@ struct BootVideo {
     // One entry staged by the shadow walk (r0..r11 as the queue holds them) with the board's current clip; false when the
     // board's DMA would refuse it (it then draws nothing).
     // The shadow draws at the virtual camera (the window offset is in the scrolls): nothing moves here. An object the
-    // shadow's streamer built (fresh) stays out of the arcade's columns while the window is centred: the real streamer has
-    // not built it yet.
+    // shadow's streamer built (fresh) stays out of the arcade's columns while the window is centred (its margin columns are
+    // drawn): the real streamer has not built it yet.
     bool WideEntry(const std::array<uint16_t,12>& entry,const std::vector<uint8_t>& graphics,bool fresh=false){
         if(!wide_hud&&wide_fit)wide.arena=true;   // a far plane's draw: an arena (the story, bios and menus draw elsewhere)
         if(wide_fit){wide_plane.push_back({entry,fresh});return true;}
-        if(fresh&&!wide.shift&&WideOnArcade(entry))return true;
-        if(wide.Backdrop())wide.Note(LayerRegisters(entry,0));   // a screen without an arena: noted for its margins (DrawWide)
-        return WidePlace({entry,0,mk5wide::kLayerWidth,wide_hud},graphics);
+        const bool outside=fresh&&!wide.shift&&WideOnArcade(entry);
+        if(!outside&&wide.Backdrop())wide.Note(LayerRegisters(entry,0));   // a screen without an arena: noted for its margins (DrawWide)
+        return WidePlace({entry,0,mk5wide::kLayerWidth,wide_hud,0,outside},graphics);
     }
     // Whether a draw (layer registers) writes nearly every pixel of its rectangle (Layer::kCovered of them, unclipped).
     mk5wide::Layer<uint16_t>::Cover WideOpaque(std::array<uint16_t,18> r,const std::vector<uint8_t>& graphics)const{
@@ -494,8 +496,9 @@ struct BootVideo {
         const auto fit=mk5wide::FitPlane(drawn,hull_left,hull_right,plane_shift,[&](int end,bool left){return WideEndShown(end,left,plane_shift);});
         if(fit.fitted())++wide.page_fitted[wide.page];
         bool placed=true;
-        for(const auto& [e,fresh]:wide_plane)if(fit.fitted()||!fresh||wide.shift||!WideOnArcade(e)){
-            placed&=WidePlace({e,fit.shift,fit.width,false},graphics);
+        for(const auto& [e,fresh]:wide_plane){
+            const bool outside=!fit.fitted()&&fresh&&!wide.shift&&WideOnArcade(e);
+            placed&=WidePlace({e,fit.shift,fit.width,false,0,outside},graphics);
             if(fit.mirror_left>0)placed&=WidePlace({e,0,mk5wide::kLayerWidth,false,-fit.mirror_left},graphics);
             if(fit.mirror_right<mk5wide::kLayerWidth)placed&=WidePlace({e,0,mk5wide::kLayerWidth,false,fit.mirror_right},graphics);
         }
@@ -511,6 +514,10 @@ struct BootVideo {
         if(draw.mirror){   // a mirror image the board cannot draw (scaled, or a command without its flipped twin) is left out
             mk5wide::Fit fit;(draw.mirror>0?fit.mirror_right:fit.mirror_left)=std::abs(draw.mirror);
             if(!mk5wide::MirrorDraw(r,fit,draw.mirror>0)||!KnownCommand(r[1]))return true;
+        }
+        if(draw.outside){   // the margin columns only (an object the arcade has not built yet)
+            auto left=r,right=r;left[17]=mk5wide::kWideMargin-1;right[16]=mk5wide::kWideMargin+mk5wide::kVisible;
+            return RenderLayer(left,graphics,draw.width)&&RenderLayer(right,graphics,draw.width);
         }
         // A screen without an arena (mk5wide::Layer::Backdrop): the arcade's columns only.
         if(!draw.mirror&&draw.width>=mk5wide::kLayerWidth&&wide.Backdrop()){r[16]=mk5wide::kWideMargin;r[17]=mk5wide::kWideMargin+mk5wide::kVisible-1;}
