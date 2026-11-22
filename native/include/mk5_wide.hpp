@@ -130,19 +130,33 @@ struct Layer {
     std::array<int,2> held{};     // the last shifting frame's camera x and offset (the hold modes keep it)
     std::array<int,3> limits{};   // the arena's last usable camera limits (min, max, valid)
     std::array<Ratio,10> ratio{};std::array<int,2> ratio_limits{};int world=0;   // per scroll slot (far planes, world, front), for this arena
-    // A screen without an arena (no far plane draws and the mode is not a fight's: menus, bios, story, records, logos) fills
-    // each margin: its draws near an edge mirrored about it (edge_mirrored), else its own art when that covers the margin
-    // (kCovered of its pixels away from the page clear's pen), else the page clear's pen (Tidy).
-    // clear_pen: each line's pen at its last page clear.
-    static constexpr unsigned kCovered=85;
-    std::vector<uint16_t> clear_pen=std::vector<uint16_t>(512,0);bool arena=false,tidy=false,composed=false;
+    // A screen without an arena (no far plane draws and the mode is not a fight's: menus, bios, story, records, logos;
+    // Backdrop) keeps its 400 columns as the arcade draws them, and its margins show only its background extended: no draw
+    // writes them (Arcade), and at the frame's end (Tidy) the background draws that reach an arcade edge continue past it
+    // (EdgeDraws) and a decompressed image's background is reflected (ImageEdges). clear_pen: each line's pen at its last
+    // page clear. menu: this build's mode is a menu's (its objects may follow a camera).
+    static constexpr unsigned kCovered=85;   // an opaque draw writes this share of its rectangle (percent)
+    std::vector<uint16_t> clear_pen=std::vector<uint16_t>(512,0);bool arena=false,menu=false,composed=false;
     bool Enabled()const{return !pens.empty();}
-    // fill_edges: Tidy also fills the arcade's last kEdge columns where its art leaves them in the page's pen (MK1, whose
-    // centre metric leaves those columns out; MK2 keeps every arcade column).
-    bool fill_edges=false;
-    void Enable(const std::vector<uint16_t>& vram,bool with_blood,bool edges=false){
-        fill_edges=edges;
-        pens.assign(kLayerSize,0);fixed.assign(kLayerSize,0);blood.assign(with_blood?kLayerSize:0,Blood{});
+    bool Backdrop()const{return Enabled()&&!shift&&(!arena||menu);}
+    static bool Arcade(int L){return L>=kWideMargin&&L<kWideMargin+kVisible;}
+    // A Backdrop draw (registers in layer columns): its palette and, when it reaches an arcade edge (its art ends within kNear
+    // columns of it: MK2 screens often leave the arcade's last 7 columns black), the draw itself, for Tidy.
+    static constexpr int kEdge=4,kNear=16;static constexpr size_t kPlacements=4096;
+    std::vector<std::array<uint16_t,18>> edge_draws;std::array<uint16_t,128> palette_uses{};
+    // Every noted draw's source, line and first column: a tile's step along its row (the game overlaps its tiles).
+    struct Placement{uint32_t source;uint16_t line;int16_t first,width;
+        template<class A> friend void Fields(A& a,Placement& p){a(p.source,p.line,p.first,p.width);}};
+    std::vector<Placement> placements;
+    static uint32_t Source(const std::array<uint16_t,18>& r){return r[2]|uint32_t(r[3])<<16;}
+    void Note(const std::array<uint16_t,18>& r){
+        uint16_t& uses=palette_uses[(r[8]>>8)&0x7f];uses=uint16_t(std::min(uses+1,0xffff));
+        const auto [lo,hi]=Span(r[4],r[6],r[10],(r[1]&0x10)!=0);
+        if(placements.size()<kPlacements)placements.push_back({Source(r),uint16_t(r[5]&0x1ff),int16_t(lo),int16_t(hi-lo)});
+        if((lo<=kWideMargin+kNear&&hi>kWideMargin)||(hi>=kWideMargin+kVisible-kNear&&lo<kWideMargin+kVisible))edge_draws.push_back(r);
+    }
+    void Enable(const std::vector<uint16_t>& vram,bool with_blood,bool fill=false){
+        edge_fill=fill;pens.assign(kLayerSize,0);fixed.assign(kLayerSize,0);blood.assign(with_blood?kLayerSize:0,Blood{});
         for(unsigned p=0;p<2;++p)PlainPage(p,vram,{});
     }
     // The layer index of a VRAM index's screen position at offset 0, moved left by move columns (-1: outside the layer).
@@ -158,34 +172,37 @@ struct Layer {
         if(!(start&511)&&count&&!(count&511)){for(size_t row=start>>9;row<(start+count)>>9;++row){clear_pen[row]=vram[row*512];PlainRow(row,vram);}return;}
         for(size_t i=start;i<start+count;++i)if(const auto at=At(i);at>=0){
             pens[size_t(at)]=vram[i];fixed[size_t(at)]=0;if(!blood.empty())blood[size_t(at)]=Blood{};
-            if(!arena)MirrorEdge(size_t(at),vram[i]);}
+            // A CPU write at a VRAM line's first column clears the line (the decompressor writes only inside the arcade's
+            // columns): a screen set up by the CPU, which has no arena, with that line's pen. On a Backdrop screen a clear
+            // reaches the layer's columns past the VRAM too; a write at an arcade edge band is a decompressed image's edge
+            // (Tidy reflects its background).
+            const int L=int(at%kLayerWidth);const size_t row=size_t(at)/kLayerWidth;
+            if(L==kExtra){clear_pen[row]=vram[i];arena=false;}
+            if(!Backdrop())continue;
+            if(L==kExtra)std::fill_n(pens.begin()+row*kLayerWidth,kExtra,vram[i]);
+            else if(L==kWidth+kExtra-1)std::fill_n(pens.begin()+row*kLayerWidth+kWidth+kExtra,kExtra,vram[i]);
+            else if(Arcade(L)&&(L<kWideMargin+kBand||L>=kWideMargin+kVisible-kBand)){
+                image_lines[row&511]|=L<kWideMargin+kBand?1:2;image_dirty[(row>>8)&1]=true;}
+        }
     }
-    // Margins a screen without an arena got as mirror images (per page and side; the page's clear resets them): Tidy keeps
-    // them, gaps included (the screen's own background reflected).
-    std::array<std::array<bool,2>,2> edge_mirrored{};
-    // A CPU write on a screen without an arena (a decompressed image, written before its text): a pixel within kWideMargin
-    // of an arcade edge also goes to its mirror image about that edge.
-    void MirrorEdge(size_t at,uint16_t pen){
-        const int L=int(at%kLayerWidth),right=kWideMargin+kVisible;size_t mirror;bool right_end;
-        if(L>=kWideMargin&&L<2*kWideMargin){mirror=size_t(2*kWideMargin-1-L);right_end=false;}
-        else if(L>=right-kWideMargin&&L<right){mirror=size_t(2*right-1-L);right_end=true;}
-        else return;
-        const size_t row=at/kLayerWidth;Write(row*kLayerWidth+mirror,pen,true);edge_mirrored[(row>>8)&1][right_end]=true;
-    }
+    static constexpr int kBand=8;   // the arcade columns at each edge whose pens are a decompressed image's background
     // The layer's columns past the VRAM line on each side (screen x -67..-57 and 456..466) have no VRAM column of their own
     // (a draw there is clipped): a plain page shows them in the last page clear's pen, not the ring's far side.
     static bool PastVram(int L){return L<kExtra||L>=kWidth+kExtra;}
     void PlainRow(size_t row,const std::vector<uint16_t>& vram){
+        image_lines[row&511]=0;
         auto* p=pens.data()+row*kLayerWidth;const auto* v=vram.data()+row*512;
         for(int L=0;L<kLayerWidth;++L)p[L]=PastVram(L)?clear_pen[row]:v[(L-kExtra+512)&511];
         std::fill_n(fixed.begin()+row*kLayerWidth,kLayerWidth,uint8_t(0));
         if(!blood.empty())std::fill_n(blood.begin()+row*kLayerWidth,kLayerWidth,Blood{});
     }
-    void MarkCleared(size_t index){if(Enabled()){cleared[(index>>17)&1]=true;edge_mirrored[(index>>17)&1]={};}}
+    void MarkCleared(size_t index){if(Enabled())cleared[(index>>17)&1]=true;}
     int ShiftOfRow(unsigned vram_row)const{return page_shift[(vram_row>>8)&1];}
     unsigned FittedOfRow(unsigned vram_row)const{return page_fitted[(vram_row>>8)&1];}
     void PlainPage(unsigned p,const std::vector<uint16_t>& vram,const std::vector<Blood>& arcade_blood,bool centre_only=false){
-        const int first=centre_only?kWideMargin:0,last=centre_only?kWideMargin+kVisible:kLayerWidth;
+        // edge_fill: a Backdrop page keeps the arcade's kEdge edge columns that Tidy filled (EdgeDraws, ImageEdges).
+        const int keep=centre_only&&edge_fill&&Backdrop()?kEdge:0;
+        const int first=centre_only?kWideMargin+keep:0,last=centre_only?kWideMargin+kVisible-keep:kLayerWidth;
         const bool stains=!blood.empty(),arcade=arcade_blood.size()==vram.size();
         for(size_t row=size_t(p)*256;row<size_t(p)*256+256;++row){   // plain pointers: the stores cannot move the layers
             uint16_t* to=pens.data()+row*kLayerWidth;uint8_t* marks=fixed.data()+row*kLayerWidth;
@@ -198,7 +215,7 @@ struct Layer {
     }
     // A page composed with an offset and not cleared since keeps its last composition, moved by the change of offset.
     void SetShift(int d){
-        int& now=page_shift[page];shift=d;kept=false;arena=false;tidy=false;composed=true;   // the shadow composes this build
+        int& now=page_shift[page];shift=d;kept=false;arena=false;menu=false;composed=true;   // the shadow composes this build
         if(now==d||!Enabled()){now=d;return;}
         const int move=std::clamp(d-now,-kLayerWidth,kLayerWidth);now=d;   // the new column c shows the old column c+move
         const auto rows=[&](auto& layer){
@@ -217,51 +234,119 @@ struct Layer {
         if(!kept)PlainPage(page,vram,arcade_blood,!cleared[page]);
         cleared[page]=false;shift=page_shift[page];frame_started=true;page_fitted[page]=0;composed=false;
     }
-    // The composed page of a screen without an arena, once complete (the next display interrupt): each margin keeps its
-    // art only where the art covers it.
-    void Tidy(){
-        if(!tidy)return;
-        tidy=false;
-        // An arcade edge the screen leaves in the page's pen (its art ends up to kEdge columns before it) would be a seam once
-        // the margin beside it is filled: per line, those columns and as many margin ones take the art mirrored about its end.
-        constexpr int kEdge=4;
-        for(size_t row=size_t(page)*256;row<size_t(page)*256+256;++row){
-            uint16_t* p=pens.data()+row*kLayerWidth;const uint16_t clear=clear_pen[row];
-            if(fill_edges){
-                int e=kWideMargin+kVisible;while(e>kWideMargin+kVisible-kEdge&&p[e-1]==clear)--e;
-                if(e<kWideMargin+kVisible&&p[e-1]!=clear)for(int c=e;c<2*(kWideMargin+kVisible)-e;++c)if(p[c]==clear)Write(row*kLayerWidth+size_t(c),p[2*e-1-c],fixed[row*kLayerWidth+size_t(2*e-1-c)]);
-                int s=kWideMargin;while(s<kWideMargin+kEdge&&p[s]==clear)++s;
-                if(s>kWideMargin&&p[s]!=clear)for(int c=s-1;c>=2*kWideMargin-s;--c)if(p[c]==clear)Write(row*kLayerWidth+size_t(c),p[2*s-1-c],fixed[row*kLayerWidth+size_t(2*s-1-c)]);
+    // A Backdrop screen's frame is complete (the next display interrupt): its margins take its background. render(regs,
+    // under) draws layer registers (their clip included) into the layer as scenery, inside the arcade's columns (under) only
+    // over the page clear's pen; opaque(regs) tells whether a draw writes kCovered of its rectangle.
+    template<class Render,class Opaque> void Tidy(Render&& render,Opaque&& opaque){
+        if(Backdrop()){EdgeDraws(render,opaque);ImageEdges();}
+        edge_draws.clear();palette_uses={};image_rows={};image_dirty={};placements.clear();
+    }
+    // Lines whose margin reflects the picture's background (bit 0: the left margin, bit 1: the right one): this frame's large
+    // background pieces at an edge (EdgeDraws), and a decompressed image's lines (CPU writes at an arcade edge band; until
+    // the line's page clear), all of them again whenever the image grows (image_dirty: the decompressor writes over frames).
+    std::array<uint8_t,512> image_rows{},image_lines{},image_palette{};std::array<bool,2> image_dirty{};   // image_palette: a piece's line's palette
+    // Those lines' background at an edge is the pens of their kBand edge columns (from the picture's edge: a line may leave
+    // up to kNear arcade columns in the page clear's pen) that occur at least kSeen times on the page's marked lines (the
+    // figure in front of it, a logo, a fighter or an ornament, has pens of its own). Per line, the background run from the
+    // picture's edge inward (a lone other pixel, the dither, does not end it) is reflected back and forth over the margin
+    // (edge_fill: also over the arcade's last kEdge columns); a line with no run takes the page clear's pen.
+    static constexpr unsigned kSeen=3;static constexpr int kFull=32;
+    void ImageEdges(){
+        for(unsigned p=0;p<2;++p)for(const bool right:{false,true}){
+            const uint8_t side=right?2:1;
+            const auto marked=[&](size_t row){return ((image_rows[row]|(image_dirty[p]?image_lines[row]:0))&side)!=0;};
+            // A piece's lines (no decompressed image there) are read more strictly: only the piece's palette, the pens of the
+            // outermost kEdge columns, and the run ends at the first other pixel (an ornament shares the piece's palette, a
+            // fighter in front of it does not); a line whose run is shorter than kFull takes the margin of one of the piece's
+            // lines with a full run (so neither the ornament nor a short run's stripes reach the margin).
+            const auto strict=[&](size_t row){return !(image_lines[row]&side);};
+            bool any=false;for(size_t row=size_t(p)*256;row<size_t(p)*256+256;++row)any|=marked(row);
+            if(!any)continue;
+            const auto column=[&](int i){return right?kWideMargin+kVisible-1-i:kWideMargin+i;};   // i: arcade column from the edge inward
+            const auto start=[&](size_t base,uint16_t clear){int s=0;while(s<kNear&&pens[base+size_t(column(s))]==clear)++s;return s;};
+            const auto own=[&](size_t row,uint16_t pen){return !strict(row)||((pen>>8)&0x7f)==image_palette[row];};
+            std::vector<uint16_t> seen;
+            for(size_t row=size_t(p)*256;row<size_t(p)*256+256;++row)if(marked(row)){
+                const size_t base=row*kLayerWidth;const int s=start(base,clear_pen[row]);
+                for(int i=s;i<s+(strict(row)?kEdge:kBand);++i)if(own(row,pens[base+size_t(column(i))]))seen.push_back(pens[base+size_t(column(i))]);
             }
-            // A mirrored margin's seams between its pieces (up to kEdge columns in the page's pen) take the column before.
-            for(const int first:{0,kWideMargin+kVisible})if(edge_mirrored[page][first!=0])
-                for(int c=first+1;c<first+kWideMargin;++c)if(p[c]==clear&&p[c-1]!=clear){
-                    int end=c;while(end<first+kWideMargin&&end-c<=kEdge&&p[end]==clear)++end;
-                    if(end<first+kWideMargin&&end-c<=kEdge)for(;c<end;++c)Write(row*kLayerWidth+size_t(c),p[c-1],fixed[row*kLayerWidth+size_t(c-1)]);
+            std::sort(seen.begin(),seen.end());std::vector<uint16_t> background;
+            for(size_t i=0;i<seen.size();){size_t j=i;while(j<seen.size()&&seen[j]==seen[i])++j;if(j-i>=kSeen)background.push_back(seen[i]);i=j;}
+            const auto is=[&](size_t row,int i){const uint16_t pen=pens[row*kLayerWidth+size_t(column(i))];
+                return own(row,pen)&&std::binary_search(background.begin(),background.end(),pen);};
+            const auto margin=[&](int t){return right?kWideMargin+kVisible+t:kWideMargin-1-t;};
+            std::vector<size_t> full,partial;   // a piece's lines with a full run, and with a shorter one
+            for(size_t row=size_t(p)*256;row<size_t(p)*256+256;++row)if(marked(row)){
+                const size_t base=row*kLayerWidth;const int s=start(base,clear_pen[row]);int run=0;
+                const bool lone=!strict(row);
+                while(s+run<kWideMargin&&(is(row,s+run)||(lone&&s+run+1<kWideMargin&&run&&is(row,s+run+1))))++run;
+                if(strict(row))(run>=kFull?full:partial).push_back(row);
+                for(int t=edge_fill?-std::min(s,kEdge):0;t<kWideMargin;++t){   // t: columns outward from the arcade's edge (negative: inside it)
+                    const int m=run?(t+s)%(2*run):0,i=s+(m<run?m:2*run-1-m);
+                    Write(base+size_t(margin(t)),run?pens[base+size_t(column(i))]:clear_pen[row]);
                 }
-            // What a mirrored margin still leaves in the page's pen (a draw with transparent pixels was not mirrored) takes the
-            // arcade's own pixel mirrored about the edge.
-            for(const int first:{0,kWideMargin+kVisible})if(edge_mirrored[page][first!=0]){
-                const int edge=first?kWideMargin+kVisible:kWideMargin;
-                for(int L=first;L<first+kWideMargin;++L)if(p[L]==clear){const size_t from=row*kLayerWidth+size_t(2*edge-1-L);Write(row*kLayerWidth+size_t(L),pens[from],fixed[from]);}
             }
-        }
-        for(const int first:{0,kWideMargin+kVisible}){
-            if(edge_mirrored[page][first!=0])continue;
-            size_t covered=0;
-            for(size_t row=size_t(page)*256;row<size_t(page)*256+256;++row)
-                for(int L=first;L<first+kWideMargin;++L)covered+=pens[row*kLayerWidth+size_t(L)]!=clear_pen[row];
-            if(covered*100>=size_t(kCovered)*256*kWideMargin)continue;
-            for(size_t row=size_t(page)*256;row<size_t(page)*256+256;++row)
-                for(int L=first;L<first+kWideMargin;++L)Write(row*kLayerWidth+size_t(L),clear_pen[row]);
+            if(!full.empty())for(const size_t row:partial){
+                const size_t from=full[row%full.size()];
+                for(int t=0;t<kWideMargin;++t)Write(row*kLayerWidth+size_t(margin(t)),pens[from*kLayerWidth+size_t(margin(t))]);
+            }
         }
     }
-    void EndUnbuiltFrame(const std::vector<uint16_t>& vram,const std::vector<Blood>& arcade_blood){
+    // The background draws among this frame's draws at an arcade edge, unscaled and opaque: a tile, in a palette kShared draws
+    // of the frame use (the stone, tiles and panels; a portrait or a sprite has a palette of its own), at least kTile wide and
+    // narrower than kWide, puts its art beyond the edge in the margin and repeats there at its step (Step), as the screen's
+    // own tiling would continue (edge_fill: the continuation also covers the pixels of the arcade's last kEdge columns that
+    // the screen leaves in the page clear's pen; MK1, whose centre metric leaves those columns out: its tiles end a column
+    // short of the screen's edge); a large piece (at least kPiece on each side, or kWide wide: a marble, a gradient band or a
+    // picture behind the screen; any palette) marks its lines for ImageEdges. Narrow strips (a border line at the edge) do not continue.
+    static constexpr unsigned kShared=8;static constexpr int kTile=16,kWide=200,kPiece=64;
+    template<class Render,class Opaque> void EdgeDraws(Render&& render,Opaque&& opaque){
+        constexpr int left_edge=kWideMargin,right_edge=kWideMargin+kVisible;
+        for(const auto& r:edge_draws){
+            if((r[10]&&r[10]!=0x100)||(r[11]&&r[11]!=0x100))continue;
+            const auto [lo,hi]=Span(r[4],r[6],r[10],(r[1]&0x10)!=0);const int w=hi-lo,h=r[7]&0x3ff;
+            const bool tile=w>=kTile&&w<kWide&&palette_uses[(r[8]>>8)&0x7f]>=kShared,piece=(w>=kPiece&&h>=kPiece)||w>=kWide;
+            if(!(tile||piece)||!opaque(r))continue;
+            const auto draw=[&](std::array<uint16_t,18> c,int first,int last){
+                c[16]=uint16_t(std::max<int>(first,c[16]));c[17]=uint16_t(std::min<int>(last,c[17]));if(c[16]<=c[17])render(c,edge_fill);};
+            for(const bool right:{false,true}){
+                const int first=right?right_edge-(edge_fill?kEdge:0):0,last=right?kLayerWidth-1:left_edge-1+(edge_fill?kEdge:0);
+                if(right?!(hi>=right_edge-kNear&&lo<right_edge):!(lo<=left_edge+kNear&&hi>left_edge))continue;
+                if(!tile){   // its lines (within the drawn page and the clip) reflect the picture's background
+                    const int top=std::max<int>(r[5]&0x1ff,r[12]&0x1ff),bottom=std::min<int>((r[5]&0x1ff)+h,(r[13]&0x1ff)+1);
+                    for(int y=top;y<bottom&&y<512;++y){image_rows[size_t(y)]|=right?2:1;image_palette[size_t(y)]=uint8_t((r[8]>>8)&0x7f);}
+                    continue;
+                }
+                auto c=r;c[16]=0;c[17]=kLayerWidth-1;draw(c,first,last);   // its own art there
+                const int step=Step(Source(r),w);
+                for(int k=1;right?lo+k*step<kLayerWidth:hi-k*step>0;++k){c=r;c[4]=uint16_t((c[4]+(right?k*step:-k*step))&0x3ff);c[16]=0;c[17]=kLayerWidth-1;draw(c,first,last);}
+            }
+        }
+    }
+    // A tile's step along its row: the most frequent distance between neighbouring draws of its source on a line (the game
+    // overlaps its tiles), up to its width; without neighbours, that of the draws as wide (a tile cut to a border strip);
+    // else its width.
+    int Step(uint32_t source,int width)const{
+        const int own=Step(width,[&](const Placement& p){return p.source==source;});if(own)return own;
+        const int alike=Step(width,[&](const Placement& p){return p.width==width;});return alike?alike:width;
+    }
+    template<class Same> int Step(int width,Same&& same)const{
+        std::vector<std::pair<uint64_t,int16_t>> own;   // per source and line, its draws' first columns
+        for(const auto& p:placements)if(same(p))own.push_back({uint64_t(p.source)<<9|p.line,p.first});
+        std::sort(own.begin(),own.end());std::vector<int> steps;
+        for(size_t i=1;i<own.size();++i)if(own[i].first==own[i-1].first){const int s=own[i].second-own[i-1].second;if(s>0&&s<=width)steps.push_back(s);}
+        std::sort(steps.begin(),steps.end());int best=0;size_t most=0;
+        for(size_t i=0;i<steps.size();){size_t j=i;while(j<steps.size()&&steps[j]==steps[i])++j;if(j-i>most){most=j-i;best=steps[i];}i=j;}
+        return best;   // 0: no neighbours
+    }
+    bool edge_fill=false;
+    template<class Render,class Opaque> void EndUnbuiltFrame(const std::vector<uint16_t>& vram,const std::vector<Blood>& arcade_blood,
+                                                             Render&& render,Opaque&& opaque){
         if(!Enabled())return;
-        if(frame_started&&!composed&&!page_shift[page])tidy=true;   // a build the shadow did not compose: its margins are VRAM's
-        Tidy();
+        Tidy(render,opaque);
         if(kept){PlainPage(page,vram,arcade_blood);kept=false;}
         if(!frame_started)for(unsigned p=0;p<2;++p)if(page_shift[p])PlainPage(p,vram,arcade_blood);
+        shift=page_shift[page];   // until the next build: no shadow, no offset
     }
     // This frame's offset from the mode (shifting, holding or neither), the camera and the arena's limits (a finisher
     // frees the camera: limits wider than world_max keep the arena's last ones).
@@ -279,10 +364,7 @@ struct Layer {
     }
     // Save-state fields (W4): the layer, the pages' offsets and fits and the arena's window facts.
     template<class A> void LayerFields(A& a){a(pens,blood,fixed,page_shift,page_fitted,cleared,held,limits,ratio,ratio_limits,kept,frame_started,shift,page,world,
-                                                clear_pen,arena,tidy,composed,edge_mirrored);}
-    // The shadow composed this build: a draw that follows a camera makes it an arena's screen, unless the game's mode is a
-    // menu's.
-    void Composed(bool menu=false){tidy=!arena||menu;}
-    void Reset(){const bool edges=fill_edges;*this=Layer{};fill_edges=edges;}
+                                                clear_pen,arena,menu,composed,edge_draws,palette_uses,image_rows,image_lines,image_palette,image_dirty,placements);}
+    void Reset(){const bool fill=edge_fill;*this=Layer{};edge_fill=fill;}
 };
 }

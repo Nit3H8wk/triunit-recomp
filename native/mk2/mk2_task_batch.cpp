@@ -163,7 +163,6 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
         if(o.shadow_fault)o.out.video.margin_fault_pc=shadow_fault_pc;
         o.shadow=false;shadow_skip=true;o.out.video.margin_faults+=o.shadow_fault;
         o.out.video.wide_walk_drawn=!o.shadow_fault;   // else the real walk's DMAs are mirrored too
-        if(!o.shadow_fault){o.out.video.wide.Composed();o.out.video.WideEdges(o.program.graphics);}else o.out.video.wide_edge.clear();
     };
     // The shadow's clip and virtual camera, written through the journal: each scroll moves by its ratio times d (the world's
     // by d), the ratios read again whenever the world moves.
@@ -215,11 +214,15 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
                 o.out.video.SetWideShift(d);o.out.video.wide_hud=false;
                 o.out.video.wide.arena=mk2::wide::Shifting(mode)||mk2::wide::Holding(mode);   // a fight's modes are an arena's
                 auto& free=o.out.video.wide_free;free.clear();   // the pool's free objects before the shadow's streamer run
-                for(uint32_t object=ram_long(mk2::wide::kFreeList);object>=0x01000000&&object<0x013fffe0&&free.size()<mk2::wide::kPoolObjects;
-                    object=ram_long(object))free.push_back(object);
+                uint32_t object=ram_long(mk2::wide::kFreeList),link=mk2::wide::kFreeList;
+                for(;object>=0x01000000&&object<0x013fffe0&&free.size()<mk2::wide::kPoolObjects;link=object,object=ram_long(object))free.push_back(object);
                 std::sort(free.begin(),free.end());
                 shadow_saved={s.a,s.b,s.status};shadow_steps=0;o.shadow=true;o.shadow_fault=false;
                 shadow_view(d);
+                // The free list does not end in 0 (its last link holds another value): the game never takes its last object, but
+                // the shadow's wider window can. In the journal the last link is 0, so the allocator (FF8090D0) takes its own
+                // empty-pool path (FF809250, no object) instead of reading that value as an object.
+                if(object)o.Write32(link,0);
                 // Not while the interrupted main process is inside the real streamer: its lists are half updated.
                 shadow_walk=!o.out.video.margin_streamer||o.out.video.margin_streaming;
                 if(!shadow_walk){o.Push(mk2::wide::kStreamerReturn);s.next_pc=mk2::wide::kStreamer;}
@@ -250,7 +253,7 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
         const auto instruction_pc = s.next_pc;
         if(!o.shadow){
         if(instruction_pc==mk2::wide::kMarker)o.out.video.wide_real_post=true;   // the real walk's marker entry
-        if(instruction_pc==mk2::wide::kDisplayIrq){o.out.video.EndUnbuiltFrame();o.out.video.wide.frame_started=false;}   // a new frame
+        if(instruction_pc==mk2::wide::kDisplayIrq){o.out.video.EndUnbuiltFrame(o.program.graphics);o.out.video.wide.frame_started=false;}   // a new frame
         if(instruction_pc==mk2::wide::kStreamer)o.out.video.margin_streamer=o.out.video.margin_streaming=true;   // it streams
         else if(instruction_pc==mk2::wide::kStreamerReturn)o.out.video.margin_streaming=false;   // the streamer returned
         else if(instruction_pc==mk2::wide::kPoolReset[0]||instruction_pc==mk2::wide::kPoolReset[1])o.out.video.margin_streamer=false;

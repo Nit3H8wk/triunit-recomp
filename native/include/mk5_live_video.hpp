@@ -122,21 +122,19 @@ public:
     const mk5wide::Layer<uint8_t>& WideLayer()const{return wide;}
     uint32_t WideBloodPixel(size_t index)const{const auto shade=wide.blood.empty()?0:wide.blood[index];return shade?blood_sprite.colors[shade]:0;}
     void WideFrame(unsigned page_row){wide.StartFrame(page_row,m.vram,blood_layer);wide_walk_drawn=false;wide_staged.clear();wide_cursor=0;}
-    void WideEndUnbuilt(){wide.EndUnbuiltFrame(m.vram,blood_layer);wide.frame_started=false;}
+    void WideEndUnbuilt();
     // The real walk starts / ends: its draws merge the staged ones; at its end the rest of them are drawn.
     void WideRealWalk(bool inside){
         if(!inside && wide_walk && wide_walk_drawn){WideFlush(wide_staged.size());wide_staged.clear();wide_cursor=0;}
         wide_walk=inside;
     }
     // The shadow pass starts: this frame's window offset from the mode, the camera and the arena's limits. Returns it.
-    bool wide_menu=false;   // this build's mode is a menu's (mk5widescreen::Menu)
     int WideBegin(bool shifting,bool holding,int camera,int low,int high,bool menu,bool attract=false){
-        wide_menu=menu;
         const bool fight=shifting||holding;   // a fight's modes are an arena's; this build's far planes make one too
         // An attract demo fight: the last build was an arena's, with these limits (a screen after it has others).
         const bool demo=attract && wide.arena && wide.limits[2] && low==wide.limits[0] && high==wide.limits[1];
         const int d=wide.Offset(shifting||demo,holding,camera,low,high,mk5wide::kWorldMax);
-        wide.SetShift(d);wide.arena=fight;
+        wide.SetShift(d);wide.arena=fight;wide.menu=menu;
         shadow_regs=regs;wide_hud=wide_fit=false;wide_plane.clear();wide_staged.clear();wide_cursor=0;
         shadow_active=true;return d;
     }
@@ -150,6 +148,6 @@ public:
     mk5wide::Ratio& WideRatio(unsigned slot){return wide.PlaneRatio(slot);}
     bool ShadowWrite(unsigned offset,uint16_t value);
     uint16_t ShadowRead(unsigned offset)const{const auto v=shadow_regs.at(offset==0?1:offset);return offset<=1?uint16_t(v&0x7fff):v;}
-    void WideEnd(bool complete){wide_plane.clear();wide_fit=false;wide_walk_drawn=complete;shadow_active=false;if(!complete)wide_staged.clear();else wide.Composed(wide_menu);}
+    void WideEnd(bool complete){wide_plane.clear();wide_fit=false;wide_walk_drawn=complete;shadow_active=false;if(!complete)wide_staged.clear();}
     uint64_t wide_faults=0,wide_streamer_skips=0;uint32_t wide_fault_pc=0;   // diagnostics, not state
 };

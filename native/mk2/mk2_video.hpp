@@ -351,10 +351,15 @@ struct BootVideo {
             MaskBlood(index);
             UpdateBackdrop(index,scenery);
         };
+        // Widescreen: a mirrored DMA on a screen without an arena (mk5wide::Layer::Backdrop) reaches only the arcade's
+        // columns and is noted for the margins.
+        const bool backdrop=wide_mirror&&wide.Backdrop();
+        if(backdrop){auto r=DmaRegisters(board);r[1]=command;r[4]=mk5wide::LayerX(r[4]);wide.Note(r);}
         const auto pixels=Render(command,dma_registers,dma_palette,graphics,[&](size_t index,uint16_t pen,bool write){
             auto& dest=vram.at(index);
             if(write){dest=pen;present_pixel(index);
-                if(wide_mirror){const auto at=wide.At(index,wide_mirror_world?wide.page_shift[(index>>17)&1]:0);if(at>=0)wide.Write(size_t(at),pen,!wide_mirror_world);}}
+                if(wide_mirror){const auto at=wide.At(index,wide_mirror_world?wide.page_shift[(index>>17)&1]:0);
+                    if(at>=0&&(!backdrop||mk5wide::Layer<uint16_t>::Arcade(int(at%mk5wide::kLayerWidth))))wide.Write(size_t(at),pen,!wide_mirror_world);}}
         },[&]{prepare_fighter_surface();});
         board.dma_command=command; board.io[18]&=uint16_t(~2);
         return pixels;
@@ -376,10 +381,15 @@ struct BootVideo {
     bool wide_hud=false,wide_mirror_world=false;   // a mirrored real DMA of scenery moves with its page
     int WideShiftOfRow(unsigned vram_row)const{return wide.ShiftOfRow(vram_row);}
     unsigned WideFittedOfRow(unsigned vram_row)const{return wide.FittedOfRow(vram_row);}
-    void SetWideShift(int d){wide.SetShift(d);wide_edge.clear();}
+    void SetWideShift(int d){wide.SetShift(d);}
     void MarkCleared(size_t index){wide.MarkCleared(index);}
     void PlainPage(unsigned page){wide.PlainPage(page,vram,blood_layer);}
-    void EndUnbuiltFrame(){wide.EndUnbuiltFrame(vram,blood_layer);}
+    // The frame ends at the display interrupt: a screen without an arena takes its background in the margins
+    // (mk5wide::Layer::Tidy), drawn as scenery.
+    void EndUnbuiltFrame(const std::vector<uint8_t>& graphics){
+        wide.EndUnbuiltFrame(vram,blood_layer,[&](const std::array<uint16_t,18>& r,bool){RenderLayer(r,graphics);},
+                             [&](const std::array<uint16_t,18>& r){return WideOpaque(r,graphics);});
+    }
     std::vector<uint32_t> wide_walk_entries;   // queue cursors of the walk's entries this frame (real staging)
     // The table's marker: the shadow's entries after it wait (wide_pending) until the drain reaches the real entries after
     // it (from wide_post_key on), so the floor shadows drawn at the marker stay under the world objects, as in VRAM.
@@ -428,24 +438,12 @@ struct BootVideo {
         if(!wide_hud&&wide_fit)wide.arena=true;   // a far plane's draw: an arena (the story, bios and menus draw elsewhere)
         if(wide_fit){wide_plane.push_back({entry,fresh});return true;}
         if(fresh&&!wide.shift&&WideOnArcade(entry))return true;
-        const auto [lo,hi]=WideSpan(entry);constexpr int first=mk5wide::kMargin,last=first+mk5wide::kVisible;
-        if(!wide.shift){   // a draw within kWideMargin of an arcade edge: its mirror image about it, if no arena (WideEdges)
-            if(lo<first+mk5wide::kWideMargin&&hi>first)wide_edge.push_back({entry,0,mk5wide::kLayerWidth,wide_hud,-mk5wide::kWideMargin});
-            if(hi>last-mk5wide::kWideMargin&&lo<last)wide_edge.push_back({entry,0,mk5wide::kLayerWidth,wide_hud,mk5wide::kWideMargin+mk5wide::kVisible});
-        }
+        if(wide.Backdrop())wide.Note(LayerRegisters(entry,0));   // a screen without an arena: noted for its margins (DrawWide)
         return WidePlace({entry,0,mk5wide::kLayerWidth,wide_hud},graphics);
     }
-    // A screen without an arena (mk5wide::Layer::Composed, at the shadow pass's end): its opaque draws (WideOpaque: tiles,
-    // panels, frames, portraits) near an arcade edge are mirrored about it into the margin, in their order; sprites, text,
-    // the HUD list and the screen's other direct draws do not move. The candidates live only within one pass.
-    std::vector<WideDraw> wide_edge;
-    void WideEdges(const std::vector<uint8_t>& graphics){
-        if(wide.tidy)for(const auto& draw:wide_edge)if(WideOpaque(draw.entry,graphics)&&DrawWide(draw,graphics))wide.edge_mirrored[wide.page][draw.mirror>0]=true;
-        wide_edge.clear();
-    }
-    // Whether a draw writes nearly every pixel of its rectangle (Layer::kCovered of them, unclipped).
-    bool WideOpaque(const std::array<uint16_t,12>& entry,const std::vector<uint8_t>& graphics)const{
-        auto r=LayerRegisters(entry,0);r[12]=0;r[13]=511;r[16]=0;r[17]=1023;
+    // Whether a draw (layer registers) writes nearly every pixel of its rectangle (Layer::kCovered of them, unclipped).
+    bool WideOpaque(std::array<uint16_t,18> r,const std::vector<uint8_t>& graphics)const{
+        r[12]=0;r[13]=511;r[16]=0;r[17]=1023;
         if((r[10]&&r[10]!=0x100)||(r[11]&&r[11]!=0x100))return false;
         const unsigned width=r[6]&0x3ff,height=r[7]&0x3ff,startskip=r[1]&0x40?r[0]&0xff:0,endskip=r[1]&0x40?r[0]>>8:r[0];
         if(width<=startskip+endskip||!height)return false;
@@ -476,13 +474,17 @@ struct BootVideo {
     bool WidePlane(const std::vector<uint8_t>& graphics){
         if(!wide_fit||wide_plane.empty()){wide_plane.clear();return true;}
         int hull_left=1<<20,hull_right=-(1<<20);std::array<bool,mk5wide::kLayerWidth> drawn{};
-        for(const auto& [e,fresh]:wide_plane){
-            const auto [lo,hi]=WideSpan(e);hull_left=std::min(hull_left,lo+mk5wide::kExtra);hull_right=std::max(hull_right,hi+mk5wide::kExtra);
-            auto r=LayerRegisters(e,0);
+        // An entry the board would refuse (its source outside the graphics: a stale object that only the shadow's wider
+        // window stages, the game never draws it) is left out of the plane.
+        for(size_t n=0;n<wide_plane.size();){
+            const auto& e=wide_plane[n].entry;auto r=LayerRegisters(e,0);
             try{Render(e[1],r,e[8],graphics,[&](size_t index,uint16_t,bool){drawn[index%mk5wide::kLayerWidth]=true;},[]{},
                        mk5wide::kLayerWidth,Passes::check);}
-            catch(const std::runtime_error&){wide_plane.clear();return false;}
+            catch(const std::runtime_error&){wide_plane.erase(wide_plane.begin()+std::ptrdiff_t(n));continue;}
+            const auto [lo,hi]=WideSpan(e);hull_left=std::min(hull_left,lo+mk5wide::kExtra);hull_right=std::max(hull_right,hi+mk5wide::kExtra);
+            ++n;
         }
+        if(wide_plane.empty())return true;
         const int plane_shift=mk5wide::PlaneShift(wide.shift,wide_plane_ratio);
         const auto fit=mk5wide::FitPlane(drawn,hull_left,hull_right,plane_shift,[&](int end,bool left){return WideEndShown(end,left,plane_shift);});
         if(fit.fitted())++wide.page_fitted[wide.page];
@@ -505,14 +507,19 @@ struct BootVideo {
             mk5wide::Fit fit;(draw.mirror>0?fit.mirror_right:fit.mirror_left)=std::abs(draw.mirror);
             if(!mk5wide::MirrorDraw(r,fit,draw.mirror>0)||!KnownCommand(r[1]))return true;
         }
-        const bool fixed=draw.width>=mk5wide::kLayerWidth&&draw.fixed;   // a stretched (fitted) plane is scenery
+        // A screen without an arena (mk5wide::Layer::Backdrop): the arcade's columns only.
+        if(!draw.mirror&&draw.width>=mk5wide::kLayerWidth&&wide.Backdrop()){r[16]=mk5wide::kWideMargin;r[17]=mk5wide::kWideMargin+mk5wide::kVisible-1;}
+        return RenderLayer(r,graphics,draw.width,draw.width>=mk5wide::kLayerWidth&&draw.fixed);   // a stretched (fitted) plane is scenery
+    }
+    // Layer registers drawn into the layer, stretched to width (mk5wide::Stretch); fixed: screen-fixed pixels.
+    bool RenderLayer(const std::array<uint16_t,18>& r,const std::vector<uint8_t>& graphics,int width=mk5wide::kLayerWidth,bool fixed=false){
         // mk5wide::Layer::Write through plain pointers (the render's stores cannot move the layer).
         uint16_t* const pens=wide.pens.data();uint8_t* const marks=wide.fixed.data();uint16_t* const stains=wide.blood.empty()?nullptr:wide.blood.data();
         const size_t size=wide.pens.size();
         try{
             Render(r[1],r,r[8],graphics,[&](size_t index,uint16_t pen,bool write){
                 if(!write||index>=size)return;
-                mk5wide::Stretch(index,draw.width,[&](size_t i){pens[i]=pen;marks[i]=fixed;if(stains)stains[i]=0;});
+                mk5wide::Stretch(index,width,[&](size_t i){pens[i]=pen;marks[i]=fixed;if(stains)stains[i]=0;});
             },[]{},mk5wide::kLayerWidth,Passes::write);
         }catch(const std::runtime_error&){return false;}
         return true;
