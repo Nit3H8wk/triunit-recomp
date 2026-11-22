@@ -352,9 +352,8 @@ public:
             // T-unit ROM windows have no write handler; preserve only the physical bus lane.
         } else if (address >= 0x01000000 && address <= 0x013ffff0) {
             out.main_ram.at((address - 0x01000000) / 16) = value;
-            const auto low = s.ram.find(address), high = s.ram.find(address - 16);
-            if (low != s.ram.end()) low->second = (low->second & 0xffff0000) | value;
-            if (high != s.ram.end()) high->second = (high->second & 0xffff) | (uint32_t(value) << 16);
+            if (const auto low = s.ram.Find(address)) *low = (*low & 0xffff0000) | value;
+            if (const auto high = s.ram.Find(address - 16)) *high = (*high & 0xffff) | (uint32_t(value) << 16);
         } else if (address >= 0x01400000 && address <= 0x0141fff0)
             s.WriteCmos((address - 0x01400000) / 16, value, 0xffff);
         else if (address == 0x00f20c60 || address == 0x00f20c70 ||

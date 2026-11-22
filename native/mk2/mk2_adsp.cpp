@@ -139,7 +139,7 @@ void AdspBoot::WriteProgram(uint16_t address, uint32_t value) {
     if (address < pm.size()) pm[address] = value & 0xffffff;
     else if (address >= 0x0800 && address < 0x2000) external_pm[address & 0x7ff] = value & 0xffffff;
     else throw std::runtime_error("ADSP PM write outside DCS 2K map");
-    accesses.push_back({instruction_pc_, address, value & 0xffffff, cycles, 'p'});
+    Record(address, value & 0xffffff, 'p');
 }
 
 void AdspBoot::PushPc() {
@@ -180,7 +180,7 @@ void AdspBoot::WriteDag(unsigned index, unsigned modifier, uint16_t value) {
 uint16_t AdspBoot::ReadProgramDag(unsigned index, unsigned modifier) {
     const uint16_t address = i.at(index);
     const uint32_t word = ReadProgram(address);
-    accesses.push_back({instruction_pc_, address, word, cycles, 'q'});
+    Record(address, word, 'q');
     px = uint8_t(word);
     Modify(index, modifier);
     return uint16_t(word >> 8);
@@ -377,7 +377,7 @@ void AdspBoot::WriteControl(uint16_t address, uint16_t value) {
         sport_timer_cancelled = true;
     }
     control[address - 0x3fe0] = value;
-    accesses.push_back({instruction_pc_, address, value, cycles, 'd'});
+    Record(address, value, 'd');
     if (address == 0x3fff && (value & 0x200)) {
         LoadBootPage(); rebooted_ = rom_bank == 1; reset_pending_ = true; control[31] = 0;
     }
@@ -402,7 +402,7 @@ void AdspBoot::WriteData(uint16_t address, uint16_t value) {
     else if (address < 0x2000 || address < 0x3a00 || address >= 0x3fe0)
         throw std::runtime_error("ADSP DM write outside qualified DCS map");
     // 3a00..3fdf is unmapped; original writes retain their physical observation.
-    accesses.push_back({instruction_pc_, address, value, cycles, 'd'});
+    Record(address, value, 'd');
 }
 
 uint16_t AdspBoot::ReadData(uint16_t address) {
@@ -420,7 +420,7 @@ uint16_t AdspBoot::ReadData(uint16_t address) {
     else if (address >= 0x3800 && address < 0x3a00) value = dm[address - 0x3800];
     else if (address >= 0x3fe0) value = ReadControl(address);
     else value = 0xffff;
-    accesses.push_back({instruction_pc_, address, value, cycles, 'r'});
+    Record(address, value, 'r');
     return value;
 }
 
@@ -443,7 +443,7 @@ uint16_t AdspBoot::ReadControl(uint16_t address) const {
 uint16_t AdspBoot::ReadInput() {
     if (i[4] != 0x3400 || m[4] || l[4]) throw std::runtime_error("ADSP input DAG outside boot scope");
     const uint16_t value = link_.DspReadInput();
-    accesses.push_back({instruction_pc_, 0x3400, value, cycles, 'r'});
+    Record(0x3400, value, 'r');
     return value;
 }
 
@@ -742,7 +742,7 @@ void AdspBoot::ExecuteInstruction() {
     } catch (...) { if (observe_trace_) trace.pop_back(); throw; }
     ++instruction_count_;
     ++cycles;
-    if(live_host_domain_ && !observe_trace_ && (accesses.size()>=4096 || serial_events.size()>=4096 || reboot_events.size()>=4096 ||
+    if(live_host_domain_ && !observe_trace_ && (accesses.size()+unrecorded_accesses_>=4096 || serial_events.size()>=4096 || reboot_events.size()>=4096 ||
        sport_pcm.size()>=32768 || sport_transfers.size()>=4096 || sport_dma_positions.size()>=4096 || sport_irq1_events.size()>=4096))DiscardLiveObservations();
 }
 

@@ -32,6 +32,13 @@ class AdspBoot {
     uint64_t instruction_ticks_ = 0;
     uint64_t instruction_count_ = 0;
     uint64_t discarded_accesses_ = 0;
+    // The live domain without observation (live_host_domain_, no trace) counts its bus accesses without recording them:
+    // nothing reads them there, the drain (DiscardLiveObservations) runs at the same counts and AccessCount is the same.
+    uint64_t unrecorded_accesses_ = 0;
+    void Record(uint16_t address, uint32_t value, char space) {
+        if (live_host_domain_ && !observe_trace_) ++unrecorded_accesses_;
+        else accesses.push_back({instruction_pc_, address, value, cycles, space});
+    }
     uint16_t instruction_pc_ = 0;
     bool observe_trace_ = true;
     bool dac_enabled_ = false;
@@ -125,7 +132,7 @@ class AdspBoot {
           d.sport_transfers, d.sport_pcm, d.sport_dma_position, d.sport_dma_positions, d.sport_irq1_events,
           d.sport_irq1_asserted, d.sport_irq1_latched, d.sport_timer_cancelled, d.px, d.mstat, d.imask, d.icntl,
           d.astat, d.sstat, d.pc_sp, d.cntr_sp, d.loop_sp, d.stat_sp, d.cycles, d.i, d.l, d.m, d.pm, d.dm,
-          d.external_pm, d.control, d.trace, d.accesses);
+          d.external_pm, d.control, d.trace, d.accesses, d.unrecorded_accesses_);
     }
 public:
     struct Access { uint16_t pc, address; uint32_t value; uint64_t cycle; char space;
@@ -172,10 +179,10 @@ public:
         std::vector<std::vector<uint64_t>>().swap(trace);
     }
     std::vector<Access> accesses;
-    uint64_t AccessCount() const { return discarded_accesses_ + accesses.size(); }
+    uint64_t AccessCount() const { return discarded_accesses_ + accesses.size() + unrecorded_accesses_; }
     // Presentation consumes completed observation windows, preserving absolute SPORT positions.
     void DiscardObservedAccesses() {
-        discarded_accesses_ += accesses.size();
+        discarded_accesses_ += accesses.size() + unrecorded_accesses_;unrecorded_accesses_ = 0;
         std::vector<Access>().swap(accesses);
     }
     AdspBoot(const std::vector<uint32_t>& boot, DcsLink& link, const std::vector<uint8_t>& rom = {});
