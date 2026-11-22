@@ -217,6 +217,8 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
                 uint32_t object=ram_long(mk2::wide::kFreeList),link=mk2::wide::kFreeList;
                 for(;object>=0x01000000&&object<0x013fffe0&&free.size()<mk2::wide::kPoolObjects;link=object,object=ram_long(object))free.push_back(object);
                 std::sort(free.begin(),free.end());
+                for(unsigned slot=0;slot<mk2::wide::kPaletteSlots;++slot)
+                    o.out.video.wide_palettes[slot]=ram_long(mk2::wide::kPaletteTable+slot*mk2::wide::kPaletteEntry);
                 shadow_saved={s.a,s.b,s.status};shadow_steps=0;o.shadow=true;o.shadow_fault=false;
                 shadow_view(d);
                 // The free list does not end in 0 (its last link holds another value): the game never takes its last object, but

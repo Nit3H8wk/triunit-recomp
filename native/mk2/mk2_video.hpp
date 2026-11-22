@@ -408,6 +408,9 @@ struct BootVideo {
     // shadow's own streamer run. The real streamer builds only every 8 frames, so such an object that reaches the arcade's
     // columns is not on the arcade screen yet (a fast plane pops in at the edge): it is left out, unless its plane is fitted.
     std::vector<uint32_t> wide_free;
+    // The palette slots' ROM pointers when the shadow pass starts (mk2::wide::kPaletteTable); not state (the pass never spans
+    // a batch). A shadow draw in a slot the pass booked for another palette is left out: its colours are not loaded yet.
+    std::array<uint32_t,mk2::wide::kPaletteSlots> wide_palettes{};
     bool WideFresh(uint32_t object)const{return std::binary_search(wide_free.begin(),wide_free.end(),object);}
     // An entry's columns in the layer [first, last) from its x (10-bit DMA x read as -256..767), width, X step and flip.
     static std::pair<int,int> WideSpan(const std::array<uint16_t,12>& e){return mk5wide::Span(e[4],e[6],e[10],(e[1]&0x10)!=0);}

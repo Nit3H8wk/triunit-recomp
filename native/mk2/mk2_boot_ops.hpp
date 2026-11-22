@@ -814,6 +814,12 @@ public:
         }
         Finish(fill_remaining_ ? s.next_pc : next, cycles);
     }
+    // A shadow entry in a palette slot that the pass itself booked for another palette (BootVideo::wide_palettes).
+    bool WideBooked(const std::array<uint16_t,12>& entry)const{
+        const unsigned slot=(entry[8]>>8)&0x7f;if(slot>=mk2::wide::kPaletteSlots)return false;
+        const size_t i=(mk2::wide::kPaletteTable+slot*mk2::wide::kPaletteEntry-0x01000000)/16;
+        return (out.main_ram[i]|uint32_t(out.main_ram[i+1])<<16)!=out.video.wide_palettes[slot];
+    }
     void Mmtm(uint16_t mask, uint32_t next, bool bank_b = false, unsigned base = 15) {
         if (base > 15)
             throw std::runtime_error("MK2 boot MMTM address register is not translated");
@@ -821,7 +827,7 @@ public:
         if(shadow && s.next_pc==mk2::wide::kDrawerStage){
             std::array<uint16_t,12> entry{};const unsigned regs[6]={12,11,10,9,8,6};
             for(unsigned k=0;k<6;++k){entry[2*k]=uint16_t(s.a[regs[k]]);entry[2*k+1]=uint16_t(s.a[regs[k]]>>16);}
-            if(!out.video.WideEntry(entry,program.graphics,out.video.WideFresh(s.a[0])))shadow_fault=true;   // A0: the object
+            if(!WideBooked(entry)&&!out.video.WideEntry(entry,program.graphics,out.video.WideFresh(s.a[0])))shadow_fault=true;   // A0: the object
         } else if(shadow && s.next_pc==mk2::wide::kFloorStage){   // the floor producer: A9 r0/r1, A8 r2/r3, A7 r4/r5, A6 r6/r7, A3 r8/r9, A2 r10/r11
             std::array<uint16_t,12> entry{};const unsigned regs[6]={9,8,7,6,3,2};
             for(unsigned k=0;k<6;++k){entry[2*k]=uint16_t(s.a[regs[k]]);entry[2*k+1]=uint16_t(s.a[regs[k]]>>16);}
@@ -832,7 +838,7 @@ public:
                 const uint32_t source=(entry[2]|uint32_t(entry[3])<<16)-uint32_t(lead)*bpp;
                 entry[2]=uint16_t(source);entry[3]=uint16_t(source>>16);entry[4]=uint16_t(entry[4]-lead);entry[6]=mk5wide::kLayerWidth;
             }
-            if(!out.video.WideEntry(entry,program.graphics))shadow_fault=true;
+            if(!WideBooked(entry)&&!out.video.WideEntry(entry,program.graphics))shadow_fault=true;
         }
         // Widescreen: the real walk's entries (their queue cursors); the shadow's own copies replace them when it drew this frame.
         if(!shadow && out.video.WideEnabled() && (s.next_pc==mk2::wide::kDrawerStage || s.next_pc==mk2::wide::kFloorStage)){

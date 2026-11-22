@@ -21,6 +21,10 @@ struct Range {uint32_t from,to;};
 constexpr Range kStreamerCode[]={{0xff9f8030,0xff9f8260},{0xff80af00,0xff80c600},{0xff8090b0,0xff809280},
                                  {0xff8093a0,0xff809580},{0xff809ea0,0xff809fa0},{0xff80c6b0,0xff80c7e0},{0xff80d180,0xff80d790}};
 inline bool StreamerCode(uint32_t pc){for(const auto& r:kStreamerCode)if(pc>=r.from&&pc<=r.to)return true;return false;}
+// The palette slots' table (the search at FF80CBC0 compares kPaletteSlots entries from kPaletteTable, kPaletteEntry apart):
+// each the long of the palette's ROM pointer in the slot. A palette the shadow's streamer allocates is only booked in that
+// table, which the journal undoes: its colours are not in the palette RAM (BootVideo::wide_palettes).
+constexpr uint32_t kPaletteTable=0x0105bb30,kPaletteEntry=0x40;constexpr unsigned kPaletteSlots=0x3c;
 // The object pool's free list: its head long; each free object's first long links the next (0 ends it; FF8090D0).
 constexpr uint32_t kFreeList=0x01060130;constexpr size_t kPoolObjects=4096;
 // RAM: the clip longs (top-left, bottom-right as y<<16|x) and the page origin long (its high word: the page's first row).
