@@ -85,7 +85,7 @@ void Mk5TaskBodyRunner::wide_pre(uint32_t pc){
     if(ram_long(w::kClipTopLeft)!=0 || ram_long(w::kClipBottomRight)!=w::kArcadeBottomRight)return;
     const unsigned mode=word(w::kMode);
     const int d=v.WideBegin(w::Shifting(mode),w::Holding(mode),int16_t(word(w::kCameraX)),int16_t(word(w::kCameraMin)),
-                            int16_t(word(w::kCameraMax)),w::Menu(mode));
+                            int16_t(word(w::kCameraMax)),w::Menu(mode),mode==w::kAttractMode);
     shadow_a=s.a;shadow_b=s.b;shadow_status=s.status;shadow_returns=f.check.returns.size();shadow_writes=s.writes.size();
     shadow_stack_reads=f.check.stack_read_count;shadow_lowest_sp=f.check.lowest_sp;shadow_quanta=irq.elapsed_quanta();
     shadow_cycles=s.reference_cycles;shadow_steps=0;shadow_journal.clear();shadow=true;shadow_refused=false;

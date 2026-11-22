@@ -1,5 +1,6 @@
 #include "mk5_live_video.hpp"
 #include <algorithm>
+#include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <stdexcept>
@@ -297,7 +298,7 @@ bool Mk5LiveVideo::ShadowWrite(unsigned offset,uint16_t value){
     auto r=shadow_regs;r[1]=value;shadow_regs=r;
     DmaShape d;if(!Shape(r,gfx,d))return false;
     const WideEntry e{r,cpu.a[0],0,mk5wide::kLayerWidth,wide_hud,false};
-    if(!wide_hud)wide.arena=true;   // a draw that follows a camera
+    if(!wide_hud && wide_fit)wide.arena=true;   // a far plane's draw: an arena (the menus and attract screens draw in the world list)
     if(wide_fit)wide_plane.push_back(e);else WideStage(e);
     return true;
 }
@@ -321,8 +322,12 @@ bool Mk5LiveVideo::WideOutside(const WideEntry& e,bool made){
     auto r=e.regs;r[4]=uint16_t(r[4]+e.shift);
     const auto [lo,hi]=mk5wide::Span(r[4],r[6],r[10],(r[1]&16)!=0);
     const int on=std::min(hi,mk5wide::kMargin+mk5wide::kVisible)-std::max(lo,mk5wide::kMargin);
-    const bool whole=e.fitted || wide.shift || (!made && on<=kEdgeDrop);
+    const bool whole=e.fitted || e.mirror || wide.shift || (!made && on<=kEdgeDrop);
     r[4]=mk5wide::LayerX(r[4]);r[16]=0;r[17]=mk5wide::kLayerWidth-1;
+    if(e.mirror){   // its clip is the columns beyond the plane's end; one the board cannot draw (scaled) is left out
+        mk5wide::Fit fit;(e.mirror>0?fit.mirror_right:fit.mirror_left)=std::abs(e.mirror);
+        DmaShape d;if(!mk5wide::MirrorDraw(r,fit,e.mirror>0)||!Shape(r,gfx,d))return true;
+    }
     DmaShape d;if(!Shape(r,gfx,d))return false;
     constexpr int first=mk5wide::kWideMargin,last=first+mk5wide::kVisible;
     Blit(r,d,gfx,[&](size_t dest,uint16_t pen){
@@ -330,7 +335,34 @@ bool Mk5LiveVideo::WideOutside(const WideEntry& e,bool made){
         if(!e.fitted){const int c=int(dest%mk5wide::kLayerWidth);if(!whole && c>=first && c<last)return;wide.Write(dest,pen,e.fixed);return;}
         mk5wide::Stretch(dest,e.width,[&](size_t i){wide.Write(i,pen,false);});
     },mk5wide::kLayerWidth);
+    // A screen without an arena (mk5wide::Layer::Composed): its opaque draws (tiles, panels, frames, portraits: Opaque) within kWideMargin of an arcade edge are mirrored about that edge into the margin; sprites, the text drawn
+    // outside the walk and the decompressed images (Layer::MirrorEdge) do not take this path.
+    if(wide.tidy && !e.mirror && !e.fitted && !wide.shift && Opaque(e.regs))
+        for(const bool right_end:{false,true}){
+            if(right_end?hi<=mk5wide::kMargin+mk5wide::kVisible-mk5wide::kWideMargin || lo>=mk5wide::kMargin+mk5wide::kVisible
+                        :lo>=mk5wide::kMargin+mk5wide::kWideMargin || hi<=mk5wide::kMargin)continue;
+            // About the arcade's edge, or about the draw's own end when that lies in the arcade's last kEdgeDrop+1 columns (an
+            // edge the arcade leaves in the page's pen would show as a seam in the wide frame).
+            constexpr int near=kEdgeDrop+1,edge_left=mk5wide::kMargin,edge_right=mk5wide::kMargin+mk5wide::kVisible;
+            mk5wide::Fit fit;
+            if(right_end)fit.mirror_right=hi>=edge_right-near&&hi<edge_right?hi+mk5wide::kExtra:last;
+            else fit.mirror_left=lo>edge_left&&lo<=edge_left+near?lo+mk5wide::kExtra:first;
+            auto m=r;DmaShape md;
+            if(mk5wide::MirrorDraw(m,fit,right_end) && Shape(m,gfx,md)){
+                Blit(m,md,gfx,[&](size_t dest,uint16_t pen){if(dest<wide.pens.size())wide.Write(dest,pen,e.fixed);},mk5wide::kLayerWidth);
+                wide.edge_mirrored[wide.page][right_end]=true;
+            }
+        }
     return true;
+}
+// Whether a draw writes nearly every pixel of its rectangle (mk5wide::Layer::kCovered of them, unclipped): a tile, a panel or
+// a portrait, not a sprite.
+bool Mk5LiveVideo::Opaque(std::array<uint16_t,18> r)const{
+    r[12]=0;r[13]=511;r[16]=0;r[17]=1023;
+    DmaShape d;if(!Shape(r,gfx,d) || d.xstep!=256 || d.ystep!=256)return false;
+    const unsigned start=(r[1]&64)?r[0]&255:0,end=(r[1]&64)?r[0]>>8:r[0],columns=d.width>end+start?d.width-end-start:0;
+    size_t written=0;Blit(r,d,gfx,[&](size_t,uint16_t){++written;},1024);
+    return columns && written*100>=size_t(columns)*d.height*mk5wide::Layer<uint8_t>::kCovered;
 }
 bool Mk5LiveVideo::WideList(bool fit,unsigned slot,int32_t velocity,int32_t world_velocity){
     const bool placed=WidePlane();wide_fit=fit;wide_plane_ratio=nullptr;
@@ -355,7 +387,12 @@ bool Mk5LiveVideo::WidePlane(){
     const auto fit=mk5wide::FitPlane(drawn,hull_left,hull_right,plane_shift,[&](int end,bool left){
         return mk5wide::EndShown(end,left,plane_shift,wide.world,wide.limits,wide_plane_ratio);});
     if(fit.fitted())++wide.page_fitted[wide.page];
-    for(auto e:wide_plane){e.shift=fit.shift;e.width=fit.width;e.fitted=fit.fitted();WideStage(e);}
+    for(auto e:wide_plane){
+        e.shift=fit.shift;e.width=fit.width;e.fitted=fit.fitted();WideStage(e);
+        e.object=0;   // the mirror images follow their draw; the real walk never makes them
+        if(fit.mirror_left>0){e.mirror=-fit.mirror_left;WideStage(e);}
+        if(fit.mirror_right<mk5wide::kLayerWidth){e.mirror=fit.mirror_right;WideStage(e);}
+    }
     wide_plane.clear();return true;
 }
 uint32_t Mk5LiveVideo::CpuRead(uint32_t bit,unsigned width)const{

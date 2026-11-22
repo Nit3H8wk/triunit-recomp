@@ -50,6 +50,8 @@ constexpr uint32_t kCameraMin=0x010517e0,kCameraMax=0x010517f0,kMode=0x01051190;
 constexpr unsigned kShiftModes=(1u<<2)|(1u<<6),kHoldModes=(1u<<3)|(1u<<5);
 inline bool Shifting(unsigned mode){return mode<16&&(kShiftModes>>mode&1);}
 inline bool Holding(unsigned mode){return mode<16&&(kHoldModes>>mode&1);}
+// The attract (1) shows demo fights between its screens: it shifts while the last build was an arena's (a far plane drew).
+constexpr unsigned kAttractMode=1;
 // Menu modes (fighter select 4, battle plan 7, 13): their screens have no arena even where their objects follow a camera.
 constexpr unsigned kMenuModes=(1u<<4)|(1u<<7)|(1u<<13);
 inline bool Menu(unsigned mode){return mode<16&&(kMenuModes>>mode&1);}

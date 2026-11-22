@@ -119,11 +119,19 @@ ResetTrace RunTestSwitch(const Program& program,ValidCmosContinuation prefix,Dcs
 static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinuation& prefix,
     DcsBootMachine& machine, uint64_t end_cycle, uint64_t instruction_count,
     unsigned dma_completions, uint64_t dma_start, bool coin_queue = false, bool coin_accounting = false,
-    bool coin_pair = false, bool start_wait = false, bool next_wait = false, bool prestart_wait = false, bool start_input = false, bool start_release = false, bool selection = false, bool first_fight = false, bool first_fight_high_punch = false, bool host_controls = false, bool live_host = false) {
+    bool coin_pair = false, bool start_wait = false, bool next_wait = false, bool prestart_wait = false, bool start_input = false, bool start_release = false, bool selection = false, bool first_fight = false, bool first_fight_high_punch = false, bool host_controls = false, bool live_host = false,
+    BootContinuation* consume = nullptr) {
+    // consume: the caller's own prefix, used no more (the live chunks): its state moves into the result instead of a copy.
     TaskBatchInit result;
-    result.ready = prefix.ready; result.main_ram = prefix.main_ram; result.video = prefix.video;
-    result.observe_history = prefix.observe_history;
-    if(live_host)result.execution=prefix.execution;
+    if(consume && consume==&prefix){
+        result.ready = std::move(consume->ready); result.main_ram = std::move(consume->main_ram); result.video = std::move(consume->video);
+        result.observe_history = consume->observe_history;
+        if(live_host)result.execution=std::move(consume->execution);
+    } else {
+        result.ready = prefix.ready; result.main_ram = prefix.main_ram; result.video = prefix.video;
+        result.observe_history = prefix.observe_history;
+        if(live_host)result.execution=prefix.execution;
+    }
     BootOps o(program, machine, result);
     auto& s = o.s;
     if(host_controls && (!first_fight || !s.board.HostInputProviderActive() || first_fight_high_punch))
@@ -155,7 +163,7 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
         if(o.shadow_fault)o.out.video.margin_fault_pc=shadow_fault_pc;
         o.shadow=false;shadow_skip=true;o.out.video.margin_faults+=o.shadow_fault;
         o.out.video.wide_walk_drawn=!o.shadow_fault;   // else the real walk's DMAs are mirrored too
-        if(!o.shadow_fault)o.out.video.wide.Composed();
+        if(!o.shadow_fault){o.out.video.wide.Composed();o.out.video.WideEdges(o.program.graphics);}else o.out.video.wide_edge.clear();
     };
     // The shadow's clip and virtual camera, written through the journal: each scroll moves by its ratio times d (the world's
     // by d), the ratios read again whenever the world moves.
@@ -205,6 +213,7 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
                 const int d=o.out.video.wide.Offset(mk2::wide::Shifting(mode),mk2::wide::Holding(mode),word(mk2::wide::kCameraX),
                                                     word(mk2::wide::kCameraMin),word(mk2::wide::kCameraMax),mk2::wide::kWorldMax);
                 o.out.video.SetWideShift(d);o.out.video.wide_hud=false;
+                o.out.video.wide.arena=mk2::wide::Shifting(mode)||mk2::wide::Holding(mode);   // a fight's modes are an arena's
                 auto& free=o.out.video.wide_free;free.clear();   // the pool's free objects before the shadow's streamer run
                 for(uint32_t object=ram_long(mk2::wide::kFreeList);object>=0x01000000&&object<0x013fffe0&&free.size()<mk2::wide::kPoolObjects;
                     object=ram_long(object))free.push_back(object);
@@ -877,7 +886,7 @@ LiveHostContinuation RunValidLiveHost(const Program& program,const ValidCmosCont
     BootContinuation admitted=prefix;admitted.ready.board.SetHostInputProvider(std::move(provider),s.cycles*16);
     machine.AdmitValidCmosLiveHost(admitted.ready.board,deadline);
     auto result=ExecuteTaskBatch(program,admitted,machine,requested,deadline-s.cycles,0,0,
-        false,false,false,false,false,false,false,false,false,true,false,true,true);
+        false,false,false,false,false,false,false,false,false,true,false,true,true,&admitted);
     result.host_origin=HostOrigin::valid_cmos_live;
     return LiveHostContinuation(std::move(result),machine,machine.LiveHostGeneration());
 }
@@ -895,7 +904,7 @@ LiveHostContinuation ResumeValidLiveHost(const Program& program,LiveHostContinua
     auto admitted=std::move(prefix.state_);prefix.owner_=nullptr;prefix.generation_=0;
     machine.RenewValidCmosLiveHost(admitted.ready.board,generation,deadline);
     auto result=ExecuteTaskBatch(program,admitted,machine,requested,deadline-begin,0,0,
-        false,false,false,false,false,false,false,false,false,true,false,true,true);
+        false,false,false,false,false,false,false,false,false,true,false,true,true,&admitted);
     result.host_origin=HostOrigin::valid_cmos_live;
     return LiveHostContinuation(std::move(result),machine,machine.LiveHostGeneration());
 }

@@ -52,8 +52,9 @@ class Mk5LiveVideo {
     bool wide_walk_drawn=false,wide_walk=false;
     // A staged draw: its registers (VRAM x at the virtual camera), its object, how it reaches the layer (a fitted far plane
     // moves and stretches, mk5wide::Fit, and replaces the arcade's own draw of the object).
-    struct WideEntry{std::array<uint16_t,18> regs;uint32_t object;int shift,width;bool fixed,fitted;
-        template<class A> friend void Fields(A& a,WideEntry& e){a(e.regs,e.object,e.shift,e.width,e.fixed,e.fitted);}};
+    // mirror: the draw's mirror image about a mirrored plane's end (mk5wide::Fit): its right end's column, or minus its left one.
+    struct WideEntry{std::array<uint16_t,18> regs;uint32_t object;int shift,width;bool fixed,fitted;int mirror=0;
+        template<class A> friend void Fields(A& a,WideEntry& e){a(e.regs,e.object,e.shift,e.width,e.fixed,e.fitted,e.mirror);}};
     std::vector<WideEntry> wide_staged;size_t wide_cursor=0;
     // The shadow's draw being staged: a screen-fixed object (the drawer's test), a far plane whose draws wait for the list's
     // end (the per-plane fit).
@@ -116,7 +117,7 @@ public:
     uint32_t FillXY(ResetTrace&);
     // Widescreen. EnableWide before the run; the runner drives the frame (WideFrame, WideEndUnbuilt) and the shadow pass
     // (WideBegin, WideList, ShadowWrite/ShadowRead for its DMA registers, WideEnd).
-    void EnableWide(){wide.Enable(m.vram,!blood_layer.empty());}
+    void EnableWide(){wide.Enable(m.vram,!blood_layer.empty(),true);}
     bool WideEnabled()const{return wide.Enabled();}
     const mk5wide::Layer<uint8_t>& WideLayer()const{return wide;}
     uint32_t WideBloodPixel(size_t index)const{const auto shade=wide.blood.empty()?0:wide.blood[index];return shade?blood_sprite.colors[shade]:0;}
@@ -129,10 +130,14 @@ public:
     }
     // The shadow pass starts: this frame's window offset from the mode, the camera and the arena's limits. Returns it.
     bool wide_menu=false;   // this build's mode is a menu's (mk5widescreen::Menu)
-    int WideBegin(bool shifting,bool holding,int camera,int low,int high,bool menu){
+    int WideBegin(bool shifting,bool holding,int camera,int low,int high,bool menu,bool attract=false){
         wide_menu=menu;
-        const int d=wide.Offset(shifting,holding,camera,low,high,mk5wide::kWorldMax);
-        wide.SetShift(d);shadow_regs=regs;wide_hud=wide_fit=false;wide_plane.clear();wide_staged.clear();wide_cursor=0;
+        const bool fight=shifting||holding;   // a fight's modes are an arena's; this build's far planes make one too
+        // An attract demo fight: the last build was an arena's, with these limits (a screen after it has others).
+        const bool demo=attract && wide.arena && wide.limits[2] && low==wide.limits[0] && high==wide.limits[1];
+        const int d=wide.Offset(shifting||demo,holding,camera,low,high,mk5wide::kWorldMax);
+        wide.SetShift(d);wide.arena=fight;
+        shadow_regs=regs;wide_hud=wide_fit=false;wide_plane.clear();wide_staged.clear();wide_cursor=0;
         shadow_active=true;return d;
     }
     bool shadow_active=false;   // no VRAM, layer or timing effect may happen while it is set
@@ -140,6 +145,7 @@ public:
     // A list starts in the shadow walk: the waiting plane is placed. A far plane brings its ratio slot and its velocity and
     // the world's (world 0: the world did not move).
     bool WideList(bool fit,unsigned slot,int32_t velocity,int32_t world_velocity);
+    bool Opaque(std::array<uint16_t,18> regs)const;
     void WideFixedObject(bool fixed){wide_hud=fixed;}
     mk5wide::Ratio& WideRatio(unsigned slot){return wide.PlaneRatio(slot);}
     bool ShadowWrite(unsigned offset,uint16_t value);

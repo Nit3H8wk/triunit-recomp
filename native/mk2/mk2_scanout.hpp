@@ -27,7 +27,7 @@ class Scanout {
     // runs (BootVideo::EnableWide). Raw colours of the original scanout.
     bool wide_on_=false;std::vector<uint32_t> wide_work_,wide_;uint64_t wide_added_work_=0,wide_added_=0,wide_centre_work_=0,wide_centre_=0;int wide_shift_work_=0,wide_shift_=0;unsigned wide_fitted_work_=0,wide_fitted_=0;
     // Widescreen presentation (Remastered, W3): each wide pixel's arcade column, where its pen is the arcade's own at that
-    // column (the world's x = L-56+d; a pixel of a screen-fixed draw, BootVideo::WideFixed, the HUD's x = L-56), so the
+    // column (the world's x = L-56+d; a pixel of a screen-fixed draw, the layer's fixed mark, the HUD's x = L-56), so the
     // Remastered layers of that column apply; kRaw where
     // only the shadow pass has it (margins, fitted planes): its raw colour, as scenery; kBlank on a blanked line.
     static constexpr int16_t kRaw=-1,kBlank=-2;
@@ -37,22 +37,29 @@ class Scanout {
     void ComposeWide(){
         const size_t n=size_t(kWideWidth)*height_;const int move=int(kWideWidth-width_)/2-wide_shift_;
         const bool backdrop=!backdrop_.empty(),fighters=fighters_.serial!=0,fighter_backdrop=fighters&&!fighters_.backdrop.empty();
-        wide_presentation_.resize(n);wide_backdrop_.assign(backdrop?n:0,0);
+        // Every pixel of each layer is written below: sized, not cleared.
+        wide_presentation_.resize(n);wide_backdrop_.resize(backdrop?n:0);
         auto& f=wide_fighters_;f.serial=fighters_.serial;f.layers.clear();
-        f.underlay.assign(fighters?n:0,0);f.backdrop.assign(fighter_backdrop?n:0,0);f.opaque_order.assign(fighters?n:0,0);f.covered.assign(fighters?n:0,0);
-        for(size_t i=0;i<n;++i){
-            const int source=wide_source_[i];const uint32_t raw=wide_[i];
+        f.underlay.resize(fighters?n:0);f.backdrop.resize(fighter_backdrop?n:0);f.opaque_order.resize(fighters?n:0);f.covered.resize(fighters?n:0);
+        // Plain pointers: the loop's stores cannot move the layers.
+        const int16_t* sources=wide_source_.data();const uint32_t *raws=wide_.data(),*bloods=wide_blood_.data(),*shown_from=presentation_.data(),
+            *backdrop_from=backdrop_.data(),*underlay_from=fighters_.underlay.data(),*fighter_backdrop_from=fighters_.backdrop.data();
+        const uint64_t* order_from=fighters_.opaque_order.data();const uint8_t* covered_from=fighters_.covered.data();
+        uint32_t *shown_to=wide_presentation_.data(),*backdrop_to=wide_backdrop_.data(),*underlay_to=f.underlay.data(),*fighter_backdrop_to=f.backdrop.data();
+        uint64_t* order_to=f.opaque_order.data();uint8_t* covered_to=f.covered.data();
+        for(size_t i=0,y=0;y<height_;++y)for(size_t x=0,line=y*width_;x<kWideWidth;++x,++i){   // line: the arcade frame's
+            const int source=sources[i];const uint32_t raw=raws[i];
             if(source>=0){
-                const size_t a=i/kWideWidth*width_+size_t(source);
-                wide_presentation_[i]=presentation_[a];if(backdrop)wide_backdrop_[i]=backdrop_[a];
-                if(fighters){f.underlay[i]=fighters_.underlay[a];f.opaque_order[i]=fighters_.opaque_order[a];f.covered[i]=fighters_.covered[a];
-                    if(fighter_backdrop)f.backdrop[i]=fighters_.backdrop[a];}
+                const size_t a=line+size_t(source);
+                shown_to[i]=shown_from[a];if(backdrop)backdrop_to[i]=backdrop_from[a];
+                if(fighters){underlay_to[i]=underlay_from[a];order_to[i]=order_from[a];covered_to[i]=covered_from[a];
+                    if(fighter_backdrop)fighter_backdrop_to[i]=fighter_backdrop_from[a];}
                 continue;
             }
-            const uint32_t blood=wide_blood_[i]?frame_shade_.Apply(wide_blood_[i]):0,shown=blood?blood:raw;
+            const uint32_t blood=bloods[i]?frame_shade_.Apply(bloods[i]):0,shown=blood?blood:raw;
             const uint32_t scenery=source==kRaw&&!blood?(raw&0xffffff)|mk5stage::scenery:0;
-            wide_presentation_[i]=shown;if(backdrop)wide_backdrop_[i]=scenery;
-            if(fighters){f.underlay[i]=shown&0xffffff;f.opaque_order[i]=UINT64_MAX;if(fighter_backdrop)f.backdrop[i]=scenery;}
+            shown_to[i]=shown;if(backdrop)backdrop_to[i]=scenery;
+            if(fighters){underlay_to[i]=shown&0xffffff;order_to[i]=UINT64_MAX;covered_to[i]=0;if(fighter_backdrop)fighter_backdrop_to[i]=scenery;}
         }
         if(fighters)for(auto layer:fighters_.layers){layer.x+=move;f.layers.push_back(std::move(layer));}   // the fighters are world
     }
@@ -188,25 +195,34 @@ public:
         }
         if(wide_on_){
             const unsigned margin=(kWideWidth-width_)/2;
-            if(!rows_){wide_shift_work_=video.WideEnabled()?video.WideShiftOfRow(row>>9):0;wide_fitted_work_=video.WideEnabled()?video.WideFittedOfRow(row>>9):0;}
+            const bool layer=video.WideEnabled();
+            if(!rows_){wide_shift_work_=layer?video.WideShiftOfRow(row>>9):0;wide_fitted_work_=layer?video.WideFittedOfRow(row>>9):0;}
             // The wide layer when the shadow pass composes it (BootVideo::EnableWide), else VRAM itself.
             const size_t base=size_t(row>>9)*mk5wide::kLayerWidth;   // the layer's line (mk5_wide.hpp)
+            const uint16_t* vram=video.vram.data()+row;const uint16_t* palette=video.palette_ram.data();
+            const size_t line=size_t(rows_)*kWideWidth;uint32_t* out=wide_work_.data()+line;
+            int16_t* sources=wide_present_?wide_source_work_.data()+line:nullptr;uint32_t* bloods=wide_present_?wide_blood_work_.data()+line:nullptr;
+            const int shift=wide_shift_work_;uint64_t added=0,centre=0;
+            // The layer's line as plain pointers (the loop's stores cannot move them).
+            const uint16_t* pens=layer?video.wide.pens.data()+base:nullptr;const uint8_t* fixed_marks=layer?video.wide.fixed.data()+base:nullptr;
+            const uint16_t* stains=layer&&!video.wide.blood.empty()?video.wide.blood.data()+base:nullptr;
             for(unsigned x=0;x<kWideWidth;++x){
-                const auto index=row+((column+x-margin)&511);const size_t at=base+x;
-                const uint16_t pen=video.WideEnabled()?video.WidePixel(at):video.vram[index];
+                const uint16_t own=vram[(column+x-margin)&511];
+                const uint16_t pen=layer?pens[x]:own;
                 const bool side=x<margin||x>=margin+width_;
-                wide_added_work_+=side&&pen!=video.vram[index];wide_centre_work_+=!side&&pen!=video.vram[index];
-                wide_work_[size_t(rows_)*kWideWidth+x]=enabled?ExpandRgb555(video.palette_ram[pen&0x7fff]):0xff000000;
-                if(wide_present_){
-                    const int world=int(x)-int(margin)+wide_shift_work_,hud=int(x)-int(margin);
+                added+=side&&pen!=own;centre+=!side&&pen!=own;
+                out[x]=enabled?ExpandRgb555(palette[pen&0x7fff]):0xff000000;
+                if(sources){
+                    const int world=int(x)-int(margin)+shift,hud=int(x)-int(margin);
                     int16_t source=enabled?kRaw:kBlank;
-                    const bool fixed=video.WideEnabled()&&video.WideFixed(at);
-                    if(enabled&&!fixed&&world>=0&&world<int(width_)&&pen==video.vram[row+((column+unsigned(world))&511)])source=int16_t(world);
-                    else if(enabled&&(fixed||!video.WideEnabled())&&hud>=0&&hud<int(width_)&&pen==video.vram[index])source=int16_t(hud);
-                    wide_source_work_[size_t(rows_)*kWideWidth+x]=source;
-                    wide_blood_work_[size_t(rows_)*kWideWidth+x]=source==kRaw&&video.WideEnabled()?video.WideBloodPixel(at):0;
+                    const bool fixed=layer&&fixed_marks[x];
+                    if(enabled&&!fixed&&world>=0&&world<int(width_)&&pen==vram[(column+unsigned(world))&511])source=int16_t(world);
+                    else if(enabled&&(fixed||!layer)&&hud>=0&&hud<int(width_)&&pen==own)source=int16_t(hud);
+                    sources[x]=source;
+                    bloods[x]=source==kRaw&&stains&&stains[x]?ExpandRgb555(stains[x]):0;
                 }
             }
+            wide_added_work_+=added;wide_centre_work_+=centre;
         }
         if(remastered_ && video.FightersEnabled()){
             if(video.FighterVideo().enabled()){

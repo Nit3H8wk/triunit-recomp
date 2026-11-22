@@ -10,7 +10,7 @@
 #include "../audio/host_gain.hpp"
 #include "../mk2/mk2_state_io.hpp"
 
-inline constexpr uint32_t kMk5SaveStateVersion=4;   // 2: the floor blood's fade references (mk5_blood_shade.hpp); 3: widescreen; 4: 16:9 layer
+inline constexpr uint32_t kMk5SaveStateVersion=5;   // 2: the floor blood's fade references (mk5_blood_shade.hpp); 3: widescreen; 4: 16:9 layer; 5: mirrored planes
 inline constexpr const char* kMk5SaveStateRevision="mk1 5.0";
 inline constexpr const char* kMk5SaveStateMagic="TRIUNIT-MK1-STATE";
 

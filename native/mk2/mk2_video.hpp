@@ -5,15 +5,16 @@
 #include "../include/mk5_fighter_video.hpp"
 #include "../include/mk5_blood_shade.hpp"
 #include <algorithm>
+#include <cstdlib>
 #include <map>
 #include <string>
 #include <tuple>
 #include <vector>
 
 namespace mk2 {
-inline uint32_t ExpandRgb555(uint16_t color) {
-    const auto expand=[](unsigned value){return (value<<3)|(value>>2);};
-    return 0xff000000|(expand((color>>10)&31)<<16)|(expand((color>>5)&31)<<8)|expand(color&31);
+[[gnu::always_inline]] inline uint32_t ExpandRgb555(uint16_t color) {   // each 5-bit channel v as (v<<3)|(v>>2); per pixel, so always inline
+    const unsigned r=(color>>10)&31,g=(color>>5)&31,b=color&31;
+    return 0xff000000|(((r<<3)|(r>>2))<<16)|(((g<<3)|(g>>2))<<8)|((b<<3)|(b>>2));
 }
 struct BootVideo {
     std::vector<uint16_t> palette_ram = std::vector<uint16_t>(32768);
@@ -176,52 +177,65 @@ struct BootVideo {
         if (offset <= 15) return dma_registers[offset];
         throw std::runtime_error("MK2 DMA register outside qualified video initialization");
     }
+    // Measured commands plus the pinned finite unscaled sets below, as a table built once.
+    static bool KnownCommand(uint16_t command){
+        static const std::vector<bool> table=[]{
+            std::vector<bool> known(65536);
+            known[0x8423]=true;   // the opaque copy
+            for(auto value : {0x9008,0xe002,0xe482,0xef82,0xe082,0xe282,0xd782,0xd182,0xd382,
+                              0xec82,0xe882,0xee92,0xe192,0xe182,0xeb92,0xeb82,0xe012,0xe292,0xee82,0xc382,0xe092,
+                              0xb002,0xc002,0xc012,0xe582,0xf002,0x900c,0xe982,0xf00c,
+                              0xa00c,0xb082,0xb182,0xb582,0xd002,0xd082,0xd192,0xd282,0xd582,0xd682,0xd882,0xe098,0xe198,0xe382,0xe488,0xe492,0xe498,0xe588,0xe592,0xe598,0xe682,0xe692,0xe698,0xe782,0xe892,0xea82,0xea92,0xea98,0xed92,0xed98,
+                              0xe088,0xe188,0xe792,0xd692,0xe008,0xe898,0xe992,0xe998,0xd592,0xe5b2,0xe888,0xa002,0xc082,0xc092,0xc192,0xc482,0xc582,0xc592,0xc692,0xd092,0xed82,0xe018,0xe988,0xe688,0xea88,0xc182,0xc492,0xca92,0xd012,0xd492})
+                known[value]=true;
+            // Pinned unscaled 1..8bpp skip/copy: all16 pre/post pairs and both X directions tested.
+            for(unsigned base : {0x8082u,0x9082u,0xa082u,0xb082u,0xc082u,0xd082u,0xe082u,0xf082u})
+                for(unsigned pair=0;pair<16;++pair)
+                    for(unsigned flip : {0u,0x10u})
+                        known[base|(pair<<8)|flip]=true;
+            // Pinned uncompressed copy: both X directions and start/end skip encodings.
+            for(unsigned base : {0x8002u,0x9002u,0xa002u,0xb002u,0xc002u,0xd002u,0xe002u,0xf002u})
+                for(unsigned flags : {0u,0x10u,0x40u,0x50u})
+                    known[base|flags]=true;
+            // Pinned 1..8bpp Y flip, all row-header pairs, both X directions and skip encodings.
+            for(unsigned base : {0x80a2u,0x90a2u,0xa0a2u,0xb0a2u,0xc0a2u,0xd0a2u,0xe0a2u,0xf0a2u})
+                for(unsigned pair=0;pair<16;++pair)
+                    for(unsigned flip : {0u,0x10u})
+                        known[base|(pair<<8)|flip]=true;
+            for(unsigned base : {0x8002u,0x9002u,0xa002u,0xb002u,0xc002u,0xd002u,0xe002u,0xf002u})
+                for(unsigned flags : {0x20u,0x30u,0x60u,0x70u})
+                    known[base|flags]=true;
+            // Pinned 6bpp skip/color: all pre/post pairs and independent X/Y flips.
+            for(unsigned pair=0;pair<16;++pair)
+                for(unsigned flips : {0u,0x10u,0x20u,0x30u})
+                    known[0xe088u|(pair<<8)|flips]=true;
+            // Pinned non-skipping unscaled fill: all BPP encodings and independent X/Y flips.
+            for(unsigned base : {0x800cu,0x900cu,0xa00cu,0xb00cu,0xc00cu,0xd00cu,0xe00cu,0xf00cu})
+                for(unsigned flips : {0u,0x10u,0x20u,0x30u})
+                    known[base|flips]=true;
+            // Pinned uncompressed nonzero-color: 1..8bpp, X/Y flips and both edge-skip encodings.
+            for(unsigned base : {0x8008u,0x9008u,0xa008u,0xb008u,0xc008u,0xd008u,0xe008u,0xf008u})
+                for(unsigned flags : {0u,0x10u,0x20u,0x30u,0x40u,0x50u,0x60u,0x70u})
+                    known[base|flags]=true;
+            return known;
+        }();
+        return table[command];
+    }
+    // Render's passes: both (the board's DMA: the whole draw validated, then written), only the validating one (put
+    // always gets write false), or only the writing one when no read of the draw can fail (its source ends inside the
+    // graphics ROM); else both, so a refused draw still changes nothing.
+    enum class Passes{both,check,write};
     // The board's DMA over registers r (the destination clip in r12/r13 and r16/r17) and the palette register: every pixel
     // goes to put(index, pen, write), first with write false (the whole draw is validated before any change), then true;
     // between() runs between the passes. Returns the pixels the DMA timing charges.
     template<class Put,class Between>
     static unsigned Render(uint16_t command,const std::array<uint16_t,18>& r,uint16_t palette_register,
-                           const std::vector<uint8_t>& graphics,Put&& put,Between&& between,size_t stride=512) {
-        // Measured commands plus the pinned finite unscaled sets below.
+                           const std::vector<uint8_t>& graphics,Put&& put,Between&& between,size_t stride=512,
+                           Passes passes=Passes::both) {
         // Validate the whole draw before framebuffer mutation.
         const bool fill=(command&15)==12;
         const bool opaque_copy=command==0x8423;
-        bool known=opaque_copy;
-        for(auto value : {0x9008,0xe002,0xe482,0xef82,0xe082,0xe282,0xd782,0xd182,0xd382,
-                          0xec82,0xe882,0xee92,0xe192,0xe182,0xeb92,0xeb82,0xe012,0xe292,0xee82,0xc382,0xe092,
-                          0xb002,0xc002,0xc012,0xe582,0xf002,0x900c,0xe982,0xf00c,
-                          0xa00c,0xb082,0xb182,0xb582,0xd002,0xd082,0xd192,0xd282,0xd582,0xd682,0xd882,0xe098,0xe198,0xe382,0xe488,0xe492,0xe498,0xe588,0xe592,0xe598,0xe682,0xe692,0xe698,0xe782,0xe892,0xea82,0xea92,0xea98,0xed92,0xed98,
-                          0xe088,0xe188,0xe792,0xd692,0xe008,0xe898,0xe992,0xe998,0xd592,0xe5b2,0xe888,0xa002,0xc082,0xc092,0xc192,0xc482,0xc582,0xc592,0xc692,0xd092,0xed82,0xe018,0xe988,0xe688,0xea88,0xc182,0xc492,0xca92,0xd012,0xd492})
-            if(command==value) known=true;
-        // Pinned unscaled 1..8bpp skip/copy: all16 pre/post pairs and both X directions tested.
-        for(unsigned base : {0x8082u,0x9082u,0xa082u,0xb082u,0xc082u,0xd082u,0xe082u,0xf082u})
-            for(unsigned pair=0;pair<16;++pair)
-                for(unsigned flip : {0u,0x10u})
-                    if(command==(base|(pair<<8)|flip))known=true;
-        // Pinned uncompressed copy: both X directions and start/end skip encodings.
-        for(unsigned base : {0x8002u,0x9002u,0xa002u,0xb002u,0xc002u,0xd002u,0xe002u,0xf002u})
-            for(unsigned flags : {0u,0x10u,0x40u,0x50u})
-                if(command==(base|flags))known=true;
-        // Pinned 1..8bpp Y flip, all row-header pairs, both X directions and skip encodings.
-        for(unsigned base : {0x80a2u,0x90a2u,0xa0a2u,0xb0a2u,0xc0a2u,0xd0a2u,0xe0a2u,0xf0a2u})
-            for(unsigned pair=0;pair<16;++pair)
-                for(unsigned flip : {0u,0x10u})
-                    if(command==(base|(pair<<8)|flip))known=true;
-        for(unsigned base : {0x8002u,0x9002u,0xa002u,0xb002u,0xc002u,0xd002u,0xe002u,0xf002u})
-            for(unsigned flags : {0x20u,0x30u,0x60u,0x70u})
-                if(command==(base|flags))known=true;
-        // Pinned 6bpp skip/color: all pre/post pairs and independent X/Y flips.
-        for(unsigned pair=0;pair<16;++pair)
-            for(unsigned flips : {0u,0x10u,0x20u,0x30u})
-                if(command==(0xe088u|(pair<<8)|flips))known=true;
-        // Pinned non-skipping unscaled fill: all BPP encodings and independent X/Y flips.
-        for(unsigned base : {0x800cu,0x900cu,0xa00cu,0xb00cu,0xc00cu,0xd00cu,0xe00cu,0xf00cu})
-            for(unsigned flips : {0u,0x10u,0x20u,0x30u})
-                if(command==(base|flips))known=true;
-        // Pinned uncompressed nonzero-color: 1..8bpp, X/Y flips and both edge-skip encodings.
-        for(unsigned base : {0x8008u,0x9008u,0xa008u,0xb008u,0xc008u,0xd008u,0xe008u,0xf008u})
-            for(unsigned flags : {0u,0x10u,0x20u,0x30u,0x40u,0x50u,0x60u,0x70u})
-                if(command==(base|flags))known=true;
+        const bool known=KnownCommand(command);
         const unsigned xstep=r[10]?r[10]:0x100,ystep=r[11]?r[11]:0x100;
         const bool scaled=xstep!=0x100 || ystep!=0x100;
         // The secret-fighter route's D002 zoom reaches step 0x40. E002 uses the qualified shrink path.
@@ -240,28 +254,45 @@ struct BootVideo {
         uint32_t source=fill?0:r[2]|(uint32_t(r[3])<<16);
         if(source>=0xf8000000) source-=0xf8000000;
         if(source>=0x10000000) throw std::runtime_error("MK2 pair DMA source outside graphics mapping");
+        const uint8_t* const bytes=graphics.data();bool unchecked=false;
         auto extract=[&](uint32_t bit,unsigned bits) {
+            if(unchecked)return ((unsigned(bytes[bit/8])|(unsigned(bytes[bit/8+1])<<8))>>(bit&7))&bits;
             return ((unsigned(graphics.at(bit/8))|(unsigned(graphics.at(bit/8+1))<<8))>>(bit&7))&bits;
         };
+        // A single pass (check or write): every bit the draw reads lies before its source's end (the rows' headers and
+        // pixels), so no read fails when that end's bytes are inside the ROM and the reads go unchecked; a write that does not
+        // fit gets both passes. A row header read here fails as the validating pass would.
+        if(passes!=Passes::both && (!fill || skip)){
+            uint64_t end=source;
+            if(scaled)end+=uint64_t(height)*width*bpp;
+            else for(unsigned y=0;y<height;++y){
+                if(skip){const unsigned packed=extract(uint32_t(end),0xff),pre=(packed&15)<<((command>>8)&3),post=(packed>>4)<<((command>>10)&3);
+                    end+=8;if(width>pre+post)end+=uint64_t(width-pre-post)*bpp;}
+                else end+=uint64_t(width)*bpp;
+            }
+            unchecked=end/8+1<graphics.size();
+            if(!unchecked&&passes==Passes::write)passes=Passes::both;
+        }
+        const bool check_pass=passes!=Passes::write,write_pass=passes!=Passes::check;
+        const unsigned clip_top=r[12]&0x1ff,clip_bottom=r[13]&0x1ff,clip_left=r[16]&0x3ff,clip_right=r[17]&0x3ff,color=r[9]&0xff;
         if(scaled) {
             // D002 and E002 share the uncompressed scaler for nonzero pixels.
             auto render_scaled=[&](bool write) {
                 unsigned sy=r[5]&0x1ff;
                 const int end=(int(width)-int(endskip))*256;
                 for(unsigned iy=0;iy<(height<<8);iy+=ystep,sy=(sy+1)&0x1ff) {
-                    if(sy<(r[12]&0x1ff) || sy>(r[13]&0x1ff)) continue;
+                    if(sy<clip_top || sy>clip_bottom) continue;
                     const uint32_t row_bit=source+(iy>>8)*width*bpp;
                     unsigned sx=r[4]&0x3ff;
                     for(int ix=0;ix<end;ix+=int(xstep),sx=(sx+1)&0x3ff) {
-                        if(sx<(r[16]&0x3ff) || sx>(r[17]&0x3ff)) continue;
+                        if(sx<clip_left || sx>clip_right) continue;
                         const auto pixel=extract(row_bit+unsigned(ix>>8)*bpp,mask);
                         if(pixel)put(size_t(sy)*stride+sx,uint16_t(palette|pixel),write);
                     }
                 }
             };
-            render_scaled(false);
-            between();
-            render_scaled(true);
+            if(check_pass)render_scaled(false);
+            if(write_pass){if(check_pass)between();render_scaled(true);}
             return ((width<<8)/xstep)*((height<<8)/ystep);
         }
         auto render=[&](bool write) {
@@ -276,14 +307,20 @@ struct BootVideo {
                     pre=(packed&15)<<((command>>8)&3); post=(packed>>4)<<((command>>10)&3);
                     sx=(flip?sx-pre:sx+pre)&0x3ff; ix=pre; end-=int(post);
                 }
-                if(sy>=(r[12]&0x1ff) && sy<=(r[13]&0x1ff)) {
+                if(sy>=clip_top && sy<=clip_bottom) {
                     if(ix<startskip) {bit+=(startskip-ix)*bpp; ix=startskip;}
                     if(end>int(width)-int(endskip)) end=int(width)-int(endskip);
-                    for(;int(ix)<end;++ix,sx=(flip?sx-1:sx+1)&0x3ff,bit+=bpp) {
-                        if(sx<(r[16]&0x3ff) || sx>(r[17]&0x3ff)) continue;
+                    for(;int(ix)<end && clip_left<=clip_right;++ix,sx=(flip?sx-1:sx+1)&0x3ff,bit+=bpp) {
+                        if(sx<clip_left || sx>clip_right) {
+                            // Every step up to the clip's next column draws nothing: taken at once.
+                            const unsigned steps=(flip?sx-clip_right:clip_left-sx)&0x3ff;
+                            if(int(ix)+int(steps)>=end) break;
+                            ix+=steps-1; bit+=(steps-1)*bpp; sx=(flip?sx-(steps-1):sx+(steps-1))&0x3ff;
+                            continue;
+                        }
                         const auto pixel=fill?0u:extract(bit,mask);
                         if(fill || opaque_copy || pixel)
-                            put(size_t(sy)*stride+sx,uint16_t(palette|(fill || (command&15)==8?r[9]&0xff:pixel)),write);
+                            put(size_t(sy)*stride+sx,uint16_t(palette|(fill || (command&15)==8?color:pixel)),write);
                     }
                 }
                 if(skip) {
@@ -292,9 +329,8 @@ struct BootVideo {
                 } else offset+=width*bpp;
             }
         };
-        render(false);
-        between();
-        render(true);
+        if(check_pass)render(false);
+        if(write_pass){if(check_pass)between();render(true);}
         return width*height;
     }
 
@@ -340,7 +376,7 @@ struct BootVideo {
     bool wide_hud=false,wide_mirror_world=false;   // a mirrored real DMA of scenery moves with its page
     int WideShiftOfRow(unsigned vram_row)const{return wide.ShiftOfRow(vram_row);}
     unsigned WideFittedOfRow(unsigned vram_row)const{return wide.FittedOfRow(vram_row);}
-    void SetWideShift(int d){wide.SetShift(d);}
+    void SetWideShift(int d){wide.SetShift(d);wide_edge.clear();}
     void MarkCleared(size_t index){wide.MarkCleared(index);}
     void PlainPage(unsigned page){wide.PlainPage(page,vram,blood_layer);}
     void EndUnbuiltFrame(){wide.EndUnbuiltFrame(vram,blood_layer);}
@@ -350,8 +386,9 @@ struct BootVideo {
     bool wide_shadow_post=false,wide_real_post=false;uint32_t wide_post_key=0;bool wide_post_keyed=false;
     // How an entry reaches the layer: x moved by shift columns and, when width < kLayerWidth, the columns [0, width)
     // stretched to the layer's (the per-plane fit, WidePlane).
-    struct WideDraw{std::array<uint16_t,12> entry;int shift,width;bool fixed;   // fixed: a screen-fixed (HUD) draw
-        template<class A> friend void Fields(A& a,WideDraw& d){a(d.entry,d.shift,d.width,d.fixed);}};
+    // mirror: the draw's mirror image about a mirrored plane's end (mk5wide::Fit): its right end's column, or minus its left one.
+    struct WideDraw{std::array<uint16_t,12> entry;int shift,width;bool fixed;int mirror=0;   // fixed: a screen-fixed (HUD) draw
+        template<class A> friend void Fields(A& a,WideDraw& d){a(d.entry,d.shift,d.width,d.fixed,d.mirror);}};
     std::vector<WideDraw> wide_pending;
     // Per-plane fit: the entries of a far plane's list (mk2::wide::FitCamera) wait in wide_plane until the list ends
     // (WidePlane), so the plane is placed as a whole.
@@ -370,7 +407,6 @@ struct BootVideo {
     const mk5wide::Ratio* wide_plane_ratio=nullptr;   // the far plane's ratio in this arena (mk5wide::Layer::PlaneRatio)
     void EnableWide(){wide.Enable(vram,false);}   // from what VRAM already holds; the stains' layer comes with the first stain
     bool WideEnabled()const{return wide.Enabled();}
-    uint16_t WidePixel(size_t index)const{return wide.pens[index];}
     void StartWideFrame(unsigned page_row){
         // The frame starts from the VRAM page, offset 0, unless the page was composed with an offset and not cleared since:
         // then what the game left on it is that composition (VRAM holds it unshifted).
@@ -380,9 +416,8 @@ struct BootVideo {
     }
     void MirrorWide(size_t start,size_t count){wide.Mirror(vram,start,count);}
     // A draw on the wide layer covers the floor stains there, as MaskBlood does in VRAM.
-    // fixed: the pixel belongs to a screen-fixed (HUD) draw, which the window offset does not move (WideFixed).
+    // fixed: the pixel belongs to a screen-fixed (HUD) draw, which the window offset does not move (wide.fixed).
     void WideWrite(size_t index,uint16_t pen,bool fixed=false){wide.Write(index,pen,fixed);}
-    bool WideFixed(size_t index)const{return wide.fixed[index]!=0;}
     uint32_t WideBloodPixel(size_t index)const{const auto pixel=wide.blood.empty()?0:wide.blood[index];return pixel?ExpandRgb555(pixel):0;}
     // One entry staged by the shadow walk (r0..r11 as the queue holds them) with the board's current clip; false when the
     // board's DMA would refuse it (it then draws nothing).
@@ -390,10 +425,34 @@ struct BootVideo {
     // shadow's streamer built (fresh) stays out of the arcade's columns while the window is centred: the real streamer has
     // not built it yet.
     bool WideEntry(const std::array<uint16_t,12>& entry,const std::vector<uint8_t>& graphics,bool fresh=false){
-        if(!wide_hud)wide.arena=true;   // a draw that follows a camera
+        if(!wide_hud&&wide_fit)wide.arena=true;   // a far plane's draw: an arena (the story, bios and menus draw elsewhere)
         if(wide_fit){wide_plane.push_back({entry,fresh});return true;}
         if(fresh&&!wide.shift&&WideOnArcade(entry))return true;
+        const auto [lo,hi]=WideSpan(entry);constexpr int first=mk5wide::kMargin,last=first+mk5wide::kVisible;
+        if(!wide.shift){   // a draw within kWideMargin of an arcade edge: its mirror image about it, if no arena (WideEdges)
+            if(lo<first+mk5wide::kWideMargin&&hi>first)wide_edge.push_back({entry,0,mk5wide::kLayerWidth,wide_hud,-mk5wide::kWideMargin});
+            if(hi>last-mk5wide::kWideMargin&&lo<last)wide_edge.push_back({entry,0,mk5wide::kLayerWidth,wide_hud,mk5wide::kWideMargin+mk5wide::kVisible});
+        }
         return WidePlace({entry,0,mk5wide::kLayerWidth,wide_hud},graphics);
+    }
+    // A screen without an arena (mk5wide::Layer::Composed, at the shadow pass's end): its opaque draws (WideOpaque: tiles,
+    // panels, frames, portraits) near an arcade edge are mirrored about it into the margin, in their order; sprites, text,
+    // the HUD list and the screen's other direct draws do not move. The candidates live only within one pass.
+    std::vector<WideDraw> wide_edge;
+    void WideEdges(const std::vector<uint8_t>& graphics){
+        if(wide.tidy)for(const auto& draw:wide_edge)if(WideOpaque(draw.entry,graphics)&&DrawWide(draw,graphics))wide.edge_mirrored[wide.page][draw.mirror>0]=true;
+        wide_edge.clear();
+    }
+    // Whether a draw writes nearly every pixel of its rectangle (Layer::kCovered of them, unclipped).
+    bool WideOpaque(const std::array<uint16_t,12>& entry,const std::vector<uint8_t>& graphics)const{
+        auto r=LayerRegisters(entry,0);r[12]=0;r[13]=511;r[16]=0;r[17]=1023;
+        if((r[10]&&r[10]!=0x100)||(r[11]&&r[11]!=0x100))return false;
+        const unsigned width=r[6]&0x3ff,height=r[7]&0x3ff,startskip=r[1]&0x40?r[0]&0xff:0,endskip=r[1]&0x40?r[0]>>8:r[0];
+        if(width<=startskip+endskip||!height)return false;
+        size_t written=0;
+        try{Render(r[1],r,r[8],graphics,[&](size_t,uint16_t,bool){++written;},[]{},1024,Passes::check);}
+        catch(const std::runtime_error&){return false;}
+        return written*100>=size_t(width-startskip-endskip)*height*mk5wide::Layer<uint16_t>::kCovered;
     }
     bool WidePlace(const WideDraw& draw,const std::vector<uint8_t>& graphics){
         if(wide_shadow_post){wide_pending.push_back(draw);return true;}
@@ -420,16 +479,19 @@ struct BootVideo {
         for(const auto& [e,fresh]:wide_plane){
             const auto [lo,hi]=WideSpan(e);hull_left=std::min(hull_left,lo+mk5wide::kExtra);hull_right=std::max(hull_right,hi+mk5wide::kExtra);
             auto r=LayerRegisters(e,0);
-            try{Render(e[1],r,e[8],graphics,[&](size_t index,uint16_t,bool write){if(!write)drawn[index%mk5wide::kLayerWidth]=true;},[]{},
-                       mk5wide::kLayerWidth);}
+            try{Render(e[1],r,e[8],graphics,[&](size_t index,uint16_t,bool){drawn[index%mk5wide::kLayerWidth]=true;},[]{},
+                       mk5wide::kLayerWidth,Passes::check);}
             catch(const std::runtime_error&){wide_plane.clear();return false;}
         }
         const int plane_shift=mk5wide::PlaneShift(wide.shift,wide_plane_ratio);
         const auto fit=mk5wide::FitPlane(drawn,hull_left,hull_right,plane_shift,[&](int end,bool left){return WideEndShown(end,left,plane_shift);});
         if(fit.fitted())++wide.page_fitted[wide.page];
         bool placed=true;
-        for(const auto& [e,fresh]:wide_plane)if(fit.fitted()||!fresh||wide.shift||!WideOnArcade(e))
+        for(const auto& [e,fresh]:wide_plane)if(fit.fitted()||!fresh||wide.shift||!WideOnArcade(e)){
             placed&=WidePlace({e,fit.shift,fit.width,false},graphics);
+            if(fit.mirror_left>0)placed&=WidePlace({e,0,mk5wide::kLayerWidth,false,-fit.mirror_left},graphics);
+            if(fit.mirror_right<mk5wide::kLayerWidth)placed&=WidePlace({e,0,mk5wide::kLayerWidth,false,fit.mirror_right},graphics);
+        }
         wide_plane.clear();return placed;
     }
     // An entry's registers for the layer: x in layer columns (moved by shift), the layer's own clip.
@@ -438,13 +500,20 @@ struct BootVideo {
         r[4]=mk5wide::LayerX(uint16_t(r[4]+shift));r[16]=0;r[17]=mk5wide::kLayerWidth-1;return r;
     }
     bool DrawWide(const WideDraw& draw,const std::vector<uint8_t>& graphics){
-        const auto r=LayerRegisters(draw.entry,draw.shift);
+        auto r=LayerRegisters(draw.entry,draw.shift);
+        if(draw.mirror){   // a mirror image the board cannot draw (scaled, or a command without its flipped twin) is left out
+            mk5wide::Fit fit;(draw.mirror>0?fit.mirror_right:fit.mirror_left)=std::abs(draw.mirror);
+            if(!mk5wide::MirrorDraw(r,fit,draw.mirror>0)||!KnownCommand(r[1]))return true;
+        }
+        const bool fixed=draw.width>=mk5wide::kLayerWidth&&draw.fixed;   // a stretched (fitted) plane is scenery
+        // mk5wide::Layer::Write through plain pointers (the render's stores cannot move the layer).
+        uint16_t* const pens=wide.pens.data();uint8_t* const marks=wide.fixed.data();uint16_t* const stains=wide.blood.empty()?nullptr:wide.blood.data();
+        const size_t size=wide.pens.size();
         try{
             Render(r[1],r,r[8],graphics,[&](size_t index,uint16_t pen,bool write){
-                if(!write||index>=wide.pens.size())return;
-                const bool fixed=draw.width>=mk5wide::kLayerWidth&&draw.fixed;   // a stretched (fitted) plane is scenery
-                mk5wide::Stretch(index,draw.width,[&](size_t i){wide.Write(i,pen,fixed);});
-            },[]{},mk5wide::kLayerWidth);
+                if(!write||index>=size)return;
+                mk5wide::Stretch(index,draw.width,[&](size_t i){pens[i]=pen;marks[i]=fixed;if(stains)stains[i]=0;});
+            },[]{},mk5wide::kLayerWidth,Passes::write);
         }catch(const std::runtime_error&){return false;}
         return true;
     }
