@@ -501,14 +501,16 @@ struct App {
         if(id==103){details=false;notice.clear();}
         if(nativeVideo()&&(id==videoProfile||id==videoPage)){
             if(pressed==256){pressed=-1;if(window&&GetCapture()==window)ReleaseCapture();}
-            if(id==videoProfile)videoRemastered=!videoRemastered;
+            // MK1 and MK2: the profile shown is the edition the game starts in (DEFAULT GAME VERSION), one choice for the three
+            // tabs, so the profile edited is the one saved as the game's and shown again when Settings reopen (issue #5).
+            if(id==videoProfile){videoRemastered=!videoRemastered;if(selected!=2&&(musicAvailable||!videoRemastered))draft.remastered=videoRemastered;}
             else draft.videoEffects=!draft.videoEffects;
         }
         if(id==videoScale&&nativeVideo())video().scaleMode=(video().scaleMode+1)%6;
         if(id==200)video().scanlines=(video().scanlines+1)%(nativeVideo()?int(mk5video::presets.size()):4);
         if(id==201)video().filter=(video().filter+1)%(nativeVideo()?4:2);
         if(id==202)draftLauncher.fps=draftLauncher.fps==30?60:(draftLauncher.fps==60?120:(draftLauncher.fps==120?240:30));
-        if(id==245)draft.remastered=!draft.remastered;
+        if(id==245){draft.remastered=!draft.remastered;if(selected!=2)videoRemastered=draft.remastered;}
         if(id==205)draft.audioLatency=draft.audioLatency==1?2:1;
         if(id==207)video().color=(video().color+1)%3;
         if(id==208)video().brightness=video().brightness==120?80:video().brightness+10;

@@ -33,7 +33,6 @@ void cycleVideo(App& app,int id,T VideoConfig::*field,std::initializer_list<T> v
 }
 void videoMatrix(App& app,int game){
  app.openSettings();app.key('1');
- const auto launchEdition=app.draft.remastered;
  for(bool edition:{false,true}){
   app.key('1');if(app.draft.videoEffects)app.act(videoPage);
   if(app.videoRemastered!=edition)app.act(videoProfile);
@@ -82,7 +81,7 @@ void videoMatrix(App& app,int game){
    verify(app.backend.save()&&app.backend.load(),"save and reload a combined video profile");
    verify(videoValues(app.backend.config.video(edition))==videoValues(expected),"combined values survive the INI round trip");
    verify(videoValues(app.backend.config.video(!edition))==videoValues(inactive),"combined edits must preserve inactive profile");
-   verify(app.backend.config.remastered==launchEdition,"combined edits must preserve default launch edition");
+   verify(app.backend.config.remastered==(app.musicAvailable?edition:app.draft.remastered),"the profile edited is the edition the game starts in (issue #5)");
   }
   app.act(255);
   verify(app.video().scalefxAmount==100&&!app.video().scalefx,"disabling ScaleFX preserves its strength");
@@ -149,7 +148,10 @@ int wmain(int argc,wchar_t** argv){
    app.act(3);app.act(game+1);app.openSettings();
    verify(app.settings&&enabled(274)&&enabled(275)&&enabled(276),"each native game must expose both video profiles and scaling");
    const bool launchedVersion=app.draft.remastered;
-   app.act(274);verify(app.draft.remastered==launchedVersion,"video profile selector must keep the launch version");
+   // Issue #5: the video profile is the edition the game starts in (one choice for the Video, Display and Audio tabs).
+   // Without the Remastered edition installed the profile can still be edited, but the game keeps starting in the Original.
+   const bool follows=app.musicAvailable||launchedVersion;
+   app.act(274);verify(app.draft.remastered==(follows?!launchedVersion:launchedVersion),"video profile selector chooses the launch version");
    const auto geometry=app.actions();
    app.act(274);verify(app.actions()==geometry,"Original and Remastered must offer the same scaling choices");
    app.act(275);verify(enabled(255)&&enabled(277)&&enabled(278)&&enabled(279),"effects page must expose ScaleFX, CAS, SMAA and bilateral");
@@ -168,7 +170,7 @@ int wmain(int argc,wchar_t** argv){
    const auto& other=persisted.config.video(launchedVersion);
    verify(edited.cas>0&&edited.smaa&&edited.bilateral>0&&!other.cas&&!other.smaa&&!other.bilateral,
           "saving one version's video draft must leave the other version's effects independent");
-   verify(persisted.config.remastered==launchedVersion,"saving video edits must keep the launch version");
+   verify(persisted.config.remastered==(follows?!launchedVersion:launchedVersion),"saving video edits keeps the edited profile as the launch version (issue #5)");
    app.act(274);app.act(211);app.act(274);
    verify(app.video().smaa,"restoring one video profile must keep the other profile's draft");
    app.act(videoPage);
