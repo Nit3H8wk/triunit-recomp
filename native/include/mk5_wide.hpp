@@ -373,9 +373,24 @@ struct Layer {
                     for(int y=top;y<bottom&&y<512;++y){image_rows[size_t(y)]|=right?2:1;image_palette[size_t(y)]=uint8_t((r[8]>>8)&0x7f);}
                     continue;
                 }
-                auto c=r;c[16]=0;c[17]=kLayerWidth-1;draw(c,first,last);   // its own art there
+                // A tile the game itself draws mirrored elsewhere on the screen (a draw of its source with the other X flip:
+                // a panel whose border faces the screen's middle) continues mirrored at each step, every other copy
+                // reflected about its cell's edge, so no border lands on the seam; any other repeats as is. Each copy (its
+                // own art there, then the repeats) keeps its step's cell.
                 const int step=Step(Source(r),w,art.last>art.first?art.last-art.first:w);
-                for(int k=1;right?lo+k*step<kLayerWidth:hi-k*step>0;++k){c=r;c[4]=uint16_t((c[4]+(right?k*step:-k*step))&0x3ff);c[16]=0;c[17]=kLayerWidth-1;draw(c,first,last);}
+                const bool flip=(r[1]&0x10)!=0;int x=r[4]&0x3ff;if(x>=768)x-=1024;
+                const int a0=flip?x-art.last+1:x+art.first;   // the art's first layer column
+                const bool mirrored=std::any_of(edge_draws.begin(),edge_draws.end(),[&](const std::array<uint16_t,18>& o){
+                    return Source(o)==Source(r)&&((o[1]^r[1])&0x10);});
+                const auto copy=[&](int k){
+                    const int cell=right?a0+k*step:a0-k*step;   // the copy's cell [cell, cell + step)
+                    if(cell+step<=0||cell>=kLayerWidth)return;
+                    auto c=r;int to=x+(right?k*step:-k*step);
+                    if(mirrored&&(k&1)){const int edge=right?cell:cell+step;to=2*edge-1-(x+(right?(k-1)*step:-(k-1)*step));c[1]^=0x10;}
+                    c[4]=uint16_t(to&0x3ff);c[16]=uint16_t(std::max(cell,0));c[17]=uint16_t(std::min(cell+step,kLayerWidth)-1);
+                    draw(c,first,last);
+                };
+                for(int k=0;right?a0+k*step<kLayerWidth:a0-(k-1)*step>0;++k)copy(k);
             }
         }
     }
