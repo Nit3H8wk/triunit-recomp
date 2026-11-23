@@ -84,7 +84,7 @@ public:
     static constexpr unsigned kWideWidth=mk5wide::kLayerWidth;   // the 16:9 layer (mk5_wide.hpp)
     void EnableWide(const Mk5LiveVideo& video){wide_video=&video;}
     const std::vector<uint32_t>& wide_pixels()const{return wide_complete;}   // kWideWidth x height(), the last complete frame
-    int wide_shift()const{return wide_shift_;}   // its window offset (mk5wide::WindowShift)
+    int wide_shift()const{return wide_shift_;}   // its window offset (0: the window stays centred)
     unsigned wide_fitted()const{return wide_fitted_;}   // its far planes fitted to the window: with none, the centre is exact
     uint64_t wide_centre()const{return wide_centre_;}
     // Widescreen presentation (Remastered, from the attached video): the frame, backdrop and fighter layers over kWideWidth.

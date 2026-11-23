@@ -234,7 +234,7 @@ class WideCaptureTests(unittest.TestCase):
             self.assertEqual((len(shown),len(layer)),(len(plain),len(plain)))
             self.assertEqual({(f['width']) for f in shown},{534});self.assertEqual({f['width'] for f in plain},{400})
             exact=[n for n,w in enumerate(layer) if w['shift']==0 and w['fitted']==0 and w['filled']==0]
-            self.assertGreater(len(exact),500,len(exact))   # the window leaves the centre kRamp camera columns from an arena's end
+            self.assertGreater(len(exact),600,len(exact))
             self.assertEqual([shown[n]['present'] for n in exact],[plain[n]['present'] for n in exact],'the widescreen centre differs')
             self.assertEqual([f['boxes'] for f in shown],[f['boxes'] for f in plain])   # no boxes without training mode
         self.assertFalse(cleanup['exists_after'])

@@ -60,10 +60,6 @@ inline bool FitCamera(uint32_t camera){return camera>=kScrollFirst&&camera<kCame
 // some camera position within the limits (within kEndSlack pixels) belongs to the arena: that plane is not fitted.
 constexpr uint32_t kVelocityGap=0x130,kWorldVelocity=0x0105d220;
 constexpr int kEndSlack=mk5wide::kEndSlack;
-// Screen pixels the wide window moves right (+) or left (-) from centred, so that it never shows beyond the arena's
-// world: its art ends where the arcade screen stands at each camera limit (the camera can pass a limit by a few pixels:
-// it counts as at the limit). 0 outside a fight or with unusable limits.
-inline int WindowShift(unsigned mode,int camera,int minimum,int maximum){return Shifting(mode)?mk5wide::WindowShift(camera,minimum,maximum):0;}
 // The shadow's clip (y<<16|x): screen x -67 .. 467 of the virtual camera, plus kReach on each side so that the streamer
 // builds, and the walk stages, the far planes' art beyond the window (the per-plane fit measures where it ends; the layer
 // clips the draws to its columns). Its 10-bit DMA x stays within -256..767.

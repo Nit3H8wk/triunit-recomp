@@ -354,12 +354,14 @@ struct BootVideo {
         // Widescreen: a mirrored DMA on a screen without an arena (mk5wide::Layer::Backdrop) reaches only the arcade's
         // columns and is noted for the margins.
         const bool backdrop=wide_mirror&&wide.Backdrop();
+        const bool actor=mk5wide::Layer<uint16_t>::ActorDraw(command);   // a floor shadow: kept out of reflected margins
         if(backdrop){auto r=DmaRegisters(board);r[1]=command;r[4]=mk5wide::LayerX(r[4]);wide.Note(r);}
         const auto pixels=Render(command,dma_registers,dma_palette,graphics,[&](size_t index,uint16_t pen,bool write){
             auto& dest=vram.at(index);
             if(write){dest=pen;present_pixel(index);
                 if(wide_mirror){const auto at=wide.At(index,wide_mirror_world?wide.page_shift[(index>>17)&1]:0);
-                    if(at>=0&&(!backdrop||mk5wide::Layer<uint16_t>::Arcade(int(at%mk5wide::kLayerWidth))))wide.Write(size_t(at),pen,!wide_mirror_world);}}
+                    if(at>=0&&(!backdrop||mk5wide::Layer<uint16_t>::Arcade(int(at%mk5wide::kLayerWidth)))){
+                        wide.Write(size_t(at),pen,!wide_mirror_world);if(actor)wide.fixed[size_t(at)]|=mk5wide::Layer<uint16_t>::kActor;}}}
         },[&]{prepare_fighter_surface();});
         board.dma_command=command; board.io[18]&=uint16_t(~2);
         return pixels;
@@ -507,16 +509,14 @@ struct BootVideo {
             ++n;
         }
         if(wide_plane.empty())return true;
-        const int plane_shift=mk5wide::PlaneShift(wide.shift,wide_plane_ratio);
-        const auto fit=mk5wide::FitPlane(drawn,hull_left,hull_right,plane_shift,[&](int end,bool left){return WideEndShown(end,left,plane_shift);},wide.Push(wide_plane_ratio),wide.Side());
-        wide.NeedPush(fit,wide_plane_ratio);
+        const auto fit=mk5wide::FitPlane(drawn,hull_left,hull_right,wide.shift,[&](int end,bool left){return WideEndShown(end,left,wide.shift);});
         if(fit.fitted())++wide.page_fitted[wide.page];
         bool placed=true;
         for(const auto& [e,fresh]:wide_plane){
             const bool outside=!fit.fitted()&&fresh&&!wide.shift&&WideOnArcade(e);
             placed&=WidePlace({e,fit.shift,fit.width,false,0,outside},graphics);
-            if(fit.mirror_left>0)placed&=WidePlace({e,fit.shift,mk5wide::kLayerWidth,false,-fit.mirror_left},graphics);
-            if(fit.mirror_right<mk5wide::kLayerWidth)placed&=WidePlace({e,fit.shift,mk5wide::kLayerWidth,false,fit.mirror_right},graphics);
+            if(fit.mirror_left>0)placed&=WidePlace({e,0,mk5wide::kLayerWidth,false,-fit.mirror_left},graphics);
+            if(fit.mirror_right<mk5wide::kLayerWidth)placed&=WidePlace({e,0,mk5wide::kLayerWidth,false,fit.mirror_right},graphics);
         }
         wide_plane.clear();return placed;
     }
@@ -543,13 +543,15 @@ struct BootVideo {
     // the arcade's columns only over the page clear's pen (mk5wide::Layer::Tidy).
     bool RenderLayer(const std::array<uint16_t,18>& r,const std::vector<uint8_t>& graphics,int width=mk5wide::kLayerWidth,bool fixed=false,bool under=false){
         // mk5wide::Layer::Write through plain pointers (the render's stores cannot move the layer).
-        uint16_t* const pens=wide.pens.data();uint8_t* const marks=wide.fixed.data();uint16_t* const stains=wide.blood.empty()?nullptr:wide.blood.data();
+        uint16_t* const pens=wide.pens.data();uint8_t* const marks=wide.fixed.data();uint16_t* const covered=wide.under.data();uint16_t* const stains=wide.blood.empty()?nullptr:wide.blood.data();
         const size_t size=wide.pens.size();const uint16_t booked=wide.booked[(r[8]>>8)&0x7f]?wide.kBooked:0;   // Layer::Book
+        const uint8_t actor=mk5wide::Layer<uint16_t>::ActorDraw(r[1])?mk5wide::Layer<uint16_t>::kActor:0;   // a floor shadow
         try{
             Render(r[1],r,r[8],graphics,[&](size_t index,uint16_t pen,bool write){
                 if(!write||index>=size)return;
                 if(under&&mk5wide::Layer<uint16_t>::Arcade(int(index%mk5wide::kLayerWidth))&&pens[index]!=wide.clear_pen[index/mk5wide::kLayerWidth])return;
-                mk5wide::Stretch(index,width,[&](size_t i){pens[i]=uint16_t(pen|booked);marks[i]=fixed;if(stains)stains[i]=0;});
+                mk5wide::Stretch(index,width,[&](size_t i){if(fixed&&!(marks[i]&1))covered[i]=pens[i];   // under a HUD pixel (Layer::ReflectSource)
+                    pens[i]=uint16_t(pen|booked);marks[i]=uint8_t(fixed|actor);if(stains)stains[i]=0;});
             },[]{},mk5wide::kLayerWidth,Passes::write);
         }catch(const std::runtime_error&){return false;}
         return true;

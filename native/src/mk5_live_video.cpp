@@ -276,6 +276,8 @@ void Mk5LiveVideo::Write(uint32_t pc,unsigned offset,uint16_t value){
     const bool merge=wide.Enabled() && wide_walk && wide_walk_drawn,world=wide_walk && !(staged && staged->fixed);
     const bool mirror=wide.Enabled() && !(staged && staged->fitted) && !(merge && wide.shift),margins_off=mirror && wide.Backdrop();
     if(margins_off && !merge){auto layer=r;layer[4]=mk5wide::LayerX(r[4]);wide.Note(layer);}
+    // Kept out of the reflected margins (Layer::ReflectSource): a floor shadow, a fighter.
+    const uint8_t actor=mk5wide::Layer<uint8_t>::ActorDraw(r[1])?mk5wide::Layer<uint8_t>::kActor:0;
     Blit(r,d,gfx,[&](size_t dest,uint16_t pen){
         m.vram.at(dest)=pen;
         fighters.Write(draw,dest,m.vram[dest]|(scenery?backdrop_owner:0),owner?BloodPixel(dest):0);
@@ -287,7 +289,9 @@ void Mk5LiveVideo::Write(uint32_t pc,unsigned offset,uint16_t value){
         ++pixels_written;
         if(mirror){
             const int column=int(dest&511);const auto at=wide.At(dest,world?wide.page_shift[(dest>>17)&1]:0);
-            if(at>=0 && ((!merge && !margins_off) || (column>=mk5wide::kMargin && column<mk5wide::kMargin+mk5wide::kVisible)))wide.Write(size_t(at),pen,!world);
+            if(at>=0 && ((!merge && !margins_off) || (column>=mk5wide::kMargin && column<mk5wide::kMargin+mk5wide::kVisible))){
+                const uint8_t under=owner?uint8_t(wide.fixed[size_t(at)]&mk5wide::Layer<uint8_t>::kActor):0;   // a shadow under a fighter
+                wide.Write(size_t(at),pen,!world);wide.fixed[size_t(at)]|=uint8_t(actor|under|(owner?mk5wide::Layer<uint8_t>::kFighter:0));}
         }
     });
 }
@@ -365,7 +369,9 @@ bool Mk5LiveVideo::WideOutside(const WideEntry& e,bool made){
     constexpr int first=mk5wide::kWideMargin,last=first+mk5wide::kVisible;
     // The columns left out below (the arcade's with the window centred, a ring copy's arcade columns) never reach the
     // blitter: a draw within them is skipped, one crossing a single side is clipped to the other (Blit's columns, unwrapped).
-    if(!e.fitted && !e.mirror && !backdrop && (!whole || e.ring)){
+    // A screen-fixed draw (the HUD) still marks its arcade pixels fixed (Layer::ReflectSource keeps the HUD out of a margin).
+    const bool actor=mk5wide::Layer<uint8_t>::ActorDraw(r[1]);
+    if(!e.fitted && !e.mirror && !backdrop && !e.fixed && !actor && (!whole || e.ring)){
         const int skip_lo=whole?first-wide.shift:first,skip_hi=whole?last-wide.shift:last;
         const unsigned start=(r[1]&64)?r[0]&255:0,end=(r[1]&64)?r[0]>>8:r[0];
         const unsigned limit=(d.width>end?d.width-end:0)*256,from=((start*256)/d.xstep)*d.xstep;
@@ -380,8 +386,11 @@ bool Mk5LiveVideo::WideOutside(const WideEntry& e,bool made){
     Blit(r,d,gfx,[&](size_t dest,uint16_t pen){
         if(dest>=wide.pens.size())return;
         if(!e.fitted){const int c=int(dest%mk5wide::kLayerWidth);
-            if((!whole && c>=first && c<last) || (e.ring && c>=first-wide.shift && c<last-wide.shift))return;   // a ring copy: never the arcade's
-            wide.Write(dest,pen,e.fixed);return;}
+            if((!whole && c>=first && c<last) || (e.ring && c>=first-wide.shift && c<last-wide.shift)){   // a ring copy: never the arcade's
+                if(e.fixed)wide.fixed[dest]=mk5wide::Layer<uint8_t>::kFixed;else if(actor)wide.fixed[dest]|=mk5wide::Layer<uint8_t>::kActor;
+                return;
+            }
+            wide.Write(dest,pen,e.fixed);if(actor)wide.fixed[dest]|=mk5wide::Layer<uint8_t>::kActor;return;}
         mk5wide::Stretch(dest,e.width,[&](size_t i){wide.Write(i,pen,false);});
     },mk5wide::kLayerWidth);
     return true;
@@ -429,10 +438,8 @@ bool Mk5LiveVideo::WidePlane(){
         DmaShape d;if(!Shape(r,gfx,d)){wide_plane.clear();return false;}
         Blit(r,d,gfx,[&](size_t dest,uint16_t){drawn[dest%mk5wide::kLayerWidth]=true;},mk5wide::kLayerWidth);
     }
-    const int plane_shift=mk5wide::PlaneShift(wide.shift,wide_plane_ratio);
-    const auto fit=mk5wide::FitPlane(drawn,hull_left,hull_right,plane_shift,[&](int end,bool left){
-        return mk5wide::EndShown(end,left,plane_shift,wide.world,wide.limits,wide_plane_ratio);},wide.Push(wide_plane_ratio),wide.Side());
-    wide.NeedPush(fit,wide_plane_ratio);
+    const auto fit=mk5wide::FitPlane(drawn,hull_left,hull_right,wide.shift,[&](int end,bool left){
+        return mk5wide::EndShown(end,left,wide.shift,wide.world,wide.limits,wide_plane_ratio);});
     if(fit.fitted())++wide.page_fitted[wide.page];
     for(auto e:wide_plane){
         e.shift=fit.shift;e.width=fit.width;e.fitted=fit.fitted();WideStage(e);

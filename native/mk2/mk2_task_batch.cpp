@@ -148,8 +148,7 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
     const auto first_instruction = s.instructions;
     const uint32_t end_pc = coin_queue ? 0xff8119b0 : 0xff80dd30;
     // Widescreen W1 (BootOps::shadow), once per frame at the display table walk (FF804E30, after the queue reset): with the
-    // clip longs widened in the journal to the 16:9 window (-67..467 plus kReach) and the scrolls moved to the virtual
-    // camera (mk5wide::VirtualScroll, when the window is shifted), the scenery streamer FF9F8030 (when the game
+    // clip longs widened in the journal to the 16:9 window (-67..467 plus kReach), the scenery streamer FF9F8030 (when the game
     // runs it; it rebuilds every plane from its window, so one call fills the wider window) and then the whole walk run on
     // the journaled RAM, the drawer's interrupt kick skipped (FF804440..FF804500); the entries staged at FF804410 and
     // FF800490 draw the margins. Then the journal is undone and the real walk runs. The shadow never reaches the loop's
@@ -164,16 +163,15 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
         o.shadow=false;shadow_skip=true;o.out.video.margin_faults+=o.shadow_fault;
         o.out.video.wide_walk_drawn=!o.shadow_fault;   // else the real walk's DMAs are mirrored too
     };
-    // The shadow's clip and virtual camera, written through the journal: each scroll moves by its ratio times d (the world's
-    // by d; mk5wide::VirtualScroll), the ratios read again whenever the world moves.
-    const auto shadow_view=[&](int d){
+    // The shadow's clip, written through the journal; the far planes' ratios (mk5wide::EndShown) read again whenever the world
+    // moves.
+    const auto shadow_view=[&]{
         const auto ram_long=[&](uint32_t bit){const size_t i=(bit-0x01000000)/16;return int32_t(o.out.main_ram[i]|uint32_t(o.out.main_ram[i+1])<<16);};
         o.Write32(mk2::wide::kClipTopLeft,mk2::wide::WideTopLeft());o.Write32(mk2::wide::kClipBottomRight,mk2::wide::WideBottomRight());
         const int32_t world_velocity=ram_long(mk2::wide::kWorldVelocity);
         for(unsigned slot=0;slot<mk2::wide::kScrollSlots;++slot){
             const uint32_t scroll=mk2::wide::kScrollFirst+slot*0x20;auto& ratio=o.out.video.wide.PlaneRatio(slot);
             if(world_velocity)ratio=mk5wide::MeasuredRatio(ram_long(scroll-mk2::wide::kScrollVelocityGap),world_velocity);
-            if(d)o.Write32(scroll,uint32_t(mk5wide::VirtualScroll(ram_long(scroll),d,slot==mk2::wide::kWorldSlot?nullptr:&ratio)));
         }
     };
     while (live_host ? s.cycles<end_cycle :
@@ -205,9 +203,8 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
             if(shadow_skip)shadow_skip=false;
             else if(ram_long(mk2::wide::kClipTopLeft)==0&&ram_long(mk2::wide::kClipBottomRight)==mk2::wide::kArcadeBottomRight){
                 const auto word=[&](uint32_t bit){return int16_t(o.out.main_ram[(bit-0x01000000)/16]);};
-                // The fight modes shift (mk5wide::WindowShift); modes 3 and 5 (the finisher's scene, the round's end) keep the
-                // offset while the camera stays, and the winner's screen (mode 5 too) moves the camera to it: centred. A finisher
-                // frees the camera: the arena's own limits stay (mk5wide::Layer::Offset).
+                // The window stays centred; in the fight modes (and 3, 5: the finisher's scene, the round's end) the margins past
+                // the arena's world reflect it. A finisher frees the camera: the arena's own limits stay (mk5wide::Layer::Offset).
                 const unsigned mode=uint16_t(word(mk2::wide::kMode));
                 const int d=o.out.video.wide.Offset(mk2::wide::Shifting(mode),mk2::wide::Holding(mode),word(mk2::wide::kCameraX),
                                                     word(mk2::wide::kCameraMin),word(mk2::wide::kCameraMax),mk2::wide::kWorldMax);
@@ -220,7 +217,7 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
                 for(unsigned slot=0;slot<mk2::wide::kPaletteSlots;++slot)
                     o.out.video.wide_palettes[slot]=ram_long(mk2::wide::kPaletteTable+slot*mk2::wide::kPaletteEntry);
                 shadow_saved={s.a,s.b,s.status};shadow_steps=0;o.shadow=true;o.shadow_fault=false;
-                shadow_view(d);
+                shadow_view();
                 // The free list does not end in 0 (its last link holds another value): the game never takes its last object, but
                 // the shadow's wider window can. In the journal the last link is 0, so the allocator (FF8090D0) takes its own
                 // empty-pool path (FF809250, no object) instead of reading that value as an object.
@@ -283,7 +280,7 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
             if(o.shadow&&!shadow_walk){   // the streamer met a list it cannot walk (boot frames): this frame's walk without it
                 for(auto it=o.shadow_journal.rbegin();it!=o.shadow_journal.rend();++it)o.out.main_ram[it->first]=it->second;
                 o.shadow_journal.clear();std::tie(s.a,s.b,s.status)=shadow_saved;o.shadow_fault=false;
-                shadow_view(o.out.video.wide.shift);
+                shadow_view();
                 s.next_pc=mk2::wide::kWalkStart;shadow_walk=true;++o.out.video.margin_streamer_skips;continue;
             }
             if(o.shadow){o.shadow_fault=true;shadow_fault_pc=instruction_pc|2;shadow_end();continue;}

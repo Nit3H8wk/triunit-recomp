@@ -103,7 +103,7 @@ public:
     static constexpr unsigned kWideWidth=mk5wide::kLayerWidth;   // the 16:9 layer (mk5_wide.hpp)
     void EnableWide(){wide_on_=true;}
     const std::vector<uint32_t>& wide_pixels() const { return wide_; }   // kWideWidth x height(), the last complete frame
-    int wide_shift() const { return wide_shift_; }   // its window offset (mk2::wide::WindowShift)
+    int wide_shift() const { return wide_shift_; }   // its window offset (0: the window stays centred)
     unsigned wide_fitted() const { return wide_fitted_; }   // its planes fitted to the window (BootVideo::WidePlane); with none, the centre is exact at offset 0
     uint64_t wide_centre() const { return wide_centre_; }   // its visible pixels that differ from VRAM (0 when exact)
     // Its visible pixels the background continuation filled where the arcade leaves its edge columns in the page clear's pen
@@ -210,22 +210,28 @@ public:
             // The layer's line as plain pointers (the loop's stores cannot move them).
             const uint16_t* pens=layer?video.wide.pens.data()+base:nullptr;const uint8_t* fixed_marks=layer?video.wide.fixed.data()+base:nullptr;
             const uint16_t* stains=layer&&!video.wide.blood.empty()?video.wide.blood.data()+base:nullptr;
-            for(unsigned x=0;x<kWideWidth;++x){
-                const uint16_t own=vram[(column+x-margin)&511];
-                const uint16_t pen=layer?pens[x]:own;
-                const bool side=x<margin||x>=margin+width_;
+            for(unsigned dest_x=0;dest_x<kWideWidth;++dest_x){
+                // A margin column past the arena's world shows the column it reflects, a HUD pixel there the nearest scenery
+                // of that column (mk5wide::Layer::ReflectSource; another row's pixel is raw scenery).
+                const auto reflect=layer?video.wide.ReflectSource(row>>9,int(dest_x)):mk5wide::Layer<uint16_t>::Reflection{int(dest_x),0,false};
+                const unsigned x=unsigned(reflect.column);const int dy=reflect.dy;
+                const bool raw=reflect.dy||reflect.under;   // another row's pixel or the scenery under the HUD: raw scenery
+                const ptrdiff_t lx=ptrdiff_t(x)+ptrdiff_t(dy)*mk5wide::kLayerWidth;
+                const uint16_t own=vram[ptrdiff_t(dy)*512+ptrdiff_t((column+x-margin)&511)];
+                const uint16_t pen=layer?(reflect.under?video.wide.under[size_t(ptrdiff_t(base)+lx)]:pens[lx]):own;
+                const bool side=dest_x<margin||dest_x>=margin+width_;
                 const int at=int(x)-int(margin);
                 const bool fills=!side&&pen!=own&&own==clear&&(at<fill||at>=int(width_)-fill);   // edge_fill
                 added+=side&&pen!=own;centre+=!side&&pen!=own&&!fills;filled+=fills;
-                out[x]=enabled?ExpandRgb555(pen&0x8000?video.wide.Colour(base+x,pen,palette):palette[pen&0x7fff]):0xff000000;   // Layer::Book
+                out[dest_x]=enabled?ExpandRgb555(pen&0x8000?video.wide.Colour(size_t(ptrdiff_t(base)+lx),pen,palette):palette[pen&0x7fff]):0xff000000;   // Layer::Book
                 if(sources){
                     const int world=int(x)-int(margin)+shift,hud=int(x)-int(margin);
                     int16_t source=enabled?kRaw:kBlank;
-                    const bool fixed=layer&&fixed_marks[x];
-                    if(enabled&&!fixed&&world>=0&&world<int(width_)&&pen==vram[(column+unsigned(world))&511])source=int16_t(world);
+                    const bool fixed=layer&&!raw&&(fixed_marks[lx]&mk5wide::Layer<uint16_t>::kFixed);
+                    if(enabled&&!fixed&&!raw&&world>=0&&world<int(width_)&&pen==vram[(column+unsigned(world))&511])source=int16_t(world);
                     else if(enabled&&(fixed||!layer)&&hud>=0&&hud<int(width_)&&pen==own)source=int16_t(hud);
-                    sources[x]=source;
-                    bloods[x]=source==kRaw&&stains&&stains[x]?ExpandRgb555(stains[x]):0;
+                    sources[dest_x]=source;
+                    bloods[dest_x]=source==kRaw&&stains&&stains[lx]?ExpandRgb555(stains[lx]):0;
                 }
             }
             wide_added_work_+=added;wide_centre_work_+=centre;wide_filled_work_+=filled;
