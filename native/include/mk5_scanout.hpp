@@ -37,9 +37,13 @@ class Mk5Scanout {
     bool wide_present=false;
     std::vector<int16_t> wide_source_work,wide_source;
     std::vector<uint32_t> wide_blood_work,wide_blood;
-    std::vector<uint32_t> wide_presentation_,wide_backdrop_;mk5presentation::FighterFrame wide_fighters_;
+    // Composed when first asked for (wide_stale), so a frame nobody presents (run-ahead's held real frame, a run-ahead
+    // snapshot's load) is never composed.
+    mutable std::vector<uint32_t> wide_presentation_,wide_backdrop_;mutable mk5presentation::FighterFrame wide_fighters_;
+    mutable bool wide_stale=false;
     void wide_line(unsigned row,unsigned col,bool enabled);
-    void ComposeWide();
+    void ComposeWide()const;
+    void Composed()const{if(wide_stale){wide_stale=false;ComposeWide();}}
     void line(const Mk5ScanlineEvent&,const std::array<uint16_t,32>&);
     template<class A> friend void Fields(A& a,Mk5Scanout& s){   // save states, the partial frame included
         a(s.width_,s.height_,s.rows_,s.frames_,s.last_frame_quanta_,s.collecting,s.scenery_visible,s.work,s.complete,
@@ -61,8 +65,8 @@ class Mk5Scanout {
                 wide_centre_work=wide_centre_=0;
                 if(wide_present){wide_source_work.assign(n,kBlank);wide_source=wide_source_work;wide_blood_work.assign(n,0);wide_blood=wide_blood_work;}
             }
-            if(wide_present && wide_complete.size()==n && wide_source.size()==n && wide_blood.size()==n && complete.size()==size_t(width_)*height_)
-                ComposeWide();
+            wide_stale=wide_present && wide_complete.size()==n && wide_source.size()==n && wide_blood.size()==n &&
+                       complete.size()==size_t(width_)*height_;
         }
     }
 public:
@@ -86,8 +90,8 @@ public:
     // Widescreen presentation (Remastered, from the attached video): the frame, backdrop and fighter layers over kWideWidth.
     void EnableWidePresentation(const Mk5LiveVideo& video){wide_video=&video;wide_present=presentation!=nullptr;}
     bool wide_presentation_enabled()const{return wide_present;}
-    const std::vector<uint32_t>& wide_presentation()const{return wide_presentation_;}
-    const std::vector<uint32_t>& wide_backdrop_pixels()const{return wide_backdrop_;}
-    const mk5presentation::FighterFrame& wide_fighter_frame()const{return wide_fighters_;}
+    const std::vector<uint32_t>& wide_presentation()const{Composed();return wide_presentation_;}
+    const std::vector<uint32_t>& wide_backdrop_pixels()const{Composed();return wide_backdrop_;}
+    const mk5presentation::FighterFrame& wide_fighter_frame()const{Composed();return wide_fighters_;}
     void SavePpm(const std::filesystem::path&)const;
 };

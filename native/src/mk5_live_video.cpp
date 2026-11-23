@@ -363,6 +363,20 @@ bool Mk5LiveVideo::WideOutside(const WideEntry& e,bool made){
     }
     DmaShape d;if(!Shape(r,gfx,d))return false;
     constexpr int first=mk5wide::kWideMargin,last=first+mk5wide::kVisible;
+    // The columns left out below (the arcade's with the window centred, a ring copy's arcade columns) never reach the
+    // blitter: a draw within them is skipped, one crossing a single side is clipped to the other (Blit's columns, unwrapped).
+    if(!e.fitted && !e.mirror && !backdrop && (!whole || e.ring)){
+        const int skip_lo=whole?first-wide.shift:first,skip_hi=whole?last-wide.shift:last;
+        const unsigned start=(r[1]&64)?r[0]&255:0,end=(r[1]&64)?r[0]>>8:r[0];
+        const unsigned limit=(d.width>end?d.width-end:0)*256,from=((start*256)/d.xstep)*d.xstep;
+        const int n=limit>from?int((limit-from+d.xstep-1)/d.xstep):0,x=r[4]&1023;
+        const int a=(r[1]&16)?x-n+1:x,b=(r[1]&16)?x+1:x+n;
+        if(a>=0 && b<=mk5wide::kLayerWidth){
+            if(n==0 || (a>=skip_lo && b<=skip_hi))return true;
+            if(b<=skip_hi)r[17]=uint16_t(std::min(int(r[17]),skip_lo-1));
+            else if(a>=skip_lo)r[16]=uint16_t(std::max(int(r[16]),skip_hi));
+        }
+    }
     Blit(r,d,gfx,[&](size_t dest,uint16_t pen){
         if(dest>=wide.pens.size())return;
         if(!e.fitted){const int c=int(dest%mk5wide::kLayerWidth);

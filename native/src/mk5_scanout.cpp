@@ -42,7 +42,7 @@ void Mk5Scanout::line(const Mk5ScanlineEvent& edge,const std::array<uint16_t,32>
             }
             if(wide_video){
                 wide_complete=wide_work;wide_centre_=wide_centre_work;wide_shift_=wide_shift_work;wide_fitted_=wide_fitted_work;
-                if(wide_present){wide_source=wide_source_work;wide_blood=wide_blood_work;ComposeWide();}
+                if(wide_present){wide_source=wide_source_work;wide_blood=wide_blood_work;wide_stale=true;}
             }
         }
         collecting=false;return;
@@ -113,7 +113,7 @@ void Mk5Scanout::wide_line(unsigned row,unsigned col,bool enabled){
 // The wide frame of the Remastered layers: a pixel with an arcade column takes that column's data (colour with blood,
 // backdrop, fighter order and cover); a pixel only the shadow has is its raw colour as scenery, or its floor stain dimmed
 // as the frame's. The fighter layers are world: they move with the window.
-void Mk5Scanout::ComposeWide(){
+void Mk5Scanout::ComposeWide()const{
     const size_t n=size_t(kWideWidth)*height_;const int move=int(kWideWidth-width_)/2-wide_shift_;
     const bool backdrop=!backdrop_complete.empty(),fighters=fighter_complete.serial!=0,fighter_backdrop=fighters && !fighter_complete.backdrop.empty();
     wide_presentation_.resize(n);wide_backdrop_.assign(backdrop?n:0,0);
