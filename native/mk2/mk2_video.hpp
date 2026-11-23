@@ -5,6 +5,7 @@
 #include "../include/mk5_fighter_video.hpp"
 #include "../include/mk5_blood_shade.hpp"
 #include <algorithm>
+#include <optional>
 #include <cstdlib>
 #include <map>
 #include <string>
@@ -416,19 +417,45 @@ struct BootVideo {
     // The palette slots' ROM pointers when the shadow pass starts (mk2::wide::kPaletteTable); not state (the pass never spans
     // a batch). A shadow draw in a slot the pass booked for another palette takes its colours from the ROM (Layer::Book).
     std::array<uint32_t,mk2::wide::kPaletteSlots> wide_palettes{};
-    // Far-plane objects the shadow walk staged moving (x velocity long, +40h, not 0) and the frame it last staged them. The
-    // game parks such an object once it leaves the arcade's screen (the red-sky arena's dragons: velocity 0, a wait, then
-    // a jump to the other side): parked with its art outside the arcade's columns it is off the arcade screen, so it is not
-    // drawn in the margins either. An object not staged for kMoverKeep frames is forgotten (freed, reused).
-    struct WideMover{uint32_t object,seen;template<class A> friend void Fields(A& a,WideMover& m){a(m.object,m.seen);}};
-    static constexpr uint32_t kMoverKeep=8;
-    std::vector<WideMover> wide_moving;uint32_t wide_frame=0;
-    bool WideParked(uint32_t object,int32_t velocity,const std::array<uint16_t,12>& entry){
-        if(!wide_fit)return false;
-        const auto it=std::find_if(wide_moving.begin(),wide_moving.end(),[&](const WideMover& m){return m.object==object;});
-        if(velocity){if(it==wide_moving.end())wide_moving.push_back({object,wide_frame});else it->seen=wide_frame;return false;}
-        if(it==wide_moving.end())return false;
-        it->seen=wide_frame;return !WideOnArcade(entry);
+    // Far-plane objects the shadow walk staged moving (x velocity long 16.16, +40h, not 0): the frame it last staged them,
+    // their velocity and their last kFlight frames (the entry and its x against the object's screen position: the pose's
+    // hot spot). The game parks such an object once it leaves the arcade's screen (the red-sky arena's dragons: velocity 0,
+    // a wait, then a jump to the other side). In the margins the flight goes on (WideMove): from the frame it was parked
+    // the object keeps its velocity and its recorded wing cycle until it leaves the layer; parked on the arcade's columns
+    // it stays as the arcade shows it. An object not staged for kMoverKeep frames is forgotten (freed, reused).
+    struct WideFlight{std::array<uint16_t,12> entry;int16_t hot;template<class A> friend void Fields(A& a,WideFlight& f){a(f.entry,f.hot);}};
+    struct WideMover{uint32_t object=0,seen=0;int32_t velocity=0,park_x=0;uint32_t parked=0;std::vector<WideFlight> flight;
+        template<class A> friend void Fields(A& a,WideMover& m){a(m.object,m.seen,m.velocity,m.park_x,m.parked,m.flight);}};
+    static constexpr uint32_t kMoverKeep=8,kFlightOut=600;static constexpr size_t kFlight=48;   // kFlightOut: frames, a bound
+    std::vector<WideMover> wide_moving;uint32_t wide_frame=0;uint32_t wide_camera=0;   // wide_camera: the far list's camera word
+    static int EntryX(const std::array<uint16_t,12>& e){const int x=e[4]&0x3ff;return x>=768?x-1024:x;}
+    // The entry to draw for an object of a far list (x: its x position long, screen: its x on the plane's screen, both from
+    // the game's RAM); nullopt when its flight has left the layer.
+    std::optional<std::array<uint16_t,12>> WideMove(uint32_t object,int32_t velocity,int32_t x,int screen,const std::array<uint16_t,12>& entry){
+        if(!wide_fit)return entry;
+        auto it=std::find_if(wide_moving.begin(),wide_moving.end(),[&](const WideMover& m){return m.object==object;});
+        if(velocity){
+            if(it==wide_moving.end()){wide_moving.push_back({});it=wide_moving.end()-1;it->object=object;}
+            auto& m=*it;m.seen=wide_frame;m.velocity=velocity;m.parked=0;
+            m.flight.push_back({entry,int16_t(EntryX(entry)-screen)});
+            if(m.flight.size()>kFlight)m.flight.erase(m.flight.begin());
+            return entry;
+        }
+        if(it==wide_moving.end())return entry;
+        auto& m=*it;m.seen=wide_frame;
+        if(WideOnArcade(entry)||m.flight.empty())return entry;
+        if(!m.parked){m.parked=wide_frame;m.park_x=x;}
+        // The wing cycle: the shortest period whose last frames repeat the ones before (image source), else the whole record.
+        const size_t n=m.flight.size();size_t period=n;
+        const auto source=[&](size_t i){return uint32_t(m.flight[i].entry[2])|uint32_t(m.flight[i].entry[3])<<16;};
+        for(size_t p=4;p<=n/2&&period==n;++p){bool same=true;for(size_t k=0;k<p&&same;++k)same=source(n-1-k)==source(n-1-k-p);if(same)period=p;}
+        const uint32_t t=wide_frame-m.parked+1;const auto& pose=m.flight[n-period+t%period];
+        const int moved=int((int64_t(m.park_x)+int64_t(m.velocity)*t-int64_t(x))>>16);   // the flight's way since parked
+        auto shown=pose.entry;const int to=screen+moved+pose.hot;shown[4]=uint16_t((shown[4]&~0x3ffu)|(unsigned(to)&0x3ffu));
+        shown[5]=uint16_t((shown[5]&~0x100u)|(entry[5]&0x100u));   // the y register's page bit: this frame's page
+        const auto [lo,hi]=WideSpan(shown);
+        if(hi+mk5wide::kExtra<=0||lo+mk5wide::kExtra>=mk5wide::kLayerWidth||t>kFlightOut)return std::nullopt;
+        return shown;
     }
     bool WideFresh(uint32_t object)const{return std::binary_search(wide_free.begin(),wide_free.end(),object);}
     // An entry's columns in the layer [first, last) from its x (10-bit DMA x read as -256..767), width, X step and flip.
@@ -486,7 +513,7 @@ struct BootVideo {
     // A list or callback starts in the shadow walk: the waiting plane is placed. A far plane's list brings the address of its
     // camera word, its velocity and the world's (mk2::wide::kVelocityGap).
     bool WideList(bool fit,uint32_t camera,int32_t velocity,int32_t world_velocity,const std::vector<uint8_t>& graphics){
-        const bool placed=WidePlane(graphics);wide_fit=fit;
+        const bool placed=WidePlane(graphics);wide_fit=fit;wide_camera=fit?camera:0;
         if(fit){
             auto& ratio=wide.PlaneRatio((camera-mk2::wide::kScrollFirst)/0x20);wide_plane_ratio=&ratio;   // another arena forgets them
             if(world_velocity)ratio=world_velocity>0?mk5wide::Ratio{velocity,world_velocity}:mk5wide::Ratio{-int64_t(velocity),-int64_t(world_velocity)};

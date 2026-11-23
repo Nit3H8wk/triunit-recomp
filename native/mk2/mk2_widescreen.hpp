@@ -27,8 +27,9 @@ inline bool StreamerCode(uint32_t pc){for(const auto& r:kStreamerCode)if(pc>=r.f
 constexpr uint32_t kPaletteTable=0x0105bb30,kPaletteEntry=0x40;constexpr unsigned kPaletteSlots=0x3c;
 // The object pool's free list: its head long; each free object's first long links the next (0 ends it; FF8090D0).
 constexpr uint32_t kFreeList=0x01060130;constexpr size_t kPoolObjects=4096;
-// An object's x velocity long (16.16), its offset from the object (bits): each frame's move adds it to the x position.
-constexpr uint32_t kObjectXVelocity=0x40;
+// An object's x velocity and x position longs (16.16), their offsets from the object (bits): each frame's move adds the
+// velocity to the position.
+constexpr uint32_t kObjectXVelocity=0x40,kObjectX=0x80;
 // RAM: the clip longs (top-left, bottom-right as y<<16|x) and the page origin long (its high word: the page's first row).
 constexpr uint32_t kClipTopLeft=0x01060150,kClipBottomRight=0x01060170,kPageOrigin=0x0105d050;
 constexpr uint32_t kArcadeBottomRight=0x00fe0190;   // x 400
