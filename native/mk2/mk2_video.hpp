@@ -492,7 +492,7 @@ struct BootVideo {
             ++n;
         }
         if(wide_plane.empty())return true;
-        const int plane_shift=mk5wide::PlaneShift(wide.shift,wide_plane_ratio);
+        const int plane_shift=wide.shift;   // every plane moves by the window offset (mk5wide::VirtualScroll)
         const auto fit=mk5wide::FitPlane(drawn,hull_left,hull_right,plane_shift,[&](int end,bool left){return WideEndShown(end,left,plane_shift);});
         if(fit.fitted())++wide.page_fitted[wide.page];
         bool placed=true;

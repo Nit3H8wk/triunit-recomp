@@ -415,7 +415,7 @@ bool Mk5LiveVideo::WidePlane(){
         DmaShape d;if(!Shape(r,gfx,d)){wide_plane.clear();return false;}
         Blit(r,d,gfx,[&](size_t dest,uint16_t){drawn[dest%mk5wide::kLayerWidth]=true;},mk5wide::kLayerWidth);
     }
-    const int plane_shift=mk5wide::PlaneShift(wide.shift,wide_plane_ratio);
+    const int plane_shift=wide.shift;   // every plane moves by the window offset (mk5wide::VirtualScroll)
     const auto fit=mk5wide::FitPlane(drawn,hull_left,hull_right,plane_shift,[&](int end,bool left){
         return mk5wide::EndShown(end,left,plane_shift,wide.world,wide.limits,wide_plane_ratio);});
     if(fit.fitted())++wide.page_fitted[wide.page];

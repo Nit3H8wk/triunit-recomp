@@ -45,20 +45,13 @@ struct Ratio{int64_t plane=0,world=0;
 inline Ratio MeasuredRatio(int32_t velocity,int32_t world_velocity){
     return world_velocity>0?Ratio{velocity,world_velocity}:Ratio{-int64_t(velocity),-int64_t(world_velocity)};
 }
-// The shadow pass's virtual camera: with the window offset d the wide screen shows the world as the arcade would at camera
-// x + d, so each scroll (16.16) moves by its ratio times d (the world's by d; an unknown ratio counts as the world's).
-inline int32_t VirtualScroll(int32_t scroll,int d,const Ratio* ratio){
-    const int64_t move=ratio&&ratio->world?int64_t(d)*65536*ratio->plane/ratio->world:int64_t(d)*65536;
-    return int32_t(int64_t(scroll)+move);
-}
-// Where a plane stands against the arcade's own screen in the wide window: its ratio times d, rounded.
-inline int PlaneShift(int d,const Ratio* ratio){
-    if(!ratio||!ratio->world)return d;
-    const int64_t m=int64_t(d)*ratio->plane;return int((m>=0?m+ratio->world/2:m-ratio->world/2)/ratio->world);
-}
+// The shadow pass's virtual camera: with the window offset d every scroll (16.16) moves by d, so the wide screen is the
+// arcade's own screen moved by d columns: at an arena's end its 400 columns on that side are the arcade's (every plane ends
+// where the arcade shows it end), and the planes keep their parallax against each other.
+inline int32_t VirtualScroll(int32_t scroll,int d){return int32_t(int64_t(scroll)+int64_t(d)*65536);}
 // Whether the arcade screen itself shows this end of a plane's art (layer column end, a left or right end) at some camera
 // position within the arena's limits, the plane moving by its ratio. Unknown ratio or limits: not shown. shift: the
-// plane's own (PlaneShift).
+// window offset (VirtualScroll).
 inline bool EndShown(int end,bool left_end,int shift,int camera,const std::array<int,3>& limits,const Ratio* ratio){
     if(!limits[2]||!ratio||!ratio->world)return false;
     const auto& r=*ratio;
@@ -77,7 +70,7 @@ struct Fit{int shift=0,width=kLayerWidth,mirror_left=0,mirror_right=kLayerWidth;
 // band (it draws in every column of the arcade's 400) whose art ends inside the layer, at an end the arcade never shows,
 // keeps its place, its motion and the arcade's columns, and is mirrored beyond that end (moving it to the end would pin it
 // there while the camera moves: it would slide against the other planes); only a band narrower than the layer is stretched
-// to it. Any other plane is left as is. shift: the plane's own (PlaneShift).
+// to it. Any other plane is left as is. shift: the window offset (VirtualScroll).
 template<class Shown>
 Fit FitPlane(const std::array<bool,kLayerWidth>& drawn,int hull_left,int hull_right,int shift,Shown&& shown){
     int drawn_left=kLayerWidth,drawn_right=0;
