@@ -186,7 +186,8 @@ struct BootVideo {
                               0xec82,0xe882,0xee92,0xe192,0xe182,0xeb92,0xeb82,0xe012,0xe292,0xee82,0xc382,0xe092,
                               0xb002,0xc002,0xc012,0xe582,0xf002,0x900c,0xe982,0xf00c,
                               0xa00c,0xb082,0xb182,0xb582,0xd002,0xd082,0xd192,0xd282,0xd582,0xd682,0xd882,0xe098,0xe198,0xe382,0xe488,0xe492,0xe498,0xe588,0xe592,0xe598,0xe682,0xe692,0xe698,0xe782,0xe892,0xea82,0xea92,0xea98,0xed92,0xed98,
-                              0xe088,0xe188,0xe792,0xd692,0xe008,0xe898,0xe992,0xe998,0xd592,0xe5b2,0xe888,0xa002,0xc082,0xc092,0xc192,0xc482,0xc582,0xc592,0xc692,0xd092,0xed82,0xe018,0xe988,0xe688,0xea88,0xc182,0xc492,0xca92,0xd012,0xd492})
+                              0xe088,0xe188,0xe792,0xd692,0xe008,0xe898,0xe992,0xe998,0xd592,0xe5b2,0xe888,0xa002,0xc082,0xc092,0xc192,0xc482,0xc582,0xc592,0xc692,0xd092,0xed82,0xe018,0xe988,0xe688,0xea88,0xc182,0xc492,0xca92,0xd012,0xd492,
+                              0xd292,0xd392,0xd892})   // the last three: X-flip twins (bit 4) of D282, D382, D882 (mirrored margin bands)
                 known[value]=true;
             // Pinned unscaled 1..8bpp skip/copy: all16 pre/post pairs and both X directions tested.
             for(unsigned base : {0x8082u,0x9082u,0xa082u,0xb082u,0xc082u,0xd082u,0xe082u,0xf082u})
@@ -443,7 +444,7 @@ struct BootVideo {
         // then what the game left on it is that composition (VRAM holds it unshifted).
         wide.StartFrame(page_row,vram,blood_layer);
         ++wide_frame;wide_moving.erase(std::remove_if(wide_moving.begin(),wide_moving.end(),[&](const WideMover& m){return wide_frame-m.seen>kMoverKeep;}),wide_moving.end());
-        wide_walk_entries.clear();wide_walk_drawn=false;wide_shadow_post=wide_real_post=wide_post_keyed=false;wide_pending.clear();
+        wide_walk_entries.clear();wide_walk_drawn=false;wide_shadow_post=wide_real_post=wide_post_keyed=false;wide_pending.clear();wide_world.clear();
         wide_plane.clear();wide_fit=false;
     }
     void MirrorWide(size_t start,size_t count){wide.Mirror(vram,start,count);}
@@ -461,6 +462,7 @@ struct BootVideo {
         if(wide_fit){wide_plane.push_back({entry,fresh});return true;}
         const bool outside=fresh&&!wide.shift&&WideOnArcade(entry);
         if(!outside&&wide.Backdrop())wide.Note(LayerRegisters(entry,0));   // a screen without an arena: noted for its margins (DrawWide)
+        if(!wide_hud&&!mk5wide::Layer<uint16_t>::ActorDraw(entry[1]))wide_world.push_back(entry);
         return WidePlace({entry,0,mk5wide::kLayerWidth,wide_hud,0,outside},graphics);
     }
     // Whether a draw (layer registers) writes nearly every pixel of its rectangle (Layer::kCovered of them, unclipped).
@@ -525,11 +527,35 @@ struct BootVideo {
         auto r=dma_registers;std::copy(entry.begin(),entry.end(),r.begin());
         r[4]=mk5wide::LayerX(uint16_t(r[4]+shift));r[16]=0;r[17]=mk5wide::kLayerWidth-1;return r;
     }
+    // The world's bands (WideBands): this pass's world draws (not a far plane's, the HUD or a shadow); per pass, not state.
+    std::vector<std::array<uint16_t,12>> wide_world;
+    // A band of the scene's world (draws of one palette spanning at least kWide columns within kBand rows: the ladder tower's
+    // lava) whose art ends within kNear columns of an arcade edge, inside the layer, goes on past that end mirrored, in the
+    // margins only.
+    void WideBands(const std::vector<uint8_t>& graphics){
+        constexpr int kWide=mk5wide::Layer<uint16_t>::kWide,kNear=8,kBand=96;
+        constexpr int left_edge=mk5wide::kWideMargin,right_edge=mk5wide::kWideMargin+mk5wide::kVisible;
+        std::array<std::array<int,4>,128> span;span.fill({1<<20,-(1<<20),1<<20,0});   // first, last column; top, bottom row
+        if(!wide.Backdrop())for(const auto& e:wide_world){
+            auto& s=span[(e[8]>>8)&0x7f];const auto [lo,hi]=WideSpan(e);const int top=e[5]&0xff,bottom=top+(e[7]&0x3ff);
+            s={std::min(s[0],lo+mk5wide::kExtra),std::max(s[1],hi+mk5wide::kExtra),std::min(s[2],top),std::max(s[3],bottom)};
+        }
+        for(const auto& e:wide.Backdrop()?decltype(wide_world){}:wide_world){
+            const auto& s=span[(e[8]>>8)&0x7f];if(s[1]-s[0]<kWide||s[3]-s[2]>kBand)continue;
+            if(s[0]>0&&s[0]<=left_edge+kNear)WidePlace({e,0,mk5wide::kLayerWidth,false,-s[0]},graphics);
+            if(s[1]<mk5wide::kLayerWidth&&s[1]>=right_edge-kNear)WidePlace({e,0,mk5wide::kLayerWidth,false,s[1]},graphics);
+        }
+        wide_world.clear();
+    }
     bool DrawWide(const WideDraw& draw,const std::vector<uint8_t>& graphics){
         auto r=LayerRegisters(draw.entry,draw.shift);
         if(draw.mirror){   // a mirror image the board cannot draw (scaled, or a command without its flipped twin) is left out
             mk5wide::Fit fit;(draw.mirror>0?fit.mirror_right:fit.mirror_left)=std::abs(draw.mirror);
             if(!mk5wide::MirrorDraw(r,fit,draw.mirror>0)||!KnownCommand(r[1]))return true;
+            // in the margins only: the arcade's columns stay its own
+            if(draw.mirror>0)r[16]=uint16_t(std::max<int>(r[16],mk5wide::kWideMargin+mk5wide::kVisible));
+            else r[17]=uint16_t(std::min<int>(r[17],mk5wide::kWideMargin-1));
+            if(r[16]>r[17])return true;
         }
         if(draw.outside){   // the margin columns only (an object the arcade has not built yet)
             auto left=r,right=r;left[17]=mk5wide::kWideMargin-1;right[16]=mk5wide::kWideMargin+mk5wide::kVisible;

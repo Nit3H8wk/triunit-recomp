@@ -157,6 +157,7 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
     bool shadow_skip=false,shadow_walk=false;uint64_t shadow_steps=0;uint32_t shadow_fault_pc=0;
     constexpr uint64_t kShadowSteps=4000000;
     const auto shadow_end=[&]{
+        if(!o.shadow_fault)o.out.video.WideBands(o.program.graphics);else o.out.video.wide_world.clear();   // the world's bands
         for(auto it=o.shadow_journal.rbegin();it!=o.shadow_journal.rend();++it)o.out.main_ram[it->first]=it->second;
         o.shadow_journal.clear();std::tie(s.a,s.b,s.status)=shadow_saved;s.next_pc=mk2::wide::kWalkStart;
         if(o.shadow_fault)o.out.video.margin_fault_pc=shadow_fault_pc;
