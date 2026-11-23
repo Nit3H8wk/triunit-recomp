@@ -1254,7 +1254,9 @@ void Mk5Window::Present(const std::vector<uint32_t>& pixels,unsigned width,unsig
         if(WaitForSingleObject(impl->pace_timer,INFINITE)!=WAIT_OBJECT_0)throw std::runtime_error("MK5 presentation wait failed");
         QueryPerformanceCounter(&now);
     }
-    impl->next_due=LONGLONG(mk5timing::ProducerDeadline(uint64_t(impl->next_due),uint64_t(now.QuadPart),uint64_t(impl->interval),mk5audio::GameAudioUsesOutputClock()));
+    const bool output_clock=mk5audio::GameAudioUsesOutputClock();const int reserve=mk5audio::output_reserve_percent;
+    impl->next_due=LONGLONG(mk5timing::ProducerDeadline(uint64_t(impl->next_due),uint64_t(now.QuadPart),
+                                                        mk5timing::ProducerInterval(uint64_t(impl->interval),output_clock,reserve),output_clock,reserve>=100));
     }
     {std::lock_guard<std::mutex> lock(impl->frame_mutex);
         auto& pending=impl->pending;

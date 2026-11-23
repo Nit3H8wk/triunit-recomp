@@ -9,9 +9,21 @@ namespace mk5timing {
 // permanently loses elapsed guest time and gradually drains its output queue.
 // Keep each deadline: overdue guest frames still execute, while the existing
 // presentation mailbox may coalesce host images. Silent standalone runs retain
-// their previous rebase policy.
-inline uint64_t ProducerDeadline(uint64_t next,uint64_t now,uint64_t interval,bool output_clock){
- if(!next || (!output_clock && now>next+interval))next=now;
+// their previous rebase policy. audio_full: the output queue holds its whole
+// reserve, so a late deadline lost no guest time (the producer waited on audio):
+// it is rebased, or every later frame would skip the wait and follow the audio
+// packets' bursts instead of the frame cadence.
+// The output queue's fill (percent of its startup reserve, -1 unknown) trims the
+// producer's interval by 1/64: a queue at its whole reserve fills the ring, whose
+// full slots then hold the producer in packet steps (frames of uneven length and
+// presented without a wait); one under 75% risks an underrun. Either way the
+// cadence stays the deadline's, and the guest's frames and samples are unchanged.
+inline uint64_t ProducerInterval(uint64_t interval,bool output_clock,int reserve){
+ if(!output_clock || reserve<0)return interval;
+ return reserve>=100?interval+interval/64:reserve<75?interval-interval/64:interval;
+}
+inline uint64_t ProducerDeadline(uint64_t next,uint64_t now,uint64_t interval,bool output_clock,bool audio_full=false){
+ if(!next || ((!output_clock || audio_full) && now>next+interval))next=now;
  return next+interval;
 }
 struct Cadence {

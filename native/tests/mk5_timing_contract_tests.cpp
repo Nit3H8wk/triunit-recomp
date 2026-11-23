@@ -11,6 +11,12 @@ int main() {
         need(mk5timing::ProducerDeadline(0, 100, 10, true) == 110, "first deadline");
         need(mk5timing::ProducerDeadline(110, 119, 10, true) == 120, "early producer retains cadence");
         need(mk5timing::ProducerDeadline(110, 999, 10, true) == 120, "late audio producer retains guest time");
+        need(mk5timing::ProducerDeadline(110, 999, 10, true, true) == 1009, "late producer over a full audio reserve rebases");
+        need(mk5timing::ProducerDeadline(110, 119, 10, true, true) == 120, "full reserve keeps an on-time cadence");
+        need(mk5timing::ProducerInterval(6400, true, 100) == 6500, "a full audio queue slows the producer");
+        need(mk5timing::ProducerInterval(6400, true, 85) == 6400, "a queue under its reserve keeps the native interval");
+        need(mk5timing::ProducerInterval(6400, true, 71) == 6300, "a draining queue speeds the producer");
+        need(mk5timing::ProducerInterval(6400, true, -1) == 6400 && mk5timing::ProducerInterval(6400, false, 100) == 6400, "no output clock: native");
         need(mk5timing::ProducerDeadline(110, 120, 10, false) == 120, "exact standalone boundary");
         need(mk5timing::ProducerDeadline(110, 121, 10, false) == 131, "late standalone rebase");
         mk5timing::Cadence cadence;
