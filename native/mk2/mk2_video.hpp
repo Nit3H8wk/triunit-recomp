@@ -492,15 +492,16 @@ struct BootVideo {
             ++n;
         }
         if(wide_plane.empty())return true;
-        const int plane_shift=wide.shift;   // every plane moves by the window offset (mk5wide::VirtualScroll)
-        const auto fit=mk5wide::FitPlane(drawn,hull_left,hull_right,plane_shift,[&](int end,bool left){return WideEndShown(end,left,plane_shift);});
+        const int plane_shift=mk5wide::PlaneShift(wide.shift,wide_plane_ratio);
+        const auto fit=mk5wide::FitPlane(drawn,hull_left,hull_right,plane_shift,[&](int end,bool left){return WideEndShown(end,left,plane_shift);},wide.Push(wide_plane_ratio),wide.Side());
+        wide.NeedPush(fit,wide_plane_ratio);
         if(fit.fitted())++wide.page_fitted[wide.page];
         bool placed=true;
         for(const auto& [e,fresh]:wide_plane){
             const bool outside=!fit.fitted()&&fresh&&!wide.shift&&WideOnArcade(e);
             placed&=WidePlace({e,fit.shift,fit.width,false,0,outside},graphics);
-            if(fit.mirror_left>0)placed&=WidePlace({e,0,mk5wide::kLayerWidth,false,-fit.mirror_left},graphics);
-            if(fit.mirror_right<mk5wide::kLayerWidth)placed&=WidePlace({e,0,mk5wide::kLayerWidth,false,fit.mirror_right},graphics);
+            if(fit.mirror_left>0)placed&=WidePlace({e,fit.shift,mk5wide::kLayerWidth,false,-fit.mirror_left},graphics);
+            if(fit.mirror_right<mk5wide::kLayerWidth)placed&=WidePlace({e,fit.shift,mk5wide::kLayerWidth,false,fit.mirror_right},graphics);
         }
         wide_plane.clear();return placed;
     }

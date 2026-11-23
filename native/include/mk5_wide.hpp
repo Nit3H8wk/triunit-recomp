@@ -25,13 +25,18 @@ constexpr int kWorldMax=4096;  // camera limits wider than this (a finisher free
 // A draw's x register in layer columns: the shadow renders its draws with this x, the layer's stride and its clip.
 constexpr uint16_t LayerX(uint16_t x){return uint16_t((x+kExtra)&0x3ff);}
 // Screen pixels the wide window moves right (+) or left (-) from centred so that it never shows beyond the arena's world:
-// its art ends where the arcade screen stands at each camera limit (a camera past a limit counts as at it).
+// its art ends where the arcade screen stands at each camera limit (a camera past a limit counts as at it). The offset
+// grows over the last kRamp columns of the camera's way (at most half the arena), so the wide view keeps moving, slower,
+// until the camera stops at the limit instead of standing still for its last kWideMargin columns (the far planes' camera
+// then lags behind it, Layer::Push, and they still move forward, slower than the world).
+constexpr int kRamp=3*kWideMargin;
 inline int WindowShift(int camera,int minimum,int maximum){
     if(minimum>maximum)return 0;
     camera=std::clamp(camera,minimum,maximum);
-    const int left=camera-minimum,right=maximum-camera;
-    if(left<kWideMargin&&right<kWideMargin)return 0;   // an arena narrower than the wide screen: centred
-    return left<kWideMargin?kWideMargin-left:right<kWideMargin?right-kWideMargin:0;
+    const int left=camera-minimum,right=maximum-camera,zone=std::clamp((maximum-minimum)/2,kWideMargin,kRamp);
+    if(left<zone&&right<zone)return 0;   // an arena narrower than the wide screen: centred
+    const auto ramp=[&](int from){return (kWideMargin*(zone-from)+zone-1)/zone;};
+    return left<zone?ramp(left):right<zone?-ramp(right):0;
 }
 // A DMA draw's columns [first, last) from its x register (10-bit, read as -256..767), width, X step and flip.
 inline std::pair<int,int> Span(uint16_t x_register,uint16_t width_register,uint16_t xstep_register,bool flip){
@@ -45,13 +50,22 @@ struct Ratio{int64_t plane=0,world=0;
 inline Ratio MeasuredRatio(int32_t velocity,int32_t world_velocity){
     return world_velocity>0?Ratio{velocity,world_velocity}:Ratio{-int64_t(velocity),-int64_t(world_velocity)};
 }
-// The shadow pass's virtual camera: with the window offset d every scroll (16.16) moves by d, so the wide screen is the
-// arcade's own screen moved by d columns: at an arena's end its 400 columns on that side are the arcade's (every plane ends
-// where the arcade shows it end), and the planes keep their parallax against each other.
-inline int32_t VirtualScroll(int32_t scroll,int d){return int32_t(int64_t(scroll)+int64_t(d)*65536);}
+// The shadow pass's virtual camera: with the window offset d the wide screen shows the world as the arcade would at camera
+// x + d, so each scroll (16.16) moves by its ratio times d (the world's by d; an unknown ratio counts as the world's). While
+// the window holds the camera still at an arena's end, every plane stands still too (FitPlane keeps a plane whose art runs
+// out there at the window's edge).
+inline int32_t VirtualScroll(int32_t scroll,int d,const Ratio* ratio){
+    const int64_t move=ratio&&ratio->world?int64_t(d)*65536*ratio->plane/ratio->world:int64_t(d)*65536;
+    return int32_t(int64_t(scroll)+move);
+}
+// Where a plane stands against the arcade's own screen in the wide window: its ratio times d, rounded.
+inline int PlaneShift(int d,const Ratio* ratio){
+    if(!ratio||!ratio->world)return d;
+    const int64_t m=int64_t(d)*ratio->plane;return int((m>=0?m+ratio->world/2:m-ratio->world/2)/ratio->world);
+}
 // Whether the arcade screen itself shows this end of a plane's art (layer column end, a left or right end) at some camera
 // position within the arena's limits, the plane moving by its ratio. Unknown ratio or limits: not shown. shift: the
-// window offset (VirtualScroll).
+// plane's own (PlaneShift).
 inline bool EndShown(int end,bool left_end,int shift,int camera,const std::array<int,3>& limits,const Ratio* ratio){
     if(!limits[2]||!ratio||!ratio->world)return false;
     const auto& r=*ratio;
@@ -63,29 +77,42 @@ inline bool EndShown(int end,bool left_end,int shift,int camera,const std::array
 // to the layer's (nearest neighbour); or left in place with its art mirrored beyond an end: the layer columns before
 // mirror_left (its first column with art) or from mirror_right (its first column past the art) show the art reflected
 // about that end.
-struct Fit{int shift=0,width=kLayerWidth,mirror_left=0,mirror_right=kLayerWidth;
+struct Fit{int shift=0,width=kLayerWidth,mirror_left=0,mirror_right=kLayerWidth,gap=-(1<<20);
     bool fitted()const{return shift||width<kLayerWidth;}
     bool mirrored()const{return mirror_left>0||mirror_right<kLayerWidth;}};
 // The plane's art in layer columns: what its draws put inside the layer (drawn) and the hull of their spans beyond it. A
 // band (it draws in every column of the arcade's 400) whose art ends inside the layer, at an end the arcade never shows,
 // keeps its place, its motion and the arcade's columns, and is mirrored beyond that end (moving it to the end would pin it
 // there while the camera moves: it would slide against the other planes); only a band narrower than the layer is stretched
-// to it. Any other plane is left as is. shift: the window offset (VirtualScroll).
+// to it. Any other plane is left as is. shift: the plane's own (PlaneShift). push: the plane's move this frame (Layer::Push;
+// every far plane but a stretched one moves by it); side: the arena end the camera is nearer to (1 left, -1 right, 0 none:
+// Layer::Side). gap: a band's art end on that side, an end the arcade never shows, in layer columns from the layer's edge
+// inward (negative: beyond it) before the push, when the shadow built it (its draws reach less than kReach past the
+// layer); kNoGap otherwise (Layer::NeedPush).
+constexpr int kNoGap=-(1<<20);
 template<class Shown>
-Fit FitPlane(const std::array<bool,kLayerWidth>& drawn,int hull_left,int hull_right,int shift,Shown&& shown){
+Fit FitPlane(const std::array<bool,kLayerWidth>& drawn,int hull_left,int hull_right,int shift,Shown&& shown,int push=0,int side=0){
     int drawn_left=kLayerWidth,drawn_right=0;
     for(int c=0;c<kLayerWidth;++c)if(drawn[c]){drawn_left=std::min(drawn_left,c);drawn_right=c+1;}
     const int left=drawn_left>0?drawn_left:std::min(hull_left,0),right=drawn_right<kLayerWidth?drawn_right:std::max(hull_right,kLayerWidth);
     const int arcade=kWideMargin-shift;   // the arcade's first column in the layer
-    const bool band=std::all_of(drawn.begin()+std::clamp(arcade,0,kLayerWidth),drawn.begin()+std::clamp(arcade+kVisible,0,kLayerWidth),
+    // A camera kEndSlack columns past its limit (the game lets it overshoot) may leave the band's last columns undrawn.
+    const bool band=std::all_of(drawn.begin()+std::clamp(arcade+kEndSlack,0,kLayerWidth),drawn.begin()+std::clamp(arcade+kVisible-kEndSlack,0,kLayerWidth),
                                 [](bool c){return c;});
     Fit fit;
-    if(band&&left<=arcade&&right>=arcade+kVisible&&(left>0||right<kLayerWidth)&&
+    if(band&&side>0&&hull_left>-kReach){const int end=drawn_left>0?drawn_left:hull_left;if(!shown(end,true))fit.gap=end;}
+    if(band&&side<0&&hull_right<kLayerWidth+kReach){const int end=drawn_right<kLayerWidth?drawn_right:hull_right;if(!shown(end,false))fit.gap=kLayerWidth-end;}
+    if(band&&left<=arcade+kEndSlack&&right>=arcade+kVisible-kEndSlack&&(left>0||right<kLayerWidth)&&
        !(left>0&&shown(left,true))&&!(right<kLayerWidth&&shown(right,false))){
-        if(right-left>=kLayerWidth){if(left>0)fit.mirror_left=left;else fit.mirror_right=right;}
+        if(right-left>=kLayerWidth){
+            if(left>0){if(left+push>0)fit.mirror_left=left+push;}
+            else if(right+push<kLayerWidth)fit.mirror_right=right+push;
+            fit.shift=push;
+        }
         else{fit.shift=-left;fit.width=right-left;}
+        return fit;
     }
-    return fit;
+    fit.shift=push;return fit;
 }
 // A draw's mirror image about a mirrored plane's end (Fit; registers in layer columns, the X register 10-bit as -256..767):
 // column c goes to 2*end-1-c (the X flip toggled), clipped to the columns beyond that end. False when the board cannot draw
@@ -123,6 +150,33 @@ struct Layer {
     std::array<int,2> held{};     // the last shifting frame's camera x and offset (the hold modes keep it)
     std::array<int,3> limits{};   // the arena's last usable camera limits (min, max, valid)
     std::array<Ratio,10> ratio{};std::array<int,2> ratio_limits{};int world=0;   // per scroll slot (far planes, world, front), for this arena
+    // The far planes' camera lag at an arena's end (FitPlane): with the window moved toward an end where the bands (art that
+    // the arcade never shows ending) would show their end inside the window, every far plane moves back by its ratio times
+    // the lag (camera columns), so they stand as the arcade composes them at a camera that many columns from the virtual
+    // one (an arcade view within the arena) and their art reaches the window's edge: no reflected scenery beyond the
+    // arena's end. need: the lag the last build's bands asked for (gap / ratio, measured where parallax puts them); the lag
+    // is need times |d| / kWideMargin, so it grows from nothing as the window leaves the centre.
+    int push=0,push_need=0,push_seen=0;static constexpr int kPushStep=2;
+    int Push(const Ratio* r)const{
+        if(!push||!r||!r->world||r->plane<=0)return 0;
+        const int64_t m=int64_t(push)*r->plane;return int((m>=0?m+r->world/2:m-r->world/2)/r->world);
+    }
+    // A band's gap grows by (1 - ratio) per column the virtual camera still moves toward the limit (dist + |d| - kWideMargin
+    // of them, dist the camera's columns to it): the lag it needs there, gap / ratio + (1 / ratio - 1) * that, so the lag
+    // grows evenly with |d| and the far planes keep moving forward.
+    // Measured while the camera is centred too (the side nearer to it), so the lag is known before the window moves.
+    int Side()const{
+        if(shift)return shift>0?1:-1;
+        if(!limits[2])return 0;
+        return world-limits[0]<=limits[1]-world?1:-1;
+    }
+    void NeedPush(const Fit& fit,const Ratio* r){
+        const int side=Side();
+        if(fit.gap==kNoGap||!r||!r->world||r->plane<=0||!side)return;
+        const int dist=std::max(0,side>0?world-limits[0]:limits[1]-world),ahead=std::max(0,dist+std::abs(shift)-kWideMargin);
+        const int64_t w=std::abs(r->world),q=std::abs(r->plane),gap=int64_t(fit.gap)*w+int64_t(ahead)*(w-std::min(q,w));
+        if(gap>0)push_need=std::max(push_need,int((gap+q-1)/q));
+    }
     // A screen without an arena (no far plane draws and the mode is not a fight's: menus, bios, story, records, logos;
     // Backdrop) keeps its 400 columns as the arcade draws them, and its margins show only its background extended: no draw
     // writes them (Arcade), and at the frame's end (Tidy) the background draws that reach an arcade edge continue past it
@@ -230,6 +284,11 @@ struct Layer {
     }
     // A page composed with an offset and not cleared since keeps its last composition, moved by the change of offset.
     void SetShift(int d){
+        // The lag follows need * |d| / kWideMargin by at most kPushStep columns a build (a band's end entering the layer
+        // inside the ramp would otherwise make the far planes jump).
+        push_seen=push_need;push_need=0;
+        const int target=d>0?-(push_seen*d/kWideMargin):d<0?push_seen*-d/kWideMargin:0;
+        push=std::clamp(target,push-kPushStep,push+kPushStep);
         int& now=page_shift[page];shift=d;kept=false;arena=false;menu=false;composed=true;   // the shadow composes this build
         if(now==d||!Enabled()){now=d;return;}
         const int move=std::clamp(d-now,-kLayerWidth,kLayerWidth);now=d;   // the new column c shows the old column c+move
@@ -371,7 +430,7 @@ struct Layer {
     // This frame's offset from the mode (shifting, holding or neither), the camera and the arena's limits (a finisher
     // frees the camera: limits wider than world_max keep the arena's last ones).
     int Offset(bool shifting,bool holding,int camera,int low,int high,int world_max){
-        if(low<=high&&high-low<=world_max)limits={low,high,1};
+        if(low<=high&&high-low<=world_max){if(limits[0]!=low||limits[1]!=high)push_need=0;limits={low,high,1};}   // another arena: no push yet
         else if(limits[2]){low=limits[0];high=limits[1];}
         const int d=holding?(camera==held[0]?held[1]:0):shifting?WindowShift(camera,low,high):0;
         if(!holding)held={camera,d};
@@ -383,7 +442,7 @@ struct Layer {
         return ratio[std::min(slot,unsigned(ratio.size()-1))];
     }
     // Save-state fields (W4): the layer, the pages' offsets and fits and the arena's window facts.
-    template<class A> void LayerFields(A& a){a(pens,blood,fixed,page_shift,page_fitted,cleared,held,limits,ratio,ratio_limits,kept,frame_started,shift,page,world,
+    template<class A> void LayerFields(A& a){a(pens,blood,fixed,page_shift,page_fitted,cleared,held,limits,ratio,ratio_limits,kept,frame_started,shift,page,world,push,push_need,push_seen,
                                                 clear_pen,arena,menu,composed,edge_draws,palette_uses,image_rows,image_lines,image_palette,image_dirty,placements,booked,rom_palette);}
     void Reset(){const int fill=edge_fill;*this=Layer{};edge_fill=fill;}
 };

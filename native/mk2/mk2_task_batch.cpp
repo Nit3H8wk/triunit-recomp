@@ -164,8 +164,8 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
         o.shadow=false;shadow_skip=true;o.out.video.margin_faults+=o.shadow_fault;
         o.out.video.wide_walk_drawn=!o.shadow_fault;   // else the real walk's DMAs are mirrored too
     };
-    // The shadow's clip and virtual camera, written through the journal: each scroll moves by d (mk5wide::VirtualScroll), the
-    // ratios (mk5wide::EndShown) read again whenever the world moves.
+    // The shadow's clip and virtual camera, written through the journal: each scroll moves by its ratio times d (the world's
+    // by d; mk5wide::VirtualScroll), the ratios read again whenever the world moves.
     const auto shadow_view=[&](int d){
         const auto ram_long=[&](uint32_t bit){const size_t i=(bit-0x01000000)/16;return int32_t(o.out.main_ram[i]|uint32_t(o.out.main_ram[i+1])<<16);};
         o.Write32(mk2::wide::kClipTopLeft,mk2::wide::WideTopLeft());o.Write32(mk2::wide::kClipBottomRight,mk2::wide::WideBottomRight());
@@ -173,7 +173,7 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
         for(unsigned slot=0;slot<mk2::wide::kScrollSlots;++slot){
             const uint32_t scroll=mk2::wide::kScrollFirst+slot*0x20;auto& ratio=o.out.video.wide.PlaneRatio(slot);
             if(world_velocity)ratio=mk5wide::MeasuredRatio(ram_long(scroll-mk2::wide::kScrollVelocityGap),world_velocity);
-            if(d)o.Write32(scroll,uint32_t(mk5wide::VirtualScroll(ram_long(scroll),d)));
+            if(d)o.Write32(scroll,uint32_t(mk5wide::VirtualScroll(ram_long(scroll),d,slot==mk2::wide::kWorldSlot?nullptr:&ratio)));
         }
     };
     while (live_host ? s.cycles<end_cycle :

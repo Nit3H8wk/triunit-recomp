@@ -95,13 +95,13 @@ void Mk5TaskBodyRunner::wide_pre(uint32_t pc){
     shadow_stack_reads=f.check.stack_read_count;shadow_lowest_sp=f.check.lowest_sp;shadow_quanta=irq.elapsed_quanta();
     shadow_cycles=s.reference_cycles;shadow_steps=0;shadow_journal.clear();shadow=true;shadow_refused=false;
     write(pc,w::kClipTopLeft,32,w::WideTopLeft());write(pc,w::kClipBottomRight,32,w::WideBottomRight());
-    // The virtual camera (mk5wide::VirtualScroll): each scroll moves by d; a moving world updates the ratios (EndShown).
+    // The virtual camera (mk5wide::VirtualScroll): each scroll moves by its ratio times d; a moving world updates the ratios.
     const int32_t world_velocity=int32_t(ram_long(w::kWorldScroll-w::kVelocityGap));
     for(unsigned slot=0;slot<w::kScrollSlots;++slot){
         const uint32_t scroll=w::kScrollFirst+slot*0x20;
         auto& ratio=v.WideRatio(slot);
         if(world_velocity)ratio=mk5wide::MeasuredRatio(int32_t(ram_long(scroll-w::kVelocityGap)),world_velocity);
-        if(d)write(pc,scroll,32,uint32_t(mk5wide::VirtualScroll(int32_t(ram_long(scroll)),d)));
+        if(d)write(pc,scroll,32,uint32_t(mk5wide::VirtualScroll(int32_t(ram_long(scroll)),d,slot==w::kWorldSlot?nullptr:&ratio)));
     }
     shadow_walk=v.wide_streaming;   // not while the interrupted run is inside the real streamer: its planes are half built
     if(!shadow_walk){push(pc,w::kStreamerReturn);s.next_original_pc=w::kStreamer;throw TaskBodyStop::Shadow;}
@@ -154,7 +154,8 @@ void Mk5TaskBodyRunner::shadow_failed(){
     write(w::kWalkStart,w::kClipTopLeft,32,w::WideTopLeft());write(w::kWalkStart,w::kClipBottomRight,32,w::WideBottomRight());
     for(unsigned slot=0;slot<w::kScrollSlots&&d;++slot){
         const uint32_t scroll=w::kScrollFirst+slot*0x20;const size_t i=(scroll-0x01000000)/16;
-        write(w::kWalkStart,scroll,32,uint32_t(mk5wide::VirtualScroll(int32_t(m.ram[i]|uint32_t(m.ram[i+1])<<16),d)));
+        write(w::kWalkStart,scroll,32,uint32_t(mk5wide::VirtualScroll(int32_t(m.ram[i]|uint32_t(m.ram[i+1])<<16),d,
+                                                                       slot==w::kWorldSlot?nullptr:&video->WideRatio(slot))));
     }
     shadow_walk=true;s.next_original_pc=w::kWalkStart;
 }
