@@ -386,6 +386,9 @@ struct Layer {
             const bool tile=!fill&&w>=kTile&&w<kWide&&(palette_uses[(r[8]>>8)&0x7f]>=kShared||past),piece=(w>=kPiece&&h>=kPiece)||w>=kWide;
             if(!(tile||piece))continue;
             const Cover art=opaque(r);if(!art.opaque)continue;
+            // A tile has neighbours on its line: draws of its own source, or as wide (a tile cut to a border strip). An opaque
+            // part with neither is a sprite's (a fighter on the select screen is drawn in parts of one palette): not repeated.
+            if(tile&&!piece&&!past&&!Step(w,[&](const Placement& p){return p.source==Source(r);})&&!Step(w,[&](const Placement& p){return p.width==w;}))continue;
             const auto draw=[&](std::array<uint16_t,18> c,int first,int last){
                 c[16]=uint16_t(std::max<int>(first,c[16]));c[17]=uint16_t(std::min<int>(last,c[17]));if(c[16]<=c[17])render(c,edge_fill>0);};
             for(const bool right:{false,true}){
