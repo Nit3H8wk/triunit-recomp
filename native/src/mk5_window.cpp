@@ -661,8 +661,8 @@ struct Mk5Window::Impl {
         LARGE_INTEGER before{};QueryPerformanceCounter(&before);
         frame.actors=!frame.fighters.layers.empty();
         frame.scenery=frame.actors?!frame.fighters.backdrop.empty():!frame.backdrop.empty();
-        if(frame.actors)frame.scaled=mk5presentation::ComposeFighterFrame4x(frame.fighters,frame.width,frame.height);
-        else if(frame.scenery)frame.scaled=mk5stage::Bicubic4x(frame.pixels,frame.backdrop,frame.width,frame.height);
+        if(frame.actors)mk5presentation::ComposeFighterFrame4x(frame.fighters,frame.width,frame.height,frame.scaled);
+        else if(frame.scenery)mk5stage::Bicubic4x(frame.pixels,frame.backdrop,frame.width,frame.height,frame.scaled);
         else frame.scaled.clear();
         LARGE_INTEGER after{};QueryPerformanceCounter(&after);
         std::lock_guard<std::mutex> lock(stats_mutex);

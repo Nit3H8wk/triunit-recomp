@@ -52,7 +52,7 @@ inline std::vector<uint32_t> ScaleFighter4x(const FighterLayer& pose){
         }
     }
     std::vector<uint32_t> result(size_t(stride)*h*scale);
-    for(unsigned y=0;y<h*scale;++y){
+    mk5stage::ForRows(h*scale,[&](unsigned y){
         const auto& t=ytaps[y];
         const auto* a=horizontal.data()+size_t(t.index[0])*stride;
         const auto* b=horizontal.data()+size_t(t.index[1])*stride;
@@ -71,7 +71,7 @@ inline std::vector<uint32_t> ScaleFighter4x(const FighterLayer& pose){
                 output[x]=straight;
             }
         }
-    }
+    });
     return result;
 }
 
@@ -91,7 +91,8 @@ inline void ComposeFighters4x(std::vector<uint32_t>& image,unsigned width,unsign
         const int stride=(int(layer.width)+2*margin)*scale;
         const int bottom=top+(int(layer.height)+2*margin)*scale;
         const auto scaled=layer.smooth?ScaleFighter4x(layer):std::vector<uint32_t>{};
-        for(int y=std::max(0,top);y<std::min(h,bottom);++y){
+        const int first=std::max(0,top),last=std::min(h,bottom);
+        if(first<last)mk5stage::ForRows(unsigned(last-first),[&](unsigned row){const int y=first+int(row);
             for(int x=std::max(0,left);x<std::min(w,left+stride);++x){
                 const auto source=layer.smooth?scaled[size_t(y-top)*stride+x-left]:
                     layer.pixels[size_t((y-top)/scale)*layer.width+(x-left)/scale];
@@ -108,19 +109,20 @@ inline void ComposeFighters4x(std::vector<uint32_t>& image,unsigned width,unsign
                 }
                 dest=result;
             }
-        }
+        });
     }
 }
 
-inline std::vector<uint32_t> ComposeFighterFrame4x(const FighterFrame& frame,unsigned width,unsigned height){
+// Into result (every pixel written; mk5stage::Bicubic4x keeps a same-sized result's memory).
+inline void ComposeFighterFrame4x(const FighterFrame& frame,unsigned width,unsigned height,std::vector<uint32_t>& result){
     constexpr unsigned scale=mk5stage::scale;
     const size_t area=size_t(width)*height;
     if(!frame.serial || frame.underlay.size()!=area || frame.covered.size()!=area ||
        frame.opaque_order.size()!=area || frame.layers.empty())
         throw std::logic_error("MK5 incomplete fighter frame");
-    auto result=frame.backdrop.empty()?std::vector<uint32_t>(area*scale*scale):
-        mk5stage::Bicubic4x(frame.underlay,frame.backdrop,width,height);
-    for(unsigned y=0;y<height*scale;++y){
+    if(frame.backdrop.empty())result.resize(area*scale*scale);
+    else mk5stage::Bicubic4x(frame.underlay,frame.backdrop,width,height,result);
+    mk5stage::ForRows(height*scale,[&](unsigned y){
         for(unsigned x=0;x<width;++x){
             const auto pixel=size_t(y/scale)*width+x;
             auto* tile=result.data()+size_t(y)*width*scale+x*scale;
@@ -128,8 +130,10 @@ inline std::vector<uint32_t> ComposeFighterFrame4x(const FighterFrame& frame,uns
             if(frame.covered[pixel])
                 for(unsigned dx=0;dx<scale;++dx)tile[dx]|=0xff000000;
         }
-    }
+    });
     ComposeFighters4x(result,width,height,frame.layers,frame.opaque_order);
-    return result;
+}
+inline std::vector<uint32_t> ComposeFighterFrame4x(const FighterFrame& frame,unsigned width,unsigned height){
+    std::vector<uint32_t> result;ComposeFighterFrame4x(frame,width,height,result);return result;
 }
 }

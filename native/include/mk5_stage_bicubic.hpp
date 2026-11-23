@@ -4,11 +4,25 @@
 #include <cstdint>
 #include <emmintrin.h>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 namespace mk5stage {
 inline constexpr uint32_t scenery=0x80000000;
 inline constexpr unsigned scale=4;
+
+// Rows [0, count) in contiguous bands on up to kBands threads (the caller's one included): each row is written by one band
+// only, so the result is the single-threaded one, pixel for pixel. A small count stays on the caller's thread.
+inline constexpr unsigned kBands=4,kBandRows=64;
+template<class Row> void ForRows(unsigned count,Row&& row){
+    const unsigned bands=std::min({kBands,std::max(1u,std::thread::hardware_concurrency()),std::max(1u,count/kBandRows)});
+    const auto run=[&](unsigned band){for(unsigned y=count*band/bands;y<count*(band+1)/bands;++y)row(y);};
+    if(bands<2){run(0);return;}
+    std::vector<std::thread> workers;workers.reserve(bands-1);
+    for(unsigned band=1;band<bands;++band)workers.emplace_back(run,band);
+    run(0);
+    for(auto& worker:workers)worker.join();
+}
 
 struct CubicTap {
     std::array<unsigned,4> index;
@@ -100,24 +114,27 @@ inline __m128i BicubicTile(const uint32_t* a,const uint32_t* b,const uint32_t* c
     else return result;
 }
 
-inline std::vector<uint32_t> Bicubic4x(const std::vector<uint32_t>& original,
-        const std::vector<uint32_t>& backdrop,unsigned width,unsigned height){
+// Into result (every pixel written; a result of the same size keeps its memory: a frame's buffers are reused, not faulted in
+// again each frame).
+inline void Bicubic4x(const std::vector<uint32_t>& original,const std::vector<uint32_t>& backdrop,unsigned width,unsigned height,
+                      std::vector<uint32_t>& result){
     if(!width || !height || original.size()!=size_t(width)*height || backdrop.size()!=original.size())
         throw std::logic_error("MK5 bicubic backdrop geometry");
     const unsigned output_width=width*scale;
     const auto horizontal_taps=BicubicAxis(width);
     const auto vertical_taps=BicubicAxis(height);
-    std::vector<uint32_t> horizontal(size_t(output_width)*height);
-    for(unsigned y=0;y<height;++y){
+    thread_local std::vector<uint32_t> scratch;   // the caller's: the bands reach it through this reference
+    auto& horizontal=scratch;horizontal.resize(size_t(output_width)*height);
+    ForRows(height,[&](unsigned y){
         const auto* row=backdrop.data()+size_t(y)*width;
         auto* target=horizontal.data()+size_t(y)*output_width;
         for(unsigned x=0;x<output_width;++x){
             const auto& tap=horizontal_taps[x];
             target[x]=BicubicRgb(row[tap.index[0]],row[tap.index[1]],row[tap.index[2]],row[tap.index[3]],tap);
         }
-    }
-    std::vector<uint32_t> result(size_t(output_width)*height*scale);
-    for(unsigned y=0;y<height*scale;++y){
+    });
+    result.resize(size_t(output_width)*height*scale);
+    ForRows(height*scale,[&](unsigned y){
         const auto& tap=vertical_taps[y];
         const auto* a=horizontal.data()+size_t(tap.index[0])*output_width;
         const auto* b=horizontal.data()+size_t(tap.index[1])*output_width;
@@ -134,7 +151,10 @@ inline std::vector<uint32_t> Bicubic4x(const std::vector<uint32_t>& original,
                 std::fill_n(target+left,scale,original[base+x]&0xffffff);
             }
         }
-    }
-    return result;
+    });
+}
+inline std::vector<uint32_t> Bicubic4x(const std::vector<uint32_t>& original,
+        const std::vector<uint32_t>& backdrop,unsigned width,unsigned height){
+    std::vector<uint32_t> result;Bicubic4x(original,backdrop,width,height,result);return result;
 }
 }
