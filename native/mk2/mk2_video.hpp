@@ -413,6 +413,20 @@ struct BootVideo {
     // The palette slots' ROM pointers when the shadow pass starts (mk2::wide::kPaletteTable); not state (the pass never spans
     // a batch). A shadow draw in a slot the pass booked for another palette takes its colours from the ROM (Layer::Book).
     std::array<uint32_t,mk2::wide::kPaletteSlots> wide_palettes{};
+    // Far-plane objects the shadow walk staged moving (x velocity long, +40h, not 0) and the frame it last staged them. The
+    // game parks such an object once it leaves the arcade's screen (the red-sky arena's dragons: velocity 0, a wait, then
+    // a jump to the other side): parked with its art outside the arcade's columns it is off the arcade screen, so it is not
+    // drawn in the margins either. An object not staged for kMoverKeep frames is forgotten (freed, reused).
+    struct WideMover{uint32_t object,seen;template<class A> friend void Fields(A& a,WideMover& m){a(m.object,m.seen);}};
+    static constexpr uint32_t kMoverKeep=8;
+    std::vector<WideMover> wide_moving;uint32_t wide_frame=0;
+    bool WideParked(uint32_t object,int32_t velocity,const std::array<uint16_t,12>& entry){
+        if(!wide_fit)return false;
+        const auto it=std::find_if(wide_moving.begin(),wide_moving.end(),[&](const WideMover& m){return m.object==object;});
+        if(velocity){if(it==wide_moving.end())wide_moving.push_back({object,wide_frame});else it->seen=wide_frame;return false;}
+        if(it==wide_moving.end())return false;
+        it->seen=wide_frame;return !WideOnArcade(entry);
+    }
     bool WideFresh(uint32_t object)const{return std::binary_search(wide_free.begin(),wide_free.end(),object);}
     // An entry's columns in the layer [first, last) from its x (10-bit DMA x read as -256..767), width, X step and flip.
     static std::pair<int,int> WideSpan(const std::array<uint16_t,12>& e){return mk5wide::Span(e[4],e[6],e[10],(e[1]&0x10)!=0);}
@@ -426,6 +440,7 @@ struct BootVideo {
         // The frame starts from the VRAM page, offset 0, unless the page was composed with an offset and not cleared since:
         // then what the game left on it is that composition (VRAM holds it unshifted).
         wide.StartFrame(page_row,vram,blood_layer);
+        ++wide_frame;wide_moving.erase(std::remove_if(wide_moving.begin(),wide_moving.end(),[&](const WideMover& m){return wide_frame-m.seen>kMoverKeep;}),wide_moving.end());
         wide_walk_entries.clear();wide_walk_drawn=false;wide_shadow_post=wide_real_post=wide_post_keyed=false;wide_pending.clear();
         wide_plane.clear();wide_fit=false;
     }
@@ -607,10 +622,10 @@ private:
     template<class A> void WideFields(A& a){
         const bool enabled=WideEnabled();bool present=enabled;a(present);
         if(present){wide.LayerFields(a);a(margin_streamer,margin_streaming,wide_walk_entries,wide_walk_drawn,wide_shadow_post,
-                                          wide_real_post,wide_post_key,wide_post_keyed,wide_pending);}
+                                          wide_real_post,wide_post_key,wide_post_keyed,wide_pending,wide_moving,wide_frame);}
         if constexpr(A::reading){
             if(enabled==present)return;
-            wide.Reset();wide_walk_entries.clear();wide_pending.clear();
+            wide.Reset();wide_walk_entries.clear();wide_pending.clear();wide_moving.clear();wide_frame=0;
             wide_walk_drawn=wide_shadow_post=wide_real_post=wide_post_keyed=false;
             wide_post_key=0;margin_streamer=margin_streaming=false;
             if(enabled)EnableWide();

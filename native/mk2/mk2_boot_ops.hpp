@@ -832,7 +832,11 @@ public:
         if(shadow && s.next_pc==mk2::wide::kDrawerStage){
             std::array<uint16_t,12> entry{};const unsigned regs[6]={12,11,10,9,8,6};
             for(unsigned k=0;k<6;++k){entry[2*k]=uint16_t(s.a[regs[k]]);entry[2*k+1]=uint16_t(s.a[regs[k]]>>16);}
-            if(!WideBooked(entry)&&!out.video.WideEntry(entry,program.graphics,out.video.WideFresh(s.a[0])))shadow_fault=true;   // A0: the object
+            const uint32_t object=s.a[0];int32_t velocity=0;
+            if(object>=0x01000000u&&object<0x01400000u&&!(object&15)){const size_t i=(object+mk2::wide::kObjectXVelocity-0x01000000u)/16;
+                if(i+1<out.main_ram.size())velocity=int32_t(out.main_ram[i]|uint32_t(out.main_ram[i+1])<<16);}
+            // An object parked off the arcade's screen is left out (BootVideo::wide_moving).
+            if(!out.video.WideParked(object,velocity,entry)&&!WideBooked(entry)&&!out.video.WideEntry(entry,program.graphics,out.video.WideFresh(object)))shadow_fault=true;   // A0: the object
         } else if(shadow && s.next_pc==mk2::wide::kFloorStage){   // the floor producer: A9 r0/r1, A8 r2/r3, A7 r4/r5, A6 r6/r7, A3 r8/r9, A2 r10/r11
             std::array<uint16_t,12> entry{};const unsigned regs[6]={9,8,7,6,3,2};
             for(unsigned k=0;k<6;++k){entry[2*k]=uint16_t(s.a[regs[k]]);entry[2*k+1]=uint16_t(s.a[regs[k]]>>16);}
