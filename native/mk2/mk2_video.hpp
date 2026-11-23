@@ -358,6 +358,8 @@ struct BootVideo {
         const bool backdrop=wide_mirror&&wide.Backdrop();
         const bool actor=mk5wide::Layer<uint16_t>::ActorDraw(command);   // a floor shadow: kept out of reflected margins
         if(backdrop){auto r=DmaRegisters(board);r[1]=command;r[4]=mk5wide::LayerX(r[4]);wide.Note(r);}
+        if(wide_mirror){const auto [lo,hi]=mk5wide::Span(dma_registers[4],dma_registers[6],dma_registers[10],(command&0x10)!=0,false);
+            const int by=mk5wide::kExtra-(wide_mirror_world?wide.shift:0);wide.Draw(mk5wide::Kind::real,lo+by,hi+by);}
         const auto pixels=Render(command,dma_registers,dma_palette,graphics,[&](size_t index,uint16_t pen,bool write){
             auto& dest=vram.at(index);
             if(write){dest=pen;present_pixel(index);
@@ -576,6 +578,8 @@ struct BootVideo {
     }
     bool DrawWide(const WideDraw& draw,const std::vector<uint8_t>& graphics){
         auto r=LayerRegisters(draw.entry,draw.shift);
+        {const auto [a,b]=mk5wide::Span(uint16_t(draw.entry[4]+draw.shift),draw.entry[6],draw.entry[10],(draw.entry[1]&0x10)!=0,false);
+            wide.Draw(draw.mirror||draw.width<mk5wide::kLayerWidth?mk5wide::Kind::generated:mk5wide::Kind::shadow,a+mk5wide::kExtra,b+mk5wide::kExtra);}
         if(draw.mirror){   // a mirror image the board cannot draw (scaled, or a command without its flipped twin) is left out
             mk5wide::Fit fit;(draw.mirror>0?fit.mirror_right:fit.mirror_left)=std::abs(draw.mirror);
             if(!mk5wide::MirrorDraw(r,fit,draw.mirror>0)||!KnownCommand(r[1]))return true;
@@ -604,7 +608,7 @@ struct BootVideo {
                 if(!write||index>=size)return;
                 if(under&&mk5wide::Layer<uint16_t>::Arcade(int(index%mk5wide::kLayerWidth))&&pens[index]!=wide.clear_pen[index/mk5wide::kLayerWidth])return;
                 mk5wide::Stretch(index,width,[&](size_t i){if(fixed&&!(marks[i]&1))covered[i]=pens[i];   // under a HUD pixel (Layer::ReflectSource)
-                    pens[i]=uint16_t(pen|booked);marks[i]=uint8_t(fixed|actor);if(stains)stains[i]=0;});
+                    pens[i]=uint16_t(pen|booked);marks[i]=uint8_t(fixed|actor);if(stains)stains[i]=0;wide.Stamp(i);});
             },[]{},mk5wide::kLayerWidth,Passes::write);
         }catch(const std::runtime_error&){return false;}
         return true;

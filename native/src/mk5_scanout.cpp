@@ -41,7 +41,7 @@ void Mk5Scanout::line(const Mk5ScanlineEvent& edge,const std::array<uint16_t,32>
                 }
             }
             if(wide_video){
-                wide_complete=wide_work;wide_centre_=wide_centre_work;wide_shift_=wide_shift_work;wide_fitted_=wide_fitted_work;
+                wide_complete=wide_work;wide_centre_=wide_centre_work;wide_audit_=wide_audit_work;wide_shift_=wide_shift_work;wide_fitted_=wide_fitted_work;
                 if(wide_present){wide_source=wide_source_work;wide_blood=wide_blood_work;wide_stale=true;}
             }
         }
@@ -90,6 +90,7 @@ void Mk5Scanout::wide_line(unsigned row,unsigned col,bool enabled){
         wide_work.assign(n,0);
         if(wide_present){wide_source_work.assign(n,kBlank);wide_blood_work.assign(n,0);}
         wide_shift_work=layer.Enabled()?layer.ShiftOfRow(row>>9):0;wide_fitted_work=layer.Enabled()?layer.FittedOfRow(row>>9):0;
+        wide_audit_work={};
     }
     const size_t base=size_t(row>>9)*mk5wide::kLayerWidth;   // the layer's line (mk5_wide.hpp)
     for(unsigned dest_x=0;dest_x<kWideWidth;++dest_x){
@@ -106,6 +107,7 @@ void Mk5Scanout::wide_line(unsigned row,unsigned col,bool enabled){
         constexpr unsigned kEdge=4;
         wide_centre_work+=dest_x>=margin+kEdge && dest_x<margin+width_-kEdge && pen!=memory.vram[index];
         wide_work[dest]=enabled?expand_rgb(pen&0x8000?layer.Colour(at,pen,memory.palette.data()):memory.palette.at(pen&0x7fff)):0;   // Layer::Book
+        if(layer.debug && enabled && (dest_x<margin || dest_x>=margin+width_) && !layer.written[at])wide_work[dest]=mk5wide::kSentinel;
         if(!wide_present)continue;
         const int world=int(x)-int(margin)+wide_shift_work,hud=int(x)-int(margin);
         const bool fixed=layer.Enabled() && !raw && (layer.fixed[at]&mk5wide::Layer<uint8_t>::kFixed);
@@ -115,6 +117,8 @@ void Mk5Scanout::wide_line(unsigned row,unsigned col,bool enabled){
         wide_source_work[dest]=source;
         wide_blood_work[dest]=source==kRaw && layer.Enabled()?wide_video->WideBloodPixel(at):0;
     }
+    if(layer.Enabled())layer.AuditRow(wide_audit_work,row>>9,[&](int L){const auto r=layer.ReflectSource(row>>9,L);
+        return size_t(ptrdiff_t(base)+ptrdiff_t(r.dy)*mk5wide::kLayerWidth)+size_t(r.column);});
 }
 // The wide frame of the Remastered layers: a pixel with an arcade column takes that column's data (colour with blood,
 // backdrop, fighter order and cover); a pixel only the shadow has is its raw colour as scenery, or its floor stain dimmed

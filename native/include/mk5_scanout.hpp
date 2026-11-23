@@ -28,7 +28,7 @@ class Mk5Scanout {
     // pixels that differ from VRAM (0 when exact).
     const Mk5LiveVideo* wide_video=nullptr;
     std::vector<uint32_t> wide_work,wide_complete;
-    uint64_t wide_centre_work=0,wide_centre_=0;int wide_shift_work=0,wide_shift_=0;unsigned wide_fitted_work=0,wide_fitted_=0;
+    uint64_t wide_centre_work=0,wide_centre_=0;mk5wide::Audit wide_audit_work,wide_audit_;int wide_shift_work=0,wide_shift_=0;unsigned wide_fitted_work=0,wide_fitted_=0;
     // Widescreen presentation (Remastered): each wide pixel's arcade column, where its pen is the arcade's own at that column
     // (the world's x = L-56+d; a pixel of a screen-fixed draw, the HUD's x = L-56), so the Remastered layers of that column
     // apply; kRaw where only the shadow pass has it (margins, fitted planes): its raw colour, as scenery, with the wide floor
@@ -87,6 +87,7 @@ public:
     int wide_shift()const{return wide_shift_;}   // its window offset (0: the window stays centred)
     unsigned wide_fitted()const{return wide_fitted_;}   // its far planes fitted to the window: with none, the centre is exact
     uint64_t wide_centre()const{return wide_centre_;}
+    const mk5wide::Audit& wide_audit()const{return wide_audit_;}   // the last complete frame's margins (mk5wide::Layer::debug)
     // Widescreen presentation (Remastered, from the attached video): the frame, backdrop and fighter layers over kWideWidth.
     void EnableWidePresentation(const Mk5LiveVideo& video){wide_video=&video;wide_present=presentation!=nullptr;}
     bool wide_presentation_enabled()const{return wide_present;}

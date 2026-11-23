@@ -5,6 +5,7 @@
 // than a VRAM line holds). Game facts (addresses) stay in each game's table (mk5_widescreen.hpp, mk2/mk2_widescreen.hpp).
 // Layer index: VRAM row (both 256-line pages) * kLayerWidth + layer column; layer column L shows screen x L-67+d.
 #include <algorithm>
+#include <cstdlib>
 #include <array>
 #include <cstdint>
 #include <utility>
@@ -24,12 +25,25 @@ constexpr int kEndSlack=4;
 constexpr int kWorldMax=4096;  // camera limits wider than this (a finisher frees the camera) keep the arena's last ones
 // A draw's x register in layer columns: the shadow renders its draws with this x, the layer's stride and its clip.
 constexpr uint16_t LayerX(uint16_t x){return uint16_t((x+kExtra)&0x3ff);}
-// A DMA draw's columns [first, last) from its x register (10-bit, read as -256..767), width, X step and flip.
-inline std::pair<int,int> Span(uint16_t x_register,uint16_t width_register,uint16_t xstep_register,bool flip){
-    int x=x_register&0x3ff;if(x>=768)x-=1024;
+// A DMA draw's columns [first, last) from its x (read as -256..767 when wrap: the board's 10-bit register; else the game's
+// own 16-bit value, before the board wraps it), width, X step and flip.
+inline std::pair<int,int> Span(uint16_t x_register,uint16_t width_register,uint16_t xstep_register,bool flip,bool wrap=true){
+    int x=int16_t(x_register);if(wrap){x&=0x3ff;if(x>=768)x-=1024;}
     const unsigned xstep=xstep_register?xstep_register:0x100;const int w=int(((width_register&0x3ffu)<<8)/xstep),lo=flip?x-w+1:x;
     return {lo,lo+w};
 }
+// Where a pixel of the wide layer came from (diagnostics, Layer::debug): the kind of write and the columns its draw meant to
+// cover in layer columns, from the game's own x before the board's 10-bit wrap (a pixel outside them was wrapped there).
+enum class Kind:uint8_t{none,real,shadow,cpu,clear,generated};
+struct Origin{int16_t lo=0,hi=0;Kind kind=Kind::none;uint8_t page=0;
+    bool Covers(int column)const{return column>=lo&&column<hi;}};
+constexpr uint32_t kSentinel=0xffff00ff;   // magenta: a margin pixel no draw wrote (Layer::debug)
+// A shown frame's margin pixels audited (Layer::AuditRow, debug): shown (all of them), sentinel (no draw wrote it), moved
+// (it shows another column's or row's pixel), actor (of those, a fighter's or a floor shadow's), outside (the draw that wrote
+// it never meant to cover its column: wrapped or moved there), generated (written by no draw of the game: mirrored,
+// stretched, tiled, repeated), stale (on a line the frame rewrote across the arcade's 400 columns, written before the frame).
+struct Audit{uint64_t shown=0,sentinel=0,moved=0,actor=0,outside=0,wrapped=0,generated=0,stale=0;
+    void Add(const Audit& o){shown+=o.shown;sentinel+=o.sentinel;moved+=o.moved;actor+=o.actor;outside+=o.outside;wrapped+=o.wrapped;generated+=o.generated;stale+=o.stale;}};
 // A far plane's parallax: its velocity and the world's in a frame where the world moved (world 0: not known yet).
 struct Ratio{int64_t plane=0,world=0;
     template<class A> friend void Fields(A& a,Ratio& r){a(r.plane,r.world);}};
@@ -100,6 +114,32 @@ template<class Put> void Stretch(size_t index,int width,Put&& put){
 template<class Blood>
 struct Layer {
     std::vector<uint16_t> pens;std::vector<Blood> blood;std::vector<uint8_t> fixed;
+    // Diagnostics: each draw that writes the layer takes the next serial (Draw); every pixel keeps its last writer's serial
+    // (written; 0: none since the page was taken plain from VRAM). With debug on (TRIUNIT_WIDE_DEBUG set when the layer is
+    // enabled) each pixel also keeps that draw's Origin, and the scanouts show kSentinel for a margin pixel no draw wrote.
+    std::vector<uint32_t> written;std::vector<Origin> origin;uint32_t serial=0;Origin drawing;bool debug=false;
+    void Draw(Kind kind,int lo,int hi){
+        if(!++serial)serial=1;
+        drawing={int16_t(std::clamp(lo,-32768,32767)),int16_t(std::clamp(hi,-32768,32767)),kind,uint8_t(page)};
+    }
+    void Stamp(size_t index){written[index]=serial;if(debug)origin[index]=drawing;}
+    std::array<uint32_t,2> page_start{};   // the serial when each page's frame started (a later serial: written by the frame)
+    // One shown line's margins (debug): source(L) is the layer index shown at layer column L of VRAM row vram_row.
+    template<class Source> void AuditRow(Audit& a,unsigned vram_row,Source&& source)const{
+        if(!debug)return;
+        const size_t row=size_t(vram_row)*kLayerWidth;const uint32_t start=page_start[(vram_row>>8)&1];
+        bool full=true;for(int L=kWideMargin;L<kWideMargin+kVisible&&full;++L)full=written[row+size_t(L)]>start;
+        for(int L=0;L<kLayerWidth;++L){
+            if(Arcade(L))continue;
+            const size_t at=source(L);const Origin& o=origin[at];++a.shown;
+            if(!written[at]){++a.sentinel;continue;}
+            const bool moved=at!=row+size_t(L);a.moved+=moved;a.actor+=moved&&(fixed[at]&(kActor|kFighter));
+            a.generated+=o.kind==Kind::generated;
+            a.outside+=(o.kind==Kind::real||o.kind==Kind::shadow)&&!o.Covers(L);
+            a.wrapped+=!moved&&(o.kind==Kind::real||o.kind==Kind::shadow)&&!o.Covers(L);
+            a.stale+=full&&written[at]<=start;
+        }
+    }
     std::array<int,2> page_shift{};std::array<unsigned,2> page_fitted{};
     std::array<bool,2> cleared{{true,true}};   // the page clear ran on the page since its last build
     // A page not cleared since its last build keeps its margins (the game draws over what the page holds: a frozen screen
@@ -183,6 +223,7 @@ struct Layer {
     }
     void Enable(const std::vector<uint16_t>& vram,bool with_blood,int fill=0){
         edge_fill=fill;pens.assign(kLayerSize,0);fixed.assign(kLayerSize,0);under.assign(kLayerSize,0);blood.assign(with_blood?kLayerSize:0,Blood{});
+        written.assign(kLayerSize,0);debug=std::getenv("TRIUNIT_WIDE_DEBUG")!=nullptr;origin.assign(debug?kLayerSize:0,Origin{});
         for(unsigned p=0;p<2;++p)PlainPage(p,vram,{});
     }
     // The layer index of a VRAM index's screen position at offset 0, moved left by move columns (-1: outside the layer).
@@ -193,6 +234,7 @@ struct Layer {
     void Write(size_t index,uint16_t pen,bool screen_fixed=false){
         if(screen_fixed&&!(fixed[index]&kFixed))under[index]=pens[index];   // the scenery a HUD pixel covers (ReflectSource)
         pens[index]=booked[(pen>>8)&0x7f]?uint16_t(pen|kBooked):pen;fixed[index]=screen_fixed;if(!blood.empty())blood[index]=Blood{};
+        Stamp(index);
     }
     std::vector<uint16_t> under;
     // A palette slot the shadow pass booked this build (the game has not built the object, so its colours are not loaded):
@@ -214,8 +256,14 @@ struct Layer {
     // from the VRAM ring.
     void Mirror(const std::vector<uint16_t>& vram,size_t start,size_t count){
         if(!Enabled())return;
-        if(!(start&511)&&count&&!(count&511)){for(size_t row=start>>9;row<(start+count)>>9;++row){clear_pen[row]=vram[row*512];PlainRow(row,vram);}return;}
+        if(!(start&511)&&count&&!(count&511)){   // a line copy (the page clear) writes the whole layer line
+            Draw(Kind::clear,0,kLayerWidth);
+            for(size_t row=start>>9;row<(start+count)>>9;++row){clear_pen[row]=vram[row*512];PlainRow(row,vram);
+                for(size_t L=row*kLayerWidth;L<(row+1)*kLayerWidth;++L)Stamp(L);}
+            return;
+        }
         for(size_t i=start;i<start+count;++i)if(const auto at=At(i);at>=0){
+            Draw(Kind::cpu,int(at%kLayerWidth),int(at%kLayerWidth)+1);Stamp(size_t(at));
             pens[size_t(at)]=vram[i];fixed[size_t(at)]=0;if(!blood.empty())blood[size_t(at)]=Blood{};
             // A CPU write at a VRAM line's first column clears the line (the decompressor writes only inside the arcade's
             // columns): a screen set up by the CPU, which has no arena, with that line's pen. On a Backdrop screen a clear
@@ -240,6 +288,7 @@ struct Layer {
         for(int L=0;L<kLayerWidth;++L)p[L]=PastVram(L)?clear_pen[row]:v[(L-kExtra+512)&511];
         std::fill_n(fixed.begin()+row*kLayerWidth,kLayerWidth,uint8_t(0));
         if(!blood.empty())std::fill_n(blood.begin()+row*kLayerWidth,kLayerWidth,Blood{});
+        std::fill_n(written.begin()+row*kLayerWidth,kLayerWidth,0u);if(debug)std::fill_n(origin.begin()+row*kLayerWidth,kLayerWidth,Origin{});
     }
     void MarkCleared(size_t index){if(Enabled())cleared[(index>>17)&1]=true;}
     int ShiftOfRow(unsigned vram_row)const{return page_shift[(vram_row>>8)&1];}
@@ -248,6 +297,7 @@ struct Layer {
         // edge_fill: a Backdrop page keeps the pixels Tidy filled in the arcade's edge columns (EdgeDraws, ImageEdges) where
         // the arcade still leaves the page clear's pen; anything the game drew there since comes from VRAM.
         const int keep=centre_only&&Backdrop()?edge_fill:0;
+        const bool fresh=cleared[p]&&!centre_only;   // the page clear wrote every pixel (Mirror): they keep its serial
         const int first=centre_only?kWideMargin:0,last=centre_only?kWideMargin+kVisible:kLayerWidth;
         const bool stains=!blood.empty(),arcade=arcade_blood.size()==vram.size();
         for(size_t row=size_t(p)*256;row<size_t(p)*256+256;++row){   // plain pointers: the stores cannot move the layers
@@ -256,7 +306,8 @@ struct Layer {
             const uint16_t* from=vram.data()+row*512;const Blood* arcade_stain=arcade?arcade_blood.data()+row*512:nullptr;
             for(int L=first;L<last;++L){const size_t v=size_t((L-kExtra+512)&511);const bool past=PastVram(L);
                 if(keep&&(L<kWideMargin+keep||L>=kWideMargin+kVisible-keep)&&from[v]==clear_pen[row])continue;
-                to[L]=past?clear_pen[row]:from[v];marks[L]=0;if(stain)stain[L]=arcade_stain&&!past?arcade_stain[v]:Blood{};}
+                to[L]=past?clear_pen[row]:from[v];marks[L]=0;if(stain)stain[L]=arcade_stain&&!past?arcade_stain[v]:Blood{};
+                if(!fresh){written[row*kLayerWidth+size_t(L)]=0;if(debug)origin[row*kLayerWidth+size_t(L)]={};}}
         }
         page_shift[p]=0;page_fitted[p]=0;page_ends[p]={0,kLayerWidth};
     }
@@ -280,12 +331,13 @@ struct Layer {
         page=(page_row>>8)&1;
         kept=!cleared[page]&&page_shift[page];
         if(!kept)PlainPage(page,vram,arcade_blood,!cleared[page]);
-        cleared[page]=false;shift=page_shift[page];frame_started=true;page_fitted[page]=0;composed=false;booked.fill(false);
+        cleared[page]=false;shift=page_shift[page];frame_started=true;page_start[page]=serial;page_fitted[page]=0;composed=false;booked.fill(false);
     }
     // A Backdrop screen's frame is complete (the next display interrupt): its margins take its background. render(regs,
     // under) draws layer registers (their clip included) into the layer as scenery, inside the arcade's columns (under) only
     // over the page clear's pen; opaque(regs) tells whether a draw writes kCovered of its rectangle.
     template<class Render,class Opaque> void Tidy(Render&& render,Opaque&& opaque){
+        Draw(Kind::generated,0,0);   // what Tidy writes continues the screen: no draw of the game's covers it
         if(Backdrop()){EdgeDraws(render,opaque);ImageEdges();}
         edge_draws.clear();palette_uses={};image_rows={};image_dirty={};placements.clear();
     }

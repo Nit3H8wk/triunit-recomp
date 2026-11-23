@@ -278,6 +278,8 @@ void Mk5LiveVideo::Write(uint32_t pc,unsigned offset,uint16_t value){
     if(margins_off && !merge){auto layer=r;layer[4]=mk5wide::LayerX(r[4]);wide.Note(layer);}
     // Kept out of the reflected margins (Layer::ReflectSource): a floor shadow, a fighter.
     const uint8_t actor=mk5wide::Layer<uint8_t>::ActorDraw(r[1])?mk5wide::Layer<uint8_t>::kActor:0;
+    if(mirror){const auto [lo,hi]=mk5wide::Span(r[4],r[6],r[10],(r[1]&16)!=0,false);const int by=mk5wide::kExtra-(world?wide.shift:0);
+        wide.Draw(mk5wide::Kind::real,lo+by,hi+by);}
     Blit(r,d,gfx,[&](size_t dest,uint16_t pen){
         m.vram.at(dest)=pen;
         fighters.Write(draw,dest,m.vram[dest]|(scenery?backdrop_owner:0),owner?BloodPixel(dest):0);
@@ -354,6 +356,8 @@ bool Mk5LiveVideo::WideOutside(const WideEntry& e,bool made){
     constexpr int kEdgeDrop=3;
     auto r=e.regs;r[4]=uint16_t(r[4]+e.shift);
     const auto [lo,hi]=mk5wide::Span(r[4],r[6],r[10],(r[1]&16)!=0);
+    {const auto [a,b]=mk5wide::Span(r[4],r[6],r[10],(r[1]&16)!=0,false);   // the draw as the game meant it (diagnostics)
+        wide.Draw(e.ring||e.mirror||e.fitted?mk5wide::Kind::generated:mk5wide::Kind::shadow,a+mk5wide::kExtra,b+mk5wide::kExtra);}
     const int on=std::min(hi,mk5wide::kMargin+mk5wide::kVisible)-std::max(lo,mk5wide::kMargin);
     const bool dropped=!made && !e.ring && on<=kEdgeDrop,whole=e.fitted || e.mirror || wide.shift || dropped;
     r[4]=mk5wide::LayerX(r[4]);r[16]=0;r[17]=mk5wide::kLayerWidth-1;
