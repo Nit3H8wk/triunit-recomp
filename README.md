@@ -146,6 +146,12 @@ layer: the game's state, rules and timing do not change.
 - **HDR10** when Windows HDR is on (paper white and peak from Windows or set by
   hand; highlight expansion in Remastered only).
 - The arcade runs at its own **54.7069** frames per second.
+- **Widescreen 16:9** (MK1 and MK2 Remastered, Video → SCREEN → Widescreen; off
+  by default, which keeps the arcade's 4:3): 67 more columns on each side, filled
+  only with what the game itself draws there, each layer with its own parallax.
+  The game and the 400 centre columns stay the arcade's. Where an arena's art
+  ends, the margin is black instead of mirrored or repeated art. See
+  [`docs/WIDESCREEN.md`](docs/WIDESCREEN.md).
 
 ### Controls
 
@@ -329,12 +335,20 @@ python tools/quality/run.py fast
 `fast` needs no GPU or installed game, but several of its cases read your ROM
 files and the setup output: run the setup of the three games first.
 
+The widescreen acceptance tests (same game, exact centre, no duplicated or
+invented margin pixels, parallax) run with one command:
+
+```powershell
+python tools/widescreen/acceptance.py
+```
+
 ## Documentation
 
 | Document | Topic |
 |----------|-------|
 | [`docs/CPP_QUALITY.md`](docs/CPP_QUALITY.md) | Test scope and other quality suites |
 | [`docs/LAUNCHER_ARCHITECTURE.md`](docs/LAUNCHER_ARCHITECTURE.md) | Launcher internals |
+| [`docs/WIDESCREEN.md`](docs/WIDESCREEN.md) | Widescreen 16:9: margins, edge policy, debug mode, acceptance tests |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | How to contribute |
 | [`SECURITY.md`](SECURITY.md) | Security and rights notices |
 
