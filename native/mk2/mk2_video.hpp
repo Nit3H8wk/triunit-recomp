@@ -451,7 +451,7 @@ struct BootVideo {
         auto band=mk5wide::MeasureBand(uint16_t(wide_layer),draws,meant,[&](const std::array<uint16_t,18>& r,auto&& put){
             try{Render(r[1],r,r[8],graphics,[&](size_t index,uint16_t,bool){put(index);},[]{},kCanvas,Passes::check);}   // the check pass (write false) gives every pixel
             catch(const std::runtime_error&){}},kCanvas,kOrigin);
-        if(wide_slot>=0)wide.Learn(unsigned(wide_slot),wide_camera,band);
+        if(wide_slot>=0){wide.scene|=band.full>=wide.kPicture;wide.Learn(unsigned(wide_slot),wide_camera,band);}
         if(!band.rows.empty())wide.bands.push_back(std::move(band));
         bool placed=true;
         for(const auto& [e,fresh]:wide_plane)placed&=WidePlace({e,false,fresh&&WideOnArcade(e),wide_layer},graphics);
@@ -465,7 +465,10 @@ struct BootVideo {
     bool DrawWide(const WideDraw& draw,const std::vector<uint8_t>& graphics){
         auto r=LayerRegisters(draw.entry);
         {const auto [a,b]=mk5wide::Span(draw.entry[4],draw.entry[6],draw.entry[10],(draw.entry[1]&0x10)!=0);
-            wide.Draw(mk5wide::Kind::shadow,a+mk5wide::kExtra,b+mk5wide::kExtra,draw.layer);}
+            wide.Draw(mk5wide::Kind::shadow,a+mk5wide::kExtra,b+mk5wide::kExtra,draw.layer);
+            if(wide.debug){const auto [first,last]=mk5wide::Rows(r);
+                wide.placed.push_back({int16_t(a+mk5wide::kExtra),int16_t(b+mk5wide::kExtra),uint16_t(first),uint16_t(std::max(last-first,0)),
+                                       uint32_t(draw.entry[2]|uint32_t(draw.entry[3])<<16),draw.entry[1],draw.fixed,int16_t(draw.layer)});}}
         if(draw.outside){   // the margin columns only (an object the arcade has not built yet)
             const int first=mk5wide::kWideMargin-wide.shift,last=first+mk5wide::kVisible;   // the arcade's columns in the wide window
             auto left=r,right=r;left[17]=uint16_t(std::max(first,1)-1);right[16]=uint16_t(std::min(last,mk5wide::kLayerWidth-1));

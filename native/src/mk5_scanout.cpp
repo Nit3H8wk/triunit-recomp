@@ -41,6 +41,10 @@ void Mk5Scanout::line(const Mk5ScanlineEvent& edge,const std::array<uint16_t,32>
                 }
             }
             if(wide_video){
+                if(wide_soft_work&&wide_work.size()==size_t(kWideWidth)*height_){   // a menu's soft sides (mk5wide::SoftMargins)
+                    mk5wide::SoftMargins(wide_work.data(),height_);
+                    for(size_t i=0;i<wide_work.size()&&wide_present;++i)if(!mk5wide::ArcadeColumn(int(i%kWideWidth))){wide_source_work[i]=kRaw;wide_blood_work[i]=0;}
+                }
                 wide_complete=wide_work;wide_centre_=wide_centre_work;wide_audit_=wide_audit_work;wide_shift_=wide_shift_work;wide_whole_=wide_whole_work;
                 if(wide_present){wide_source=wide_source_work;wide_blood=wide_blood_work;wide_stale=true;}
             }
@@ -90,6 +94,7 @@ void Mk5Scanout::wide_line(unsigned row,unsigned col,bool enabled){
         wide_work.assign(n,0);
         if(wide_present){wide_source_work.assign(n,kBlank);wide_blood_work.assign(n,0);}
         wide_audit_work={};wide_shift_work=layer.Enabled()?layer.page_shift[(row>>17)&1]:0;wide_whole_work=layer.Enabled()&&layer.page_whole[(row>>17)&1];
+        wide_soft_work=layer.Enabled()&&layer.page_soft[(row>>17)&1];
     }
     const int shift=wide_shift_work;
     const size_t base=size_t(row>>9)*mk5wide::kLayerWidth;   // the layer's line (mk5_wide.hpp)

@@ -29,7 +29,7 @@ class Mk5Scanout {
     const Mk5LiveVideo* wide_video=nullptr;
     std::vector<uint32_t> wide_work,wide_complete;
     uint64_t wide_centre_work=0,wide_centre_=0;mk5wide::Audit wide_audit_work,wide_audit_;
-    int wide_shift_work=0,wide_shift_=0;bool wide_whole_work=false,wide_whole_=false;   // the frame's window offset; its world from the shadow alone (mk5wide::Layer::whole)
+    int wide_shift_work=0,wide_shift_=0;bool wide_whole_work=false,wide_whole_=false,wide_soft_work=false;   // the frame's window offset; its world from the shadow alone (mk5wide::Layer::whole)
     // Widescreen presentation (Remastered): each wide pixel's arcade column, where its pen is the arcade's own at that column
     // (the world's x = L-67+d; a pixel of a screen-fixed draw, the HUD's x = L-67), so the Remastered layers of that column
     // apply; kRaw where only the shadow pass has it (margins, fitted planes): its raw colour, as scenery, with the wide floor

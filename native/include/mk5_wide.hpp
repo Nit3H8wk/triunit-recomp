@@ -78,13 +78,43 @@ struct Audit{uint64_t shown=0,sentinel=0,masked=0,outside=0,outside_real=0,gener
 // A scenery layer's draw in a build (debug, the parallax check): its layer, image source and row, its columns (layer
 // columns) and its list's camera x (scenery moves by minus the camera's move; an object with a velocity of its own does not).
 struct Note{uint16_t layer;uint32_t source;uint16_t row;int16_t lo,hi,camera;};
+// A staged draw as placed on the layer (debug): its columns (layer columns), first row and rows, image source, control
+// word, whether it is screen-fixed and its scenery layer (-1: none).
+struct Placed{int16_t lo,hi;uint16_t row,rows;uint32_t source;uint16_t control;bool fixed;int16_t layer;};
 // A scenery layer's art in a build (Layer::Band): per line its pixels cover all of the arcade's 400 columns on, the columns
 // of the margins without its art (left: [0, left), right: [right, kLayerWidth)); a side whose draws reach past the layer
 // keeps all of it. first: the serial of the layer's first draw in the layer (0: not drawn yet); farther pixels are older.
 struct BandRow{uint16_t row;int16_t left,right;template<class A> friend void Fields(A& a,BandRow& b){a(b.row,b.left,b.right);}};
-struct Band{uint16_t layer=0;uint32_t first=0;std::vector<BandRow> rows;
-    template<class A> friend void Fields(A& a,Band& b){a(b.layer,b.first,b.rows);}};
+struct Band{uint16_t layer=0;uint32_t first=0;std::vector<BandRow> rows;uint16_t full=0;   // full: its lines that cover the arcade's columns whole
+    template<class A> friend void Fields(A& a,Band& b){a(b.layer,b.first,b.rows,b.full);}};
 inline bool ArcadeColumn(int L){return L>=kWideMargin&&L<kWideMargin+kVisible;}
+// A screen without an arena whose margins the game does not fill (a menu, a story picture: Layer::page_soft) shows soft
+// sides instead of pieces of art and black: each margin line takes the colour of the arcade line's own end (its outermost
+// kSoftColumns columns), blurred over kSoftRows lines up and down and dimmed towards the screen's edge. Nothing of the
+// picture is copied: no object can appear twice. frame: kLayerWidth columns by height lines, 0xAARRGGBB.
+constexpr int kSoftColumns=4,kSoftRows=10;
+inline void SoftMargins(uint32_t* frame,unsigned height){
+    for(int side=0;side<2;++side){
+        std::vector<std::array<unsigned,3>> edge(height);   // each line's end colour
+        for(unsigned y=0;y<height;++y){
+            std::array<unsigned,3> sum{};
+            for(int k=0;k<kSoftColumns;++k){
+                const uint32_t p=frame[size_t(y)*kLayerWidth+size_t(side?kWideMargin+kVisible-1-k:kWideMargin+k)];
+                sum[0]+=p>>16&255;sum[1]+=p>>8&255;sum[2]+=p&255;
+            }
+            edge[y]={sum[0]/unsigned(kSoftColumns),sum[1]/unsigned(kSoftColumns),sum[2]/unsigned(kSoftColumns)};
+        }
+        for(unsigned y=0;y<height;++y){
+            std::array<unsigned,3> sum{};unsigned n=0;
+            for(int dy=-kSoftRows;dy<=kSoftRows;++dy)if(const int at=int(y)+dy;at>=0&&at<int(height)){for(int c=0;c<3;++c)sum[size_t(c)]+=edge[size_t(at)][size_t(c)];++n;}
+            for(int k=0;k<kWideMargin;++k){   // k: columns from the arcade's edge
+                const unsigned light=150-90u*unsigned(k)/unsigned(kWideMargin);   // of 256: 59% beside the picture, 23% at the screen's edge
+                const uint32_t rgb=(sum[0]/n*light>>8)<<16|(sum[1]/n*light>>8)<<8|(sum[2]/n*light>>8);
+                frame[size_t(y)*kLayerWidth+size_t(side?kWideMargin+kVisible+k:kWideMargin-1-k)]=0xff000000u|rgb;
+            }
+        }
+    }
+}
 // One scenery layer's draws measured (layer registers, x in layer columns; meant: each draw's columns as the game meant
 // them): render(regs, put) calls put(layer index) for each pixel the draw writes. Its lines whose arcade columns it covers
 // whole, each with its art's ends in the margins (its outermost pixels on the line; a side where a draw reaches past the
@@ -111,6 +141,7 @@ template<class Render> Band MeasureBand(uint16_t layer,const std::vector<std::ar
     }
     Band band;band.layer=layer;
     for(uint16_t y=0;y<512;++y)if(covered[y]==kVisible){
+        ++band.full;
         const int16_t left=int16_t(((reach[y]&1)?0:lo[y])-origin),right=int16_t(((reach[y]&2)?width:hi[y])-origin);
         if(left>-origin||right<width-origin)band.rows.push_back({y,left,right});
     }
@@ -143,7 +174,11 @@ struct Layer {
     // whole: this build's world comes from the shadow's draws alone (an offset window, or a far plane held at its art's
     // end: PlaneScroll); per page too. bound: per scroll slot, for this arena, the plane cameras between which its art
     // covers the wide screen whole (Learn, from the plane's measured bands).
-    bool whole=false,fight=false;std::array<bool,2> page_whole{};   // fight: the build is a fight's (Offset): far planes are held
+    bool whole=false,fight=false;std::array<bool,2> page_whole{};
+    // scene: this build drew a far plane that covers kPicture lines or more of the arcade screen (an arena, in a fight or not). page_soft: the page's last build was a
+    // screen without an arena whose margins the game left unfilled (EndFrame): its sides are shown soft (SoftMargins).
+    bool scene=false;std::array<bool,2> page_soft{};
+    std::array<uint32_t,2> page_cleared_at{};   // the serial of each page's last clear (Mirror): a later pixel is art   // fight: the build is a fight's (Offset): far planes are held
     static constexpr int kNoLow=-(1<<30),kNoHigh=1<<30;
     static std::array<std::array<int,2>,10> Unbound(){std::array<std::array<int,2>,10> b;b.fill({kNoLow,kNoHigh});return b;}
     std::array<std::array<int,2>,10> bound=Unbound();
@@ -211,6 +246,7 @@ struct Layer {
     // Scenery layers measured this build (MeasureBand); applied when the frame ends (MaskBands).
     std::vector<Band> bands;
     std::vector<Note> notes,notes_done;   // debug: this build's scenery draws, and the last finished build's
+    std::vector<Placed> placed,placed_done;   // debug: this build's staged draws as placed, and the last finished build's
     std::vector<Band> bands_done;unsigned builds=0;   // debug: the last frame's measured layers; builds started
     // A margin pixel of a band's line without the band's art, older than the band's first draw (the page clear's pen or a
     // farther layer: what the band would cover; a nearer one, a fighter or a projectile, stays), continues the line's art
@@ -320,6 +356,7 @@ struct Layer {
         if(!(start&511)&&count&&!(count&511)){
             Draw(Kind::clear,0,kLayerWidth);
             for(size_t row=start>>9;row<(start+count)>>9;++row){
+                page_cleared_at[(row>>8)&1]=serial;
                 clear_pen[row]=vram[row*512];PlainRow(row,vram);
                 for(size_t L=row*kLayerWidth;L<(row+1)*kLayerWidth;++L)Stamp(L);
             }
@@ -360,8 +397,8 @@ struct Layer {
     void StartFrame(unsigned page_row,const std::vector<uint16_t>& vram,const std::vector<Blood>& arcade_blood){
         page=(page_row>>8)&1;
         PlainPage(page,vram,arcade_blood,!cleared[page]);
-        cleared[page]=false;booked.fill(false);page_start[page]=serial;bands.clear();page_shift[page]=shift=0;page_whole[page]=whole=false;
-        ++builds;if(debug){notes_done.swap(notes);notes.clear();}
+        cleared[page]=false;booked.fill(false);page_start[page]=serial;bands.clear();page_shift[page]=shift=0;page_whole[page]=whole=false;scene=false;
+        ++builds;if(debug){notes_done.swap(notes);notes.clear();placed_done.swap(placed);placed.clear();}
     }
     // The frame ends (the next display interrupt): the margins without a scenery layer's art are masked, and so is a margin
     // pixel the frame did not write on a line it rewrote across the arcade's 400 columns (the game redraws that line whole:
@@ -375,9 +412,21 @@ struct Layer {
             for(int L=kWideMargin;L<kWideMargin+kVisible&&full;++L)full=written[base+size_t(L)]>start;
             if(full)for(int L=0;L<kLayerWidth;++L)if(!Arcade(L)&&written[base+size_t(L)]<=start)fixed[base+size_t(L)]|=kMask;
         }
+        // Filled: every margin pixel of the page's visible lines is shown and is art (drawn since the page's last clear) or
+        // the colour its arcade line ends in (black beside black, a sky beside its sky).
+        bool filled=true;
+        for(size_t row=size_t(page)*256;row<size_t(page)*256+254&&filled;++row){
+            const size_t base=row*kLayerWidth;
+            for(int L=0;L<kLayerWidth&&filled;++L){
+                if(Arcade(L))continue;
+                const size_t at=base+size_t(L),edge=base+size_t(L<kWideMargin?kWideMargin:kWideMargin+kVisible-1);
+                filled=Shown(at)&&(written[at]>page_cleared_at[page]||pens[at]==pens[edge]);
+            }
+        }
+        page_soft[page]=!fight&&!scene&&!filled;
     }
     // Save-state fields (W5): the layer and the pages' facts.
-    template<class A> void LayerFields(A& a){a(pens,blood,fixed,written,serial,page_start,cleared,page,bands,clear_pen,booked,rom_palette,shift,page_shift,held,limits,ratio,ratio_limits,whole,page_whole,bound,span,fight);}
+    template<class A> void LayerFields(A& a){a(pens,blood,fixed,written,serial,page_start,cleared,page,bands,clear_pen,booked,rom_palette,shift,page_shift,held,limits,ratio,ratio_limits,whole,page_whole,bound,span,fight,scene,page_soft,page_cleared_at);}
     void Reset(){*this=Layer{};}
 };
 }

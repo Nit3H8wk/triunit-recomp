@@ -27,7 +27,7 @@ class Scanout {
     // runs (BootVideo::EnableWide). Raw colours of the original scanout.
     mk5wide::Audit wide_audit_work_,wide_audit_;   // diagnostics, not state (mk5wide::Layer::debug)
     bool wide_on_=false;std::vector<uint32_t> wide_work_,wide_;uint64_t wide_added_work_=0,wide_added_=0,wide_centre_work_=0,wide_centre_=0;
-    int wide_shift_work_=0,wide_shift_=0;bool wide_whole_work_=false,wide_whole_=false;   // the frame's window offset; its wide camera is not the arcade's (mk5wide::Layer::whole)
+    int wide_shift_work_=0,wide_shift_=0;bool wide_whole_work_=false,wide_whole_=false,wide_soft_work_=false;   // the frame's window offset; its wide camera is not the arcade's (mk5wide::Layer::whole)
     // Widescreen presentation (Remastered, W3): each wide pixel's arcade column, where its pen is the arcade's own at that
     // column (the world's x = L-56+d; a pixel of a screen-fixed draw, the layer's fixed mark, the HUD's x = L-56), so the
     // Remastered layers of that column apply; kRaw where
@@ -137,6 +137,10 @@ public:
         if (board.vcount==io[6]) {
             if (collecting_ && rows_==height_) {
                 complete_=work_;
+                if(wide_on_&&wide_soft_work_&&wide_work_.size()==size_t(kWideWidth)*height_){   // a menu's soft sides (mk5wide::SoftMargins)
+                    mk5wide::SoftMargins(wide_work_.data(),height_);
+                    for(size_t i=0;i<wide_work_.size()&&wide_present_;++i)if(!mk5wide::ArcadeColumn(int(i%kWideWidth))){wide_source_work_[i]=kRaw;wide_blood_work_[i]=0;}
+                }
                 if(wide_on_){wide_=wide_work_;wide_audit_=wide_audit_work_;wide_added_=wide_added_work_;wide_centre_=wide_centre_work_;
                     wide_shift_=wide_shift_work_;wide_whole_=wide_whole_work_;}
                 if(remastered_){
@@ -202,7 +206,8 @@ public:
         if(wide_on_){
             const unsigned margin=(kWideWidth-width_)/2;
             const bool layer=video.WideEnabled();
-            if(!rows_){wide_audit_work_={};wide_shift_work_=layer?video.wide.page_shift[(row>>17)&1]:0;wide_whole_work_=layer&&video.wide.page_whole[(row>>17)&1];}
+            if(!rows_){wide_audit_work_={};wide_shift_work_=layer?video.wide.page_shift[(row>>17)&1]:0;wide_whole_work_=layer&&video.wide.page_whole[(row>>17)&1];
+                wide_soft_work_=layer&&video.wide.page_soft[(row>>17)&1];}
             const int shift=wide_shift_work_;
             // The wide layer when the shadow pass composes it (BootVideo::EnableWide), else VRAM itself.
             const size_t base=size_t(row>>9)*mk5wide::kLayerWidth;   // the layer's line (mk5_wide.hpp)
