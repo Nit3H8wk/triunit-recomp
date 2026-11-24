@@ -43,7 +43,8 @@ class Mk5LiveVideo {
     // from its page as VRAM holds it when the builder starts (after the page clear). The shadow walk stages every list's
     // draws with the wide clip; the real walk then merges them by object: before each real draw the staged draws up to the
     // same object are drawn outside their arcade columns, and the real draw itself is mirrored inside them (so the arcade's
-    // columns are its own draws). Every other draw of the frame (DMAs outside the walk, the page clear, CPU writes) is
+    // columns are its own draws). With a window offset (mk5wide::WindowShift) the world's staged draws are drawn whole
+    // instead, at the shadow's camera, and the world's real draws are not mirrored. Every other draw of the frame (DMAs outside the walk, the page clear, CPU writes) is
     // mirrored as it happens. The blood is the floor splash's shade, as blood_layer.
     mk5wide::Layer<uint8_t> wide;
     std::array<uint16_t,18> shadow_regs{};
@@ -56,7 +57,7 @@ class Mk5LiveVideo {
     std::vector<WideEntry> wide_staged;size_t wide_cursor=0;
     // The shadow's draw being staged: a screen-fixed object (the drawer's test); the list's scenery draws wait for its end
     // (wide_plane) so the layer's art is measured whole (mk5wide::MeasureBand).
-    bool wide_hud=false;int wide_layer=0;int16_t wide_camera=0;   // wide_camera: the waiting list's camera x (debug notes)
+    bool wide_hud=false;int wide_layer=0;int16_t wide_camera=0;int wide_slot=-1;   // the waiting list's camera x and far plane slot (-1: none)
     std::vector<WideEntry> wide_plane;
     // The palette slots' ROM pointers when the shadow pass starts (mk5widescreen::kPaletteTable); not state (the pass never
     // spans a ContinueMain call). A shadow draw in a slot the pass booked for another palette (the arcade has not built the
@@ -136,14 +137,20 @@ public:
         shadow_regs=regs;wide_hud=false;wide_layer=0;wide_plane.clear();wide_staged.clear();wide_cursor=0;
         WidePalettes(wide_palettes);shadow_active=true;
     }
+    // The frame's window offset (mk5wide::Layer::Offset) and a scroll slot's ratio, set when the shadow pass starts.
+    int WideOffset(bool shifting,bool holding,int camera,int low,int high){return wide.Offset(shifting,holding,camera,low,high);}
+    mk5wide::Ratio& WideRatio(unsigned slot){return wide.PlaneRatio(slot);}
     bool shadow_active=false;   // no VRAM, layer or timing effect may happen while it is set
     bool wide_streaming=false;  // the real streamer is running (the shadow does not run it then)
     // A list starts (or the walk ends) in the shadow walk: the waiting list's draws are measured and staged.
     bool WideList(){const bool placed=WidePlane();++wide_layer;return placed;}
     void WideFixedObject(bool fixed){wide_hud=fixed;}
-    void WideListCamera(int16_t camera){wide_camera=camera;}   // the list that starts: its camera x (debug notes)
+    void WideListCamera(int16_t camera,int slot){wide_camera=camera;wide_slot=slot;}   // the list that starts: its camera x and far slot
+    void WideWhole(){wide.Whole();}
+    mk5wide::Layer<uint8_t>& WideLayerState(){return wide;}   // the shadow pass's scrolls (mk5wide::Layer::PlaneScroll)
     bool ShadowWrite(unsigned offset,uint16_t value);
     uint16_t ShadowRead(unsigned offset)const{const auto v=shadow_regs.at(offset==0?1:offset);return offset<=1?uint16_t(v&0x7fff):v;}
-    void WideEnd(bool complete){wide_plane.clear();wide_walk_drawn=complete;shadow_active=false;if(!complete){wide_staged.clear();wide.bands.clear();}}
+    void WideEnd(bool complete){wide_plane.clear();wide_walk_drawn=complete;shadow_active=false;
+        if(!complete){wide_staged.clear();wide.bands.clear();wide.page_shift[wide.page]=wide.shift=0;wide.page_whole[wide.page]=wide.whole=false;}}   // the real walk, mirrored whole: centred
     uint64_t wide_faults=0,wide_streamer_skips=0;uint32_t wide_fault_pc=0;   // diagnostics, not state
 };

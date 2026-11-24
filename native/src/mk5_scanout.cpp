@@ -41,7 +41,7 @@ void Mk5Scanout::line(const Mk5ScanlineEvent& edge,const std::array<uint16_t,32>
                 }
             }
             if(wide_video){
-                wide_complete=wide_work;wide_centre_=wide_centre_work;wide_audit_=wide_audit_work;
+                wide_complete=wide_work;wide_centre_=wide_centre_work;wide_audit_=wide_audit_work;wide_shift_=wide_shift_work;wide_whole_=wide_whole_work;
                 if(wide_present){wide_source=wide_source_work;wide_blood=wide_blood_work;wide_stale=true;}
             }
         }
@@ -89,21 +89,25 @@ void Mk5Scanout::wide_line(unsigned row,unsigned col,bool enabled){
     if(!rows_){
         wide_work.assign(n,0);
         if(wide_present){wide_source_work.assign(n,kBlank);wide_blood_work.assign(n,0);}
-        wide_audit_work={};
+        wide_audit_work={};wide_shift_work=layer.Enabled()?layer.page_shift[(row>>17)&1]:0;wide_whole_work=layer.Enabled()&&layer.page_whole[(row>>17)&1];
     }
+    const int shift=wide_shift_work;
     const size_t base=size_t(row>>9)*mk5wide::kLayerWidth;   // the layer's line (mk5_wide.hpp)
     for(unsigned dest_x=0;dest_x<kWideWidth;++dest_x){
         const auto index=row+((col+dest_x-margin)&511);
         const size_t dest=size_t(rows_)*kWideWidth+dest_x,at=base+dest_x;
         const uint16_t pen=layer.Enabled()?layer.pens[at]:memory.vram[index];
-        const bool side=dest_x<margin || dest_x>=margin+width_,shown=!layer.Enabled() || layer.Shown(at);
-        wide_centre_work+=!side && pen!=memory.vram[index];   // the centre against the arcade
+        const bool shown=!layer.Enabled() || layer.Shown(at);
+        // The pixel's arcade column: the HUD's (screen space) or, with a window offset, the world's.
+        const int hud=int(dest_x)-int(margin),world=hud+shift;
+        const bool fixed=!shift || (layer.fixed[at]&mk5wide::Layer<uint8_t>::kFixed);
+        const int column=fixed?hud:world;const bool arcade=column>=0 && column<int(width_);
+        const bool same=arcade && pen==memory.vram[row+((col+unsigned(column))&511)];
+        wide_centre_work+=arcade && !same;   // the arcade's columns against the arcade
         wide_work[dest]=enabled?expand_rgb(pen&0x8000?layer.Colour(at,pen,memory.palette.data()):memory.palette.at(pen&0x7fff)):0;   // Layer::Book
         if(enabled && !shown)wide_work[dest]=layer.debug && !layer.written[at]?mk5wide::kSentinel:mk5wide::kMasked;
         if(!wide_present)continue;
-        const int hud=int(dest_x)-int(margin);
-        int16_t source=enabled?kRaw:kBlank;
-        if(enabled && !side && pen==memory.vram[index])source=int16_t(hud);
+        const int16_t source=!enabled?kBlank:same && shown?int16_t(column):kRaw;
         wide_source_work[dest]=source;
         wide_blood_work[dest]=source==kRaw && shown && layer.Enabled()?wide_video->WideBloodPixel(at):0;
     }
@@ -113,7 +117,7 @@ void Mk5Scanout::wide_line(unsigned row,unsigned col,bool enabled){
 // backdrop, fighter order and cover); a pixel only the shadow has is its raw colour as scenery, or its floor stain dimmed
 // as the frame's. The fighter layers are world: they move with the window.
 void Mk5Scanout::ComposeWide()const{
-    const size_t n=size_t(kWideWidth)*height_;const int move=int(kWideWidth-width_)/2;
+    const size_t n=size_t(kWideWidth)*height_;const int move=int(kWideWidth-width_)/2-wide_shift_;
     const bool backdrop=!backdrop_complete.empty(),fighters=fighter_complete.serial!=0,fighter_backdrop=fighters && !fighter_complete.backdrop.empty();
     wide_presentation_.resize(n);wide_backdrop_.assign(backdrop?n:0,0);
     auto& f=wide_fighters_;f.serial=fighter_complete.serial;f.layers.clear();

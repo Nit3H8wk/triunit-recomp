@@ -5,6 +5,9 @@
 //  2. The wide frame's 400 centre columns are the arcade frame bit for bit in every frame (raw and presented).
 //  3. No margin pixel is left unwritten (sentinel) in a fight frame; masked pixels are counted (the edge policy).
 //  4. No margin pixel comes from a draw that never meant to cover its column, or from no draw of the game.
+//  2b. A frame whose wide camera is not the arcade's (mk5wide::WindowShift at an arena's end, a far plane held at its
+//     art's end) is counted apart: its world is the shadow's draws, its HUD the real ones.
+//  6. With the camera still, every scenery list's camera is still.
 //  5. Each scenery layer's draws in the margins move by the same columns per frame as the layer's draws in the centre: per
 //     layer and pair of builds, the most frequent move of its draws (one image on one row, paired in column order) wholly
 //     in the margins equals that of its draws wholly in the centre, when at least 3 draws share it on each side, the
@@ -34,6 +37,10 @@ struct Coverage{int left=mk5wide::kWideMargin,right=mk5wide::kWideMargin;unsigne
 struct Run{
     std::vector<Frame> frames;std::vector<int16_t> pcm;std::vector<uint16_t> cmos;uint64_t faults=0;
     uint64_t centre=0,presented=0,fight_frames=0;mk5wide::Audit fight,other;
+    // Frames with a window offset (mk5wide::WindowShift): how many, their arcade columns that differ from the arcade frame
+    // at the offset (far planes stand elsewhere there), and their masked margin pixels.
+    uint64_t shifted_frames=0,shifted_differ=0,shifted_masked=0;
+    uint64_t still_checked=0,still_moved=0;   // builds whose last scenery list (the world's) kept its camera; of them, with a list that moved
     uint64_t parallax_checked=0,parallax_differ=0;std::map<std::tuple<int,int,int>,Coverage> coverage;
 };
 Run Play(const std::filesystem::path& root,const std::vector<uint32_t>& tape,const std::vector<uint16_t>& cmos,bool widescreen){
@@ -77,11 +84,27 @@ Run Play(const std::filesystem::path& root,const std::vector<uint32_t>& tape,con
         // 2: the centre, raw and presented (pixels and backdrop).
         const unsigned X=screen.width(),H=screen.height(),margin=(W-X)/2;
         const auto& wide=screen.wide_pixels();const auto& p=screen.wide_presentation();const auto& b=screen.wide_backdrop_pixels();
+        const int shift=screen.wide_shift();const bool whole=screen.wide_whole();
+        if(whole){++run.shifted_frames;run.shifted_masked+=screen.wide_audit().masked;}
         for(unsigned y=0;y<H;++y)for(unsigned x=0;x<X;++x){
+            if(whole){run.shifted_differ+=p[y*W+margin+x-shift]!=screen.pixels()[y*X+x];continue;}
             run.centre+=wide[y*W+margin+x]!=screen.pixels()[y*X+x];
             run.presented+=p[y*W+margin+x]!=screen.pixels()[y*X+x];
             if(!screen.backdrop_pixels().empty())run.presented+=b[y*W+margin+x]!=screen.backdrop_pixels()[y*X+x];
         }
+        // Diagnostics: WIDE_DUMP_FRAMES (frame numbers, commas) writes each one's presented wide frame as a PPM in WIDE_DUMP_DIR.
+        if(const char* list=std::getenv("WIDE_DUMP_FRAMES");list&&(","+std::string(list)+",").find(","+std::to_string(before)+",")!=std::string::npos){
+            std::ofstream out(std::filesystem::path(std::getenv("WIDE_DUMP_DIR"))/("wide-"+std::to_string(before)+".ppm"),std::ios::binary);
+            out<<"P6"<<char(10)<<W<<" "<<H<<char(10)<<255<<char(10);for(auto rgb:p){out.put(char(rgb>>16));out.put(char(rgb>>8));out.put(char(rgb));}
+        }
+        if(std::getenv("WIDE_TRACE")){static int last=1<<20;if(shift!=last){last=shift;
+            std::cerr<<"shift frame "<<before<<" d "<<shift<<" camera "<<int16_t(word(mk5widescreen::kCameraX))<<" mode "<<word(mk5widescreen::kMode);
+            for(const auto& r:layer.ratio)std::cerr<<" "<<r.plane<<"/"<<r.world;
+            for(unsigned k=0;k<mk5widescreen::kScrollSlots;++k)std::cerr<<" S"<<k<<"="<<int16_t(word(mk5widescreen::kScrollFirst+k*0x20+16));
+            for(const auto& lim:layer.bound)std::cerr<<" ["<<lim[0]<<","<<lim[1]<<"]";
+            std::map<int,int> cameras;for(const auto& k:layer.notes_done)cameras[k.layer]=k.camera;
+            for(const auto& [l,c]:cameras)std::cerr<<" L"<<l<<"@"<<c;
+            std::cerr<<char(10);}}
         // 3, 4: the margins' audit; fight frames apart.
         const unsigned mode=word(mk5widescreen::kMode);const bool fight=mode==2||mode==3||mode==5||mode==6;
         (fight?run.fight:run.other).Add(screen.wide_audit());run.fight_frames+=fight;
@@ -109,6 +132,9 @@ Run Play(const std::filesystem::path& root,const std::vector<uint32_t>& tape,con
             std::map<uint16_t,int> camera_move;   // per layer: the scenery's move, minus its list camera's
             {std::map<uint16_t,int> was;for(const auto& k:previous)was[k.layer]=k.camera;
              for(const auto& k:layer.notes_done)if(was.count(k.layer))camera_move[k.layer]=was[k.layer]-k.camera;}
+            // 6: with the camera still every plane stands still (a plane's place depends on the camera alone).
+            if(!camera_move.empty()&&!camera_move.rbegin()->second){++run.still_checked;
+                for(const auto& [l,move]:camera_move)if(move){++run.still_moved;break;}}
             for(const auto& [l,both]:moves)if(!both[0].empty()&&!both[1].empty()&&camera_move.count(l)&&camera_move[l]&&mode_of(both[0]).first==camera_move[l]){
                 const auto c=mode_of(both[0]),g=mode_of(both[1]);   // the centre's scenery moved with the camera: the margins' must too
                 if(c.second>=3&&g.second>=3){   // at least 3 draws moved alike on each side: scenery, not one moving object
@@ -156,7 +182,8 @@ int wmain(int argc,wchar_t** argv){
         check(plain.pcm==wide.pcm && plain.cmos==wide.cmos,"1: widescreen changed the PCM or the CMOS");
         check(!wide.faults,"the shadow pass faulted");
         std::cout<<"{\"frames\":"<<wide.frames.size()<<",\"fight_frames\":"<<wide.fight_frames<<",\"centre_differ\":"<<wide.centre
-                 <<",\"presented_differ\":"<<wide.presented<<",\"fight\":"<<Json(wide.fight)<<",\"other\":"<<Json(wide.other)
+                 <<",\"presented_differ\":"<<wide.presented<<",\"shifted_frames\":"<<wide.shifted_frames<<",\"shifted_differ\":"<<wide.shifted_differ
+                 <<",\"shifted_masked\":"<<wide.shifted_masked<<",\"still_checked\":"<<wide.still_checked<<",\"still_moved\":"<<wide.still_moved<<",\"fight\":"<<Json(wide.fight)<<",\"other\":"<<Json(wide.other)
                  <<",\"parallax_checked\":"<<wide.parallax_checked<<",\"parallax_differ\":"<<wide.parallax_differ<<",\"coverage\":[";
         bool first=true;
         for(const auto& [key,c]:wide.coverage){
@@ -169,6 +196,7 @@ int wmain(int argc,wchar_t** argv){
         check(!wide.fight.outside && !wide.other.outside && !wide.fight.generated && !wide.other.generated && !wide.fight.stale,
               "4: a margin pixel does not belong to a draw meant to cover its column");
         check(!wide.parallax_differ && wide.parallax_checked,"5: a layer moves differently in the margins and in the centre");
+        check(!wide.still_moved,"6: a scenery plane moved while the camera stood still");
         return 0;
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }

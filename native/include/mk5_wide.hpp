@@ -40,6 +40,27 @@ inline std::pair<int,int> Rows(const std::array<uint16_t,18>& r){
     const unsigned ystep=r[11]?r[11]:0x100;const int h=int(((r[7]&0x3ffu)*256+ystep-1)/ystep),y=r[5]&0x1ff;
     const int lo=(r[1]&0x20)?y-h+1:y;return {std::max(lo,int(r[12]&0x1ff)),std::min(lo+h,int(r[13]&0x1ff)+1)};
 }
+// The wide window's offset d at an arena's ends: the wide screen shows the world as the arcade would at camera x + d, and
+// its camera is the arcade's limited to [minimum+67, maximum-67], so the 16:9 picture never passes the world's ends (the
+// arcade screen stands at them at each camera limit). No ramp, no lag: d depends on the camera alone. An arena narrower
+// than that keeps its world centred.
+inline int WindowShift(int camera,int minimum,int maximum){
+    if(minimum>maximum)return 0;
+    camera=std::clamp(camera,minimum,maximum);
+    const int low=minimum+kWideMargin,high=maximum-kWideMargin;
+    return (low>high?(minimum+maximum)/2:std::clamp(camera,low,high))-camera;
+}
+constexpr int kWorldMax=4096;  // camera limits wider than this (a finisher frees the camera) keep the arena's last ones
+// A far plane's parallax: its velocity and the world's in a frame where the world moved (world 0: not known yet).
+struct Ratio{int64_t plane=0,world=0;
+    template<class A> friend void Fields(A& a,Ratio& r){a(r.plane,r.world);}};
+inline Ratio MeasuredRatio(int32_t velocity,int32_t world_velocity){
+    return world_velocity>0?Ratio{velocity,world_velocity}:Ratio{-int64_t(velocity),-int64_t(world_velocity)};
+}
+// The window offset as the world scroll's move (16.16): with offset d the shadow's world camera is the whole column
+// camera + d, whatever fraction the arcade's scroll carries (so nothing trembles while the arcade's camera moves under a
+// wide camera that stands at its limit).
+inline int64_t ScrollOffset(int32_t world_scroll,int d){return d?(int64_t((world_scroll>>16)+d)<<16)-world_scroll:0;}
 // Where a pixel of the wide layer came from (diagnostics, Layer::debug): the kind of write and the columns its draw covers
 // in layer columns as they follow one another from its x (Span): a pixel outside them got there by a wrap.
 enum class Kind:uint8_t{none,real,shadow,cpu,clear,generated};
@@ -68,18 +89,21 @@ inline bool ArcadeColumn(int L){return L>=kWideMargin&&L<kWideMargin+kVisible;}
 // them): render(regs, put) calls put(layer index) for each pixel the draw writes. Its lines whose arcade columns it covers
 // whole, each with its art's ends in the margins (its outermost pixels on the line; a side where a draw reaches past the
 // layer keeps all of its columns).
+// The draws may be measured over a wider canvas (width columns, the layer's column 0 at its column origin; draws, meant and
+// render in canvas columns): the ends are then known that far past the layer (BandRow in layer columns all the same).
 template<class Render> Band MeasureBand(uint16_t layer,const std::vector<std::array<uint16_t,18>>& draws,
-                                        const std::vector<std::pair<int,int>>& meant,Render&& render){
+                                        const std::vector<std::pair<int,int>>& meant,Render&& render,
+                                        int width=kLayerWidth,int origin=0){
     constexpr size_t kWords=(kVisible+63)/64;
     std::vector<uint64_t> bits(512*kWords,0);std::vector<uint16_t> covered(512,0);
-    std::vector<int16_t> lo(512,int16_t(kLayerWidth)),hi(512,0);std::vector<uint8_t> reach(512,0);
+    std::vector<int16_t> lo(512,int16_t(width)),hi(512,0);std::vector<uint8_t> reach(512,0);
     for(size_t k=0;k<draws.size();++k){
         const auto [first,last]=Rows(draws[k]);
-        const uint8_t past=uint8_t((meant[k].first<0?1:0)|(meant[k].second>kLayerWidth?2:0));
+        const uint8_t past=uint8_t((meant[k].first<0?1:0)|(meant[k].second>width?2:0));
         if(past)for(int y=std::max(first,0);y<std::min(last,512);++y)reach[size_t(y)]|=past;
         render(draws[k],[&](size_t index){
-            const size_t row=index/kLayerWidth;if(row>=512)return;const int c=int(index%kLayerWidth);
-            lo[row]=std::min(lo[row],int16_t(c));hi[row]=std::max(hi[row],int16_t(c+1));
+            const size_t row=index/size_t(width);if(row>=512)return;const int at=int(index%size_t(width)),c=at-origin;
+            lo[row]=std::min(lo[row],int16_t(at));hi[row]=std::max(hi[row],int16_t(at+1));
             if(!ArcadeColumn(c))return;
             uint64_t& word=bits[row*kWords+size_t(c-kWideMargin)/64];const uint64_t bit=uint64_t(1)<<((c-kWideMargin)%64);
             if(!(word&bit)){word|=bit;++covered[row];}
@@ -87,8 +111,8 @@ template<class Render> Band MeasureBand(uint16_t layer,const std::vector<std::ar
     }
     Band band;band.layer=layer;
     for(uint16_t y=0;y<512;++y)if(covered[y]==kVisible){
-        const int16_t left=(reach[y]&1)?int16_t(0):lo[y],right=(reach[y]&2)?int16_t(kLayerWidth):hi[y];
-        if(left>0||right<kLayerWidth)band.rows.push_back({y,left,right});
+        const int16_t left=int16_t(((reach[y]&1)?0:lo[y])-origin),right=int16_t(((reach[y]&2)?width:hi[y])-origin);
+        if(left>-origin||right<width-origin)band.rows.push_back({y,left,right});
     }
     return band;
 }
@@ -110,6 +134,70 @@ struct Layer {
     std::array<uint32_t,2> page_start{};   // the serial when each page's frame started (a later serial: written by the frame)
     std::array<bool,2> cleared{{true,true}};   // the page clear ran on the page since its last build
     unsigned page=0;
+    // The window offset (WindowShift) of the frame being built and of each page's last build. held: the camera and the
+    // offset of the last frame of a fight (a finisher frees the camera: the offset stays while the camera does). limits:
+    // the arena's last usable camera limits (min, max, valid). ratio: per scroll slot, for this arena.
+    int shift=0;std::array<int,2> page_shift{},held{};std::array<int,3> limits{};
+    std::array<Ratio,10> ratio{};std::array<int,2> ratio_limits{};
+    // whole: this build's world comes from the shadow's draws alone (an offset window, or a far plane held at its art's
+    // end: PlaneScroll); per page too. bound: per scroll slot, for this arena, the plane cameras between which its art
+    // covers the wide screen whole (Learn, from the plane's measured bands).
+    bool whole=false,fight=false;std::array<bool,2> page_whole{};   // fight: the build is a fight's (Offset): far planes are held
+    static constexpr int kNoLow=-(1<<30),kNoHigh=1<<30;
+    static std::array<std::array<int,2>,10> Unbound(){std::array<std::array<int,2>,10> b;b.fill({kNoLow,kNoHigh});return b;}
+    std::array<std::array<int,2>,10> bound=Unbound();
+    void Whole(){page_whole[page]=whole=true;}
+    // span: per scroll slot, the plane cameras of the arcade at the arena's camera limits (PlaneScroll; first > second:
+    // not known yet).
+    std::array<std::array<int,2>,10> span=NoSpan();
+    static std::array<std::array<int,2>,10> NoSpan(){std::array<std::array<int,2>,10> s;s.fill({1,0});return s;}
+    // A far plane's measured band, drawn with its list's camera: where its art ends inside the shadow's clip. Only an end
+    // the arcade never shows counts (the line's art reaches the arcade screen's edge at that camera limit): a narrower
+    // line (an object on the plane) shows its ends on the arcade screen too, and keeps them.
+    void Learn(unsigned slot,int camera,const Band& b){
+        slot=std::min(slot,unsigned(bound.size()-1));auto& at=bound[slot];const auto [first,last]=span[slot];
+        if(first>last||!fight)return;
+        for(const auto& r:b.rows){
+            if(r.left>-kReach&&camera+r.left-kWideMargin<=first)at[0]=std::max(at[0],camera+r.left);
+            if(r.right<kLayerWidth+kReach&&camera+r.right-kWideMargin-kVisible>=last)at[1]=std::min(at[1],camera+r.right-kLayerWidth);
+        }
+    }
+    // A far plane's scroll (16.16) in the shadow pass at the world camera x: the arcade's moved by its ratio times the
+    // window offset (offset: ScrollOffset), then kept between its bounds, so its art's end stops at the wide screen's edge. The
+    // plane slows down into the bound instead of stopping dead: over the last 2g columns before it, g being how far past
+    // the bound the plane would stand at the wide camera's limit, it moves along a parabola (slope 1 to 0). Everything
+    // depends on the camera alone: with the camera still, every plane stands still.
+    int32_t PlaneScroll(unsigned slot,int32_t scroll,int camera,int64_t offset){
+        slot=std::min(slot,unsigned(ratio.size()-1));const Ratio& r=ratio[slot];
+        const auto part=[&](int64_t by){return r.world?by*r.plane/r.world:by;};   // an unknown ratio counts as the world's
+        const auto move=[&](int64_t columns){return part(columns*65536);};
+        // A sixteenth of a column: the sum's last bits depend on the arcade's fraction and must not tip a whole column.
+        const auto settle=[&](int64_t v){return v==scroll?scroll:int32_t((v+2048)&~int64_t(4095));};
+        int64_t q=int64_t(scroll)+part(offset);
+        if(!limits[2]||!r.world||!fight)return settle(q);   // no arena, no ratio yet or no fight: as the arcade has it
+        const int at=std::clamp(camera,limits[0],limits[1]),wide=at+shift;   // the arcade's camera and the wide one
+        span[slot]={int((scroll-move(at-limits[0])+65535)>>16),int((scroll+move(limits[1]-at))>>16)};
+        const int low=bound[slot][0],high=bound[slot][1];
+        if(low>high)return settle(q);   // art narrower than the wide screen: as the arcade has it
+        const int wide_low=limits[0]+WindowShift(limits[0],limits[0],limits[1]),wide_high=limits[1]+WindowShift(limits[1],limits[0],limits[1]);
+        const auto ease=[](int64_t u,int64_t g){return u>=g?u:u<=-g?int64_t(0):(u+g)*(u+g)/(4*g);};
+        if(low!=kNoLow){const int64_t edge=int64_t(low)*65536,g=edge-(q-move(wide-wide_low));if(g>0)q=edge+ease(q-edge,g);}
+        if(high!=kNoHigh){const int64_t edge=int64_t(high)*65536,g=(q+move(wide_high-wide))-edge;if(g>0)q=edge-ease(edge-q,g);}
+        return settle(q);
+    }
+    int Offset(bool shifting,bool holding,int camera,int low,int high){
+        if(low<=high&&high-low<=kWorldMax)limits={low,high,1};
+        else if(limits[2]){low=limits[0];high=limits[1];}
+        const int d=holding?(camera==held[0]?held[1]:0):shifting?WindowShift(camera,low,high):0;
+        if(!holding)held={camera,d};
+        fight=shifting||holding;
+        if(d)Whole();
+        return page_shift[page]=shift=d;
+    }
+    Ratio& PlaneRatio(unsigned slot){   // a new arena forgets the old ratios
+        if(ratio_limits[0]!=limits[0]||ratio_limits[1]!=limits[1]){ratio={};bound=Unbound();span=NoSpan();ratio_limits={limits[0],limits[1]};}
+        return ratio[std::min(slot,unsigned(ratio.size()-1))];
+    }
     void Draw(Kind kind,int lo,int hi,int layer=-1){
         if(!++serial)serial=1;
         drawing={int16_t(std::clamp(lo,-32768,32767)),int16_t(std::clamp(hi,-32768,32767)),kind,uint8_t(page)};
@@ -227,7 +315,7 @@ struct Layer {
     void StartFrame(unsigned page_row,const std::vector<uint16_t>& vram,const std::vector<Blood>& arcade_blood){
         page=(page_row>>8)&1;
         PlainPage(page,vram,arcade_blood,!cleared[page]);
-        cleared[page]=false;booked.fill(false);page_start[page]=serial;bands.clear();
+        cleared[page]=false;booked.fill(false);page_start[page]=serial;bands.clear();page_shift[page]=shift=0;page_whole[page]=whole=false;
         ++builds;if(debug){notes_done.swap(notes);notes.clear();}
     }
     // The frame ends (the next display interrupt): the margins without a scenery layer's art are masked, and so is a margin
@@ -244,7 +332,7 @@ struct Layer {
         }
     }
     // Save-state fields (W5): the layer and the pages' facts.
-    template<class A> void LayerFields(A& a){a(pens,blood,fixed,written,serial,page_start,cleared,page,bands,clear_pen,booked,rom_palette);}
+    template<class A> void LayerFields(A& a){a(pens,blood,fixed,written,serial,page_start,cleared,page,bands,clear_pen,booked,rom_palette,shift,page_shift,held,limits,ratio,ratio_limits,whole,page_whole,bound,span,fight);}
     void Reset(){*this=Layer{};}
 };
 }

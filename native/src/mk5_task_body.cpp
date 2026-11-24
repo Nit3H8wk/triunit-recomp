@@ -84,12 +84,31 @@ void Mk5TaskBodyRunner::wide_pre(uint32_t pc){
     v.WideRealWalk(true);
     if(ram_long(w::kClipTopLeft)!=0 || ram_long(w::kClipBottomRight)!=w::kArcadeBottomRight)return;
     v.WideBegin();
+    const unsigned mode=word(w::kMode);
+    v.WideOffset(w::Shifting(mode),w::Holding(mode),int16_t(word(w::kCameraX)),int16_t(word(w::kCameraMin)),int16_t(word(w::kCameraMax)));
+    // A moving world updates each plane's ratio (its velocity over the world's).
+    if(const auto world_velocity=int32_t(ram_long(w::kWorldScroll-w::kVelocityGap)))for(unsigned slot=0;slot<w::kScrollSlots;++slot)
+        v.WideRatio(slot)=mk5wide::MeasuredRatio(int32_t(ram_long(w::kScrollFirst+slot*0x20-w::kVelocityGap)),world_velocity);
     shadow_a=s.a;shadow_b=s.b;shadow_status=s.status;shadow_returns=f.check.returns.size();shadow_writes=s.writes.size();
     shadow_stack_reads=f.check.stack_read_count;shadow_lowest_sp=f.check.lowest_sp;shadow_quanta=irq.elapsed_quanta();
     shadow_cycles=s.reference_cycles;shadow_steps=0;shadow_journal.clear();shadow=true;shadow_refused=false;
-    write(pc,w::kClipTopLeft,32,w::WideTopLeft());write(pc,w::kClipBottomRight,32,w::WideBottomRight());
+    shadow_window(pc);
     shadow_walk=v.wide_streaming;   // not while the interrupted run is inside the real streamer: its planes are half built
     if(!shadow_walk){push(pc,w::kStreamerReturn);s.next_original_pc=w::kStreamer;throw TaskBodyStop::Shadow;}
+}
+// The shadow's window, through the journal: the wide clip and, with a window offset d (mk5wide::WindowShift), every scroll
+// moved by its ratio times d (mk5wide::ScrollOffset, Layer::PlaneScroll), so the streamer and the walk build the frame of camera x + d.
+void Mk5TaskBodyRunner::shadow_window(uint32_t pc){
+    namespace w=mk5widescreen;
+    write(pc,w::kClipTopLeft,32,w::WideTopLeft());write(pc,w::kClipBottomRight,32,w::WideBottomRight());
+    auto& layer=video->WideLayerState();const int camera=int16_t(m.ram[(w::kCameraX-0x01000000)/16]);
+    const auto ram_scroll=[&](uint32_t scroll){const size_t i=(scroll-0x01000000)/16;return int32_t(m.ram[i]|uint32_t(m.ram[i+1])<<16);};
+    const int64_t offset=mk5wide::ScrollOffset(ram_scroll(w::kWorldScroll),layer.shift);
+    for(unsigned slot=0;slot<w::kScrollSlots;++slot){
+        const uint32_t scroll=w::kScrollFirst+slot*0x20;const auto arcade=ram_scroll(scroll);
+        const auto wide=slot==w::kWorldSlot?int32_t(arcade+offset):layer.PlaneScroll(slot,arcade,camera,offset);
+        if(wide!=arcade){write(pc,scroll,32,uint32_t(wide));video->WideWhole();}
+    }
 }
 void Mk5TaskBodyRunner::shadow_pre(uint32_t pc){
     namespace w=mk5widescreen;
@@ -110,7 +129,7 @@ void Mk5TaskBodyRunner::shadow_pre(uint32_t pc){
     if(pc==w::kFixedTest){video->WideFixedObject((s.a[7]&1)!=0);return;}
     for(const auto call:w::kListCalls)if(pc==call){   // a list starts: A4 its camera x
         if(!video->WideList())shadow_refused=true;
-        video->WideListCamera(int16_t(s.a[4]));return;
+        video->WideListCamera(int16_t(s.a[4]),w::FarSlot(s.a[0]));return;
     }
 }
 // Undo the pass: RAM from the journal, the registers and the host histories; time never moved.
@@ -132,7 +151,7 @@ void Mk5TaskBodyRunner::shadow_failed(){
     namespace w=mk5widescreen;
     if(shadow_walk){const uint32_t pc=s.next_original_pc;shadow_stop(false);video->wide_fault_pc=pc;return;}
     shadow_restore();++video->wide_streamer_skips;
-    write(w::kWalkStart,w::kClipTopLeft,32,w::WideTopLeft());write(w::kWalkStart,w::kClipBottomRight,32,w::WideBottomRight());
+    shadow_window(w::kWalkStart);
     shadow_walk=true;s.next_original_pc=w::kWalkStart;
 }
 void Mk5TaskBodyRunner::step(uint32_t pc,uint32_t next,uint32_t cycles){

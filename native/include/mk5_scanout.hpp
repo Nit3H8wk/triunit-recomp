@@ -29,8 +29,9 @@ class Mk5Scanout {
     const Mk5LiveVideo* wide_video=nullptr;
     std::vector<uint32_t> wide_work,wide_complete;
     uint64_t wide_centre_work=0,wide_centre_=0;mk5wide::Audit wide_audit_work,wide_audit_;
+    int wide_shift_work=0,wide_shift_=0;bool wide_whole_work=false,wide_whole_=false;   // the frame's window offset; its world from the shadow alone (mk5wide::Layer::whole)
     // Widescreen presentation (Remastered): each wide pixel's arcade column, where its pen is the arcade's own at that column
-    // (the world's x = L-56+d; a pixel of a screen-fixed draw, the HUD's x = L-56), so the Remastered layers of that column
+    // (the world's x = L-67+d; a pixel of a screen-fixed draw, the HUD's x = L-67), so the Remastered layers of that column
     // apply; kRaw where only the shadow pass has it (margins, fitted planes): its raw colour, as scenery, with the wide floor
     // stain; kBlank on a blanked line. The composed frame is not state: ComposeWide makes it from the rest.
     static constexpr int16_t kRaw=-1,kBlank=-2;
@@ -56,7 +57,7 @@ class Mk5Scanout {
     template<class A> void WideFields(A& a){
         const bool enabled=wide_video!=nullptr;bool present=enabled;a(present);
         if(present)a(wide_work,wide_complete,wide_centre_work,wide_centre_,
-                     wide_source_work,wide_source,wide_blood_work,wide_blood);
+                     wide_source_work,wide_source,wide_blood_work,wide_blood,wide_shift_work,wide_shift_,wide_whole_work,wide_whole_);
         if constexpr(A::reading){
             const size_t n=size_t(kWideWidth)*height_;
             if(!enabled){wide_work.clear();wide_complete.clear();wide_source_work.clear();wide_source.clear();wide_blood_work.clear();wide_blood.clear();}
@@ -85,6 +86,8 @@ public:
     void EnableWide(const Mk5LiveVideo& video){wide_video=&video;}
     const std::vector<uint32_t>& wide_pixels()const{return wide_complete;}   // kWideWidth x height(), the last complete frame
     uint64_t wide_centre()const{return wide_centre_;}
+    bool wide_whole()const{return wide_whole_;}   // the last complete frame's arcade columns are not the real draws' (offset window, held far plane)
+    int wide_shift()const{return wide_shift_;}   // the last complete frame's window offset: arcade column x is wide column x+67-shift
     const mk5wide::Audit& wide_audit()const{return wide_audit_;}   // the last complete frame's margins (mk5wide::Layer::debug)
     // Widescreen presentation (Remastered, from the attached video): the frame, backdrop and fighter layers over kWideWidth.
     void EnableWidePresentation(const Mk5LiveVideo& video){wide_video=&video;wide_present=presentation!=nullptr;}

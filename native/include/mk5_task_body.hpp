@@ -83,6 +83,7 @@ class Mk5TaskBodyRunner {
     uint64_t shadow_quanta=0,shadow_cycles=0,shadow_steps=0;
     void wide_pre(uint32_t pc);
     void shadow_pre(uint32_t pc);
+    void shadow_window(uint32_t pc);
     void shadow_restore();
     void shadow_stop(bool complete);
     void shadow_failed();

@@ -30,10 +30,27 @@ inline bool StreamerCode(uint32_t pc){return In(kStreamerCode,std::size(kStreame
 // RAM: the clip longs (top-left, bottom-right as y<<16|x) and the page origin long (its high word: the page's first row).
 constexpr uint32_t kClipTopLeft=0x01008020,kClipBottomRight=0x01008040,kPageOrigin=0x01051160;
 constexpr uint32_t kArcadeBottomRight=0x00fe0190;   // x 400, y 254
-// The camera x word (the world scroll long's high word), the arena's camera limits (words; the builder's fighter walls
-// are [min+3Ah, max+15Fh]) and the mode word (2: the fight; 6: the round's start; 3, 5: the finisher, the round's end):
-// read by the widescreen acceptance harness only; the layer never reads the camera.
-constexpr uint32_t kCameraX=0x0104f880,kCameraMin=0x010517e0,kCameraMax=0x010517f0,kMode=0x01051190;
+// Scroll longs (16.16; a camera x is the high word): the far planes from kScrollFirst every 20h, the world (the fighting
+// plane, its objects and the fighters) and the front plane. Each frame each adds its velocity long, kVelocityGap lower
+// (the builder, FFC79E00..FFC79FF0).
+constexpr uint32_t kScrollFirst=0x0104f790,kWorldScroll=0x0104f870,kFrontScroll=0x0104f890,kVelocityGap=0x120;
+// The far lists: the first (its camera the first scroll) and the parallax lists from kParallaxLists every 20h, each with the
+// scroll at the same offset; the last parallax list is the world's (not a far plane). FarSlot: a list's scroll slot (-1:
+// not a far plane's list).
+constexpr uint32_t kFirstList=0x0104fa50,kParallaxLists=0x0104f8b0,kParallaxEnd=0x0104f9b0;
+inline int FarSlot(uint32_t list){
+    const uint32_t scroll=list==kFirstList?kScrollFirst:list>=kParallaxLists&&list<kParallaxEnd&&!((list-kParallaxLists)%0x20)?
+                          kScrollFirst+(list-kParallaxLists):0;
+    return scroll&&scroll<kWorldScroll?int((scroll-kScrollFirst)/0x20):-1;
+}
+constexpr unsigned kScrollSlots=(kFrontScroll-kScrollFirst)/0x20+1,kWorldSlot=(kWorldScroll-kScrollFirst)/0x20;
+// The camera x word, the arena's camera limits (words; the builder's fighter walls are [min+3Ah, max+15Fh]) and the mode
+// word: in the fight (2) and the round's start (6) the wide window follows the camera within the arena's limits
+// (mk5wide::WindowShift); the finisher (3) and the round's end (5) hold its offset while the camera stays.
+constexpr uint32_t kCameraX=kWorldScroll+16,kCameraMin=0x010517e0,kCameraMax=0x010517f0,kMode=0x01051190;
+constexpr unsigned kShiftModes=(1u<<2)|(1u<<6),kHoldModes=(1u<<3)|(1u<<5);
+inline bool Shifting(unsigned mode){return mode<16&&(kShiftModes>>mode&1);}
+inline bool Holding(unsigned mode){return mode<16&&(kHoldModes>>mode&1);}
 // The palette slots' table (the allocator FFCE10E0 searches kPaletteSlots entries from kPaletteTable, kPaletteEntry apart):
 // each the long of the palette's ROM pointer in the slot (then its use count). A palette the shadow's streamer allocates is
 // only booked in that table, which the journal undoes: its colours are not in the palette RAM.

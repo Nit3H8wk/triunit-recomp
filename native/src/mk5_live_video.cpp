@@ -238,7 +238,7 @@ void Mk5LiveVideo::DrawBlood(const ResetTrace& s,bool arena_visible){
                 const auto shade=blood_sprite.pixels[k];
                 if(!shade)continue;
                 if(wide_blood){
-                    const int column=int(page_x)+x+mk5wide::kExtra;
+                    const int column=int(page_x)+x+mk5wide::kExtra-wide.shift;
                     if(column>=0 && column<mk5wide::kLayerWidth)wide.blood[size_t(page_y+y)*mk5wide::kLayerWidth+size_t(column)]=shade;
                 }
                 if(x<left || x>=right || x+page_x>=512)continue;
@@ -271,7 +271,7 @@ void Mk5LiveVideo::Write(uint32_t pc,unsigned offset,uint16_t value){
     // arcade columns only; after a failed shadow pass the walk is mirrored whole. Any other draw is mirrored where it lands.
     const WideEntry* staged=wide.Enabled() && wide_walk && wide_walk_drawn?WideMerge(cpu.a[0]):nullptr;
     const bool merge=wide.Enabled() && wide_walk && wide_walk_drawn,world=wide_walk && !(staged && staged->fixed);
-    const bool mirror=wide.Enabled();
+    const bool mirror=wide.Enabled() && !(merge && world && wide.whole);   // offset window: the world is the staged draws
     const uint8_t actor=mk5wide::Layer<uint8_t>::ActorDraw(r[1])?mk5wide::Layer<uint8_t>::kActor:0;   // a floor shadow
     if(mirror){const auto [lo,hi]=mk5wide::Span(r[4],r[6],r[10],(r[1]&16)!=0);
         wide.Draw(mk5wide::Kind::real,lo+mk5wide::kExtra,hi+mk5wide::kExtra,staged?staged->layer:-1);}
@@ -328,7 +328,8 @@ void Mk5LiveVideo::WideFlush(size_t end){
     for(;wide_cursor<end && wide_cursor<wide_staged.size();++wide_cursor)WideOutside(wide_staged[wide_cursor]);
 }
 // A staged draw on the layer, rendered in layer columns at the x the game gave it, outside the arcade's columns (the real
-// draws own those). A screen-fixed draw (the HUD) still marks its arcade pixels fixed.
+// draws own those). A screen-fixed draw (the HUD) still marks its arcade pixels fixed. With a window offset a world draw
+// is rendered whole (the real draws stand elsewhere).
 void Mk5LiveVideo::WideOutside(const WideEntry& e){
     auto r=e.regs;
     {const auto [a,b]=mk5wide::Span(r[4],r[6],r[10],(r[1]&16)!=0);   // the draw as the game meant it
@@ -341,6 +342,7 @@ void Mk5LiveVideo::WideOutside(const WideEntry& e){
     const auto put=[&](size_t dest,uint16_t pen){
         if(dest>=wide.pens.size())return;
         wide.Write(dest,pen,e.fixed);if(actor)wide.fixed[dest]|=mk5wide::Layer<uint8_t>::kActor;};
+    if(wide.whole && !e.fixed){r[16]=0;r[17]=mk5wide::kLayerWidth-1;Blit(r,d,gfx,put,mk5wide::kLayerWidth);return;}
     if(lo+mk5wide::kExtra<first){r[16]=0;r[17]=first-1;Blit(r,d,gfx,put,mk5wide::kLayerWidth);}
     if(hi+mk5wide::kExtra>last){r[16]=last;r[17]=mk5wide::kLayerWidth-1;Blit(r,d,gfx,put,mk5wide::kLayerWidth);}
     if(e.fixed && hi+mk5wide::kExtra>first && lo+mk5wide::kExtra<last){   // its arcade pixels are the HUD's
@@ -352,16 +354,20 @@ void Mk5LiveVideo::WideEndUnbuilt(){wide.EndFrame();}
 // The waiting list (a scenery layer): its art measured over the layer's columns (mk5wide::MeasureBand), its draws staged.
 bool Mk5LiveVideo::WidePlane(){
     if(wide_plane.empty())return true;
+    // Measured over the shadow's whole clip (the layer and kReach columns on each side): a far plane's art ends are known
+    // before they reach the wide screen (mk5wide::Layer::Learn).
+    constexpr int kOrigin=mk5wide::kReach,kCanvas=mk5wide::kLayerWidth+2*mk5wide::kReach;
     std::vector<std::array<uint16_t,18>> draws;std::vector<std::pair<int,int>> meant;
     for(const auto& e:wide_plane){
-        auto r=e.regs;const auto [a,b]=mk5wide::Span(r[4],r[6],r[10],(r[1]&16)!=0);meant.push_back({a+mk5wide::kExtra,b+mk5wide::kExtra});
-        r[4]=mk5wide::LayerX(r[4]);r[16]=0;r[17]=mk5wide::kLayerWidth-1;
+        auto r=e.regs;const auto [a,b]=mk5wide::Span(r[4],r[6],r[10],(r[1]&16)!=0);meant.push_back({a+kOrigin+mk5wide::kExtra,b+kOrigin+mk5wide::kExtra});
+        r[4]=uint16_t((r[4]+kOrigin+mk5wide::kExtra)&0x3ff);r[16]=0;r[17]=kCanvas-1;
         DmaShape d;if(!Shape(r,gfx,d)){wide_plane.clear();return false;}
         draws.push_back(r);
         if(wide.debug)wide.notes.push_back({uint16_t(e.layer),uint32_t(r[2]|uint32_t(r[3])<<16),uint16_t(r[5]&0x1ff),int16_t(a+mk5wide::kExtra),int16_t(b+mk5wide::kExtra),wide_camera});
     }
     auto band=mk5wide::MeasureBand(uint16_t(wide_plane.front().layer),draws,meant,[&](const std::array<uint16_t,18>& r,auto&& put){
-        DmaShape d;if(Shape(r,gfx,d))Blit(r,d,gfx,[&](size_t dest,uint16_t){put(dest);},mk5wide::kLayerWidth);});
+        DmaShape d;if(Shape(r,gfx,d))Blit(r,d,gfx,[&](size_t dest,uint16_t){put(dest);},kCanvas);},kCanvas,kOrigin);
+    if(wide_slot>=0)wide.Learn(unsigned(wide_slot),wide_camera,band);
     if(!band.rows.empty())wide.bands.push_back(std::move(band));
     for(const auto& e:wide_plane)WideStage(e);
     wide_plane.clear();return true;
