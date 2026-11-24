@@ -98,6 +98,8 @@ void check_wide(const mk2::Program& program) {
     const auto spot=[&]{for(size_t i=0;i<mk5wide::kLayerSize;++i)if(i%W>=size_t(mk5wide::kExtra)&&i%W<size_t(mk5wide::kWideMargin)&&video.WideBloodPixel(i))return i;return size_t(0);}();
     need(spot!=0,"a margin stain pixel");
     // The scanout's wide presentation shows the margin part of the line over the wide layer's raw pixels.
+    // The floor under the stain, as the shadow pass would have drawn it there (a margin pixel no draw wrote is masked).
+    video.wide.Draw(mk5wide::Kind::shadow,0,int(W));for(size_t c=0;c<W;++c)video.wide.Stamp(spot/W*W+c);
     mk2::Scanout scanout(true);scanout.EnableWidePresentation();
     mk2::BoardBootControls board;
     board.io[1]=50;board.io[2]=250;board.io[3]=252;board.io[5]=20;board.io[6]=21;board.io[7]=288;board.io[8]=0xe410;board.io[27]=28;
@@ -109,7 +111,7 @@ void check_wide(const mk2::Program& program) {
     need(shown>0,"the presented line crosses the margin stain");
     video.MirrorWide(spot/W*512+spot%W-size_t(mk5wide::kExtra),1);   // the VRAM pixel at the stain's layer column
     need(video.WideBloodPixel(spot)==0,"a later draw on the wide layer occludes the margin stain");
-    video.SetWideShift(0);video.DrawBlood(page,xy(0,8),0,xy(400,254));
+    video.DrawBlood(page,xy(0,8),0,xy(400,254));
     need(video.WideBloodPixel(spot)!=0,"occlusion does not delete the margin stain");
     video.ClearBlood();
     need(video.WideBloodPixel(spot)==0,"new combat clears the wide stains");

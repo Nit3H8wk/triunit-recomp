@@ -157,24 +157,15 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
     bool shadow_skip=false,shadow_walk=false;uint64_t shadow_steps=0;uint32_t shadow_fault_pc=0;
     constexpr uint64_t kShadowSteps=4000000;
     const auto shadow_end=[&]{
-        if(!o.shadow_fault)o.out.video.WideBands(o.program.graphics);else o.out.video.wide_world.clear();   // the world's bands
+        if(o.shadow_fault)o.out.video.wide.bands.clear();   // an incomplete pass measured no whole layer
         for(auto it=o.shadow_journal.rbegin();it!=o.shadow_journal.rend();++it)o.out.main_ram[it->first]=it->second;
         o.shadow_journal.clear();std::tie(s.a,s.b,s.status)=shadow_saved;s.next_pc=mk2::wide::kWalkStart;
         if(o.shadow_fault)o.out.video.margin_fault_pc=shadow_fault_pc;
         o.shadow=false;shadow_skip=true;o.out.video.margin_faults+=o.shadow_fault;
         o.out.video.wide_walk_drawn=!o.shadow_fault;   // else the real walk's DMAs are mirrored too
     };
-    // The shadow's clip, written through the journal; the far planes' ratios (mk5wide::EndShown) read again whenever the world
-    // moves.
-    const auto shadow_view=[&]{
-        const auto ram_long=[&](uint32_t bit){const size_t i=(bit-0x01000000)/16;return int32_t(o.out.main_ram[i]|uint32_t(o.out.main_ram[i+1])<<16);};
-        o.Write32(mk2::wide::kClipTopLeft,mk2::wide::WideTopLeft());o.Write32(mk2::wide::kClipBottomRight,mk2::wide::WideBottomRight());
-        const int32_t world_velocity=ram_long(mk2::wide::kWorldVelocity);
-        for(unsigned slot=0;slot<mk2::wide::kScrollSlots;++slot){
-            const uint32_t scroll=mk2::wide::kScrollFirst+slot*0x20;auto& ratio=o.out.video.wide.PlaneRatio(slot);
-            if(world_velocity)ratio=mk5wide::MeasuredRatio(ram_long(scroll-mk2::wide::kScrollVelocityGap),world_velocity);
-        }
-    };
+    // The shadow's clip, written through the journal.
+    const auto shadow_view=[&]{o.Write32(mk2::wide::kClipTopLeft,mk2::wide::WideTopLeft());o.Write32(mk2::wide::kClipBottomRight,mk2::wide::WideBottomRight());};
     while (live_host ? s.cycles<end_cycle :
            s.next_pc != end_pc || (host_controls ? s.cycles<end_cycle : s.cycles!=end_cycle)) {
         if(o.shadow){
@@ -182,13 +173,12 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
             if(s.next_pc==mk2::wide::kMarker&&shadow_walk)o.out.video.wide_shadow_post=true;
             if(s.next_pc==mk2::wide::kCameraLoad&&shadow_walk){   // a list with a screen-fixed camera (HUD) keeps its place
                 o.out.video.wide_hud=s.a[13]<mk2::wide::kScrollFirst||s.a[13]>mk2::wide::kScrollLast;
-                const auto ram_long=[&](uint32_t bit){const size_t i=(bit-0x01000000)/16;return int32_t(o.out.main_ram[i]|uint32_t(o.out.main_ram[i+1])<<16);};
-                const bool fit=mk2::wide::FitCamera(s.a[13]);   // a far plane: its velocity and the world's
-                o.out.video.WideList(fit,s.a[13],fit?ram_long(s.a[13]-mk2::wide::kVelocityGap):0,
-                                     fit?ram_long(mk2::wide::kWorldVelocity):0,o.program.graphics);
+                if(!o.out.video.WideList(o.program.graphics))o.shadow_fault=true;
+                const size_t camera=(s.a[13]-0x01000000u)/16;   // a scenery list's camera word (debug notes)
+                o.out.video.wide_camera=!o.out.video.wide_hud&&camera<o.out.main_ram.size()?int16_t(o.out.main_ram[camera]):int16_t(0);
             }
-            // Each table entry (a list or a callback) ends the previous one: a waiting plane is placed (per-plane fit).
-            if(s.next_pc==mk2::wide::kTableNext&&shadow_walk&&!o.out.video.WideList(false,0,0,0,o.program.graphics))o.shadow_fault=true;
+            // Each table entry (a list or a callback) ends the previous one: the waiting scenery layer is measured and placed.
+            if(s.next_pc==mk2::wide::kTableNext&&shadow_walk&&!o.out.video.WideList(o.program.graphics))o.shadow_fault=true;
             const uint32_t pc=s.next_pc;
             if(!shadow_walk&&pc==mk2::wide::kStreamerReturn){   // the streamer returned: the walk from its start, with the real registers
                 std::tie(s.a,s.b,s.status)=shadow_saved;s.next_pc=mk2::wide::kWalkStart;shadow_walk=true;continue;
@@ -203,14 +193,7 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
             const auto ram_long=[&](uint32_t bit){const size_t i=(bit-0x01000000)/16;return o.out.main_ram[i]|uint32_t(o.out.main_ram[i+1])<<16;};
             if(shadow_skip)shadow_skip=false;
             else if(ram_long(mk2::wide::kClipTopLeft)==0&&ram_long(mk2::wide::kClipBottomRight)==mk2::wide::kArcadeBottomRight){
-                const auto word=[&](uint32_t bit){return int16_t(o.out.main_ram[(bit-0x01000000)/16]);};
-                // The window stays centred; in the fight modes (and 3, 5: the finisher's scene, the round's end) the margins past
-                // the arena's world reflect it. A finisher frees the camera: the arena's own limits stay (mk5wide::Layer::Offset).
-                const unsigned mode=uint16_t(word(mk2::wide::kMode));
-                const int d=o.out.video.wide.Offset(mk2::wide::Shifting(mode),mk2::wide::Holding(mode),word(mk2::wide::kCameraX),
-                                                    word(mk2::wide::kCameraMin),word(mk2::wide::kCameraMax),mk2::wide::kWorldMax);
-                o.out.video.SetWideShift(d);o.out.video.wide_hud=false;
-                o.out.video.wide.arena=mk2::wide::Shifting(mode)||mk2::wide::Holding(mode);   // a fight's modes are an arena's
+                o.out.video.wide_hud=false;
                 auto& free=o.out.video.wide_free;free.clear();   // the pool's free objects before the shadow's streamer run
                 uint32_t object=ram_long(mk2::wide::kFreeList),link=mk2::wide::kFreeList;
                 for(;object>=0x01000000&&object<0x013fffe0&&free.size()<mk2::wide::kPoolObjects;link=object,object=ram_long(object))free.push_back(object);
@@ -253,7 +236,7 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
         const auto instruction_pc = s.next_pc;
         if(!o.shadow){
         if(instruction_pc==mk2::wide::kMarker)o.out.video.wide_real_post=true;   // the real walk's marker entry
-        if(instruction_pc==mk2::wide::kDisplayIrq){o.out.video.EndUnbuiltFrame(o.program.graphics);o.out.video.wide.frame_started=false;}   // a new frame
+        if(instruction_pc==mk2::wide::kDisplayIrq)o.out.video.EndWideFrame();   // a new frame
         if(instruction_pc==mk2::wide::kStreamer)o.out.video.margin_streamer=o.out.video.margin_streaming=true;   // it streams
         else if(instruction_pc==mk2::wide::kStreamerReturn)o.out.video.margin_streaming=false;   // the streamer returned
         else if(instruction_pc==mk2::wide::kPoolReset[0]||instruction_pc==mk2::wide::kPoolReset[1])o.out.video.margin_streamer=false;

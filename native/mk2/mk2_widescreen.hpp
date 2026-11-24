@@ -34,42 +34,17 @@ constexpr uint32_t kObjectXVelocity=0x40,kObjectX=0x80;
 constexpr uint32_t kClipTopLeft=0x01060150,kClipBottomRight=0x01060170,kPageOrigin=0x0105d050;
 constexpr uint32_t kArcadeBottomRight=0x00fe0190;   // x 400
 constexpr int kMargin=mk5wide::kMargin;   // VRAM columns beyond each side of the 400 visible ones
-// Screens without an arena whose art stops short of the arcade's edge (the story and the DCS logo leave the last 7 columns
-// in the page clear's pen): the wide layer's background continuation also covers those pixels (mk5wide::Layer::edge_fill).
-constexpr int kEdgeFill=7;
 // Each list's camera: at kCameraLoad A13 holds the address of the variable the walk reads as the list's camera. Lists whose
 // camera is a world or parallax scroll (kScrollFirst..kScrollLast) are scenery; any other camera is screen-fixed (HUD).
 constexpr uint32_t kCameraLoad=0xff804fc0,kScrollFirst=0x0105d260,kScrollLast=0x0105d370;
 // The walk's next table entry (MOVE *A3+,A0): the previous list or callback has ended.
 constexpr uint32_t kTableNext=0xff804f10;
-// The window offset: the camera x word (WORLDTLX) and the arena's camera limits (words), read in the fight modes (mode
-// word, bit per value: 2, 6, 7; modes 3 and 5 hold, see kHoldModes and mk2_task_batch.cpp). Limits wider than
-// kWorldMax (a finisher frees the camera) keep the arena's last limits.
+// The camera x word (WORLDTLX), the arena's camera limits (words) and the mode word (2: the fight): read by the
+// widescreen acceptance harness only; the layer never reads the camera.
 constexpr uint32_t kCameraX=0x0105d350,kCameraMin=0x0105ecf0,kCameraMax=0x0105ed00,kMode=0x010601d0;
-constexpr unsigned kFightModes=0xc4;
-// Modes that keep the last fight frame's offset while the camera stays: 3 (the finisher's scene) and 5 (the round's end).
-constexpr unsigned kHoldModes=(1u<<3)|(1u<<5);
-constexpr int kWorldMax=mk5wide::kWorldMax;
-inline bool Shifting(unsigned mode){return mode<16&&(kFightModes>>mode&1);}
-inline bool Holding(unsigned mode){return mode<16&&(kHoldModes>>mode&1);}
-// Per-plane fit (BootVideo::WidePlane): the far planes, lists whose camera is a parallax scroll below the world's (kCameraX:
-// the fighting plane, fighters and floor never fit).
-inline bool FitCamera(uint32_t camera){return camera>=kScrollFirst&&camera<kCameraX;}
-// Each frame the scroll longs (16.16, from 0105D260; a camera word is the high word of its long) add their velocity longs,
-// kVelocityGap lower (FF804B60..FF804D50); the world's velocity is kWorldVelocity. A far plane's ratio is its velocity over
-// the world's, read per arena while the world camera moves. An end of a plane's art that the arcade screen itself shows at
-// some camera position within the limits (within kEndSlack pixels) belongs to the arena: that plane is not fitted.
-constexpr uint32_t kVelocityGap=0x130,kWorldVelocity=0x0105d220;
-constexpr int kEndSlack=mk5wide::kEndSlack;
-// The shadow's clip (y<<16|x): screen x -67 .. 467 of the virtual camera, plus kReach on each side so that the streamer
-// builds, and the walk stages, the far planes' art beyond the window (the per-plane fit measures where it ends; the layer
-// clips the draws to its columns). Its 10-bit DMA x stays within -256..767.
+// The shadow's clip (y<<16|x): screen x -67 .. 467 plus kReach on each side, so that the streamer builds, and the walk
+// stages, the objects partly inside the layer. Its 10-bit DMA x stays within -256..767.
 constexpr int kReach=mk5wide::kReach;
 constexpr uint32_t WideTopLeft(){return uint32_t(uint16_t(int16_t(-mk5wide::kWideMargin-kReach)));}
 constexpr uint32_t WideBottomRight(){return (kArcadeBottomRight&0xffff0000u)|uint16_t(int16_t(400+mk5wide::kWideMargin+kReach));}
-// The scroll longs the virtual camera moves (16.16, a camera word is the high word): the far planes' from kScrollFirst every
-// 20h, the world's (kCameraX's long, slot 7) and the front plane's (slot 8); each velocity kScrollVelocityGap lower.
-constexpr unsigned kScrollSlots=9,kWorldSlot=7;constexpr uint32_t kScrollVelocityGap=0x120;
-static_assert(kScrollFirst+kWorldSlot*0x20+16==kCameraX && kScrollFirst+(kScrollSlots-1)*0x20+16==kScrollLast &&
-              kCameraX-kVelocityGap==kWorldVelocity,"MK2 scroll layout");
 }

@@ -78,30 +78,16 @@ void Mk5TaskBodyRunner::wide_pre(uint32_t pc){
     case w::kStreamer:v.wide_streaming=true;return;
     case w::kStreamerEnd:v.wide_streaming=false;return;
     case w::kWalkEnd:v.WideRealWalk(false);return;
-    case w::kWrapTest:{   // a wrapping group (A8): its parts and the ring's length, from the MOVI immediate
-        const int length=int(rom32(p,w::kWrapLength)&0xffff);uint32_t part=s.a[8];
-        for(unsigned n=0;n<w::kWrapParts && part>=0x01000000 && part<0x01400000 && !(part&15);++n){v.WideWrap(part,length);part=ram_long(part+w::kPartLink);}
-        return;
-    }
     case w::kWalkStart:break;
     default:return;
     }
     v.WideRealWalk(true);
     if(ram_long(w::kClipTopLeft)!=0 || ram_long(w::kClipBottomRight)!=w::kArcadeBottomRight)return;
-    const unsigned mode=word(w::kMode);
-    v.WideBegin(w::Shifting(mode),w::Holding(mode),int16_t(word(w::kCameraX)),int16_t(word(w::kCameraMin)),
-                int16_t(word(w::kCameraMax)),w::Menu(mode),mode==w::kAttractMode);
+    v.WideBegin();
     shadow_a=s.a;shadow_b=s.b;shadow_status=s.status;shadow_returns=f.check.returns.size();shadow_writes=s.writes.size();
     shadow_stack_reads=f.check.stack_read_count;shadow_lowest_sp=f.check.lowest_sp;shadow_quanta=irq.elapsed_quanta();
     shadow_cycles=s.reference_cycles;shadow_steps=0;shadow_journal.clear();shadow=true;shadow_refused=false;
     write(pc,w::kClipTopLeft,32,w::WideTopLeft());write(pc,w::kClipBottomRight,32,w::WideBottomRight());
-    // A moving world updates the far planes' ratios (mk5wide::EndShown).
-    const int32_t world_velocity=int32_t(ram_long(w::kWorldScroll-w::kVelocityGap));
-    for(unsigned slot=0;slot<w::kScrollSlots;++slot){
-        const uint32_t scroll=w::kScrollFirst+slot*0x20;
-        auto& ratio=v.WideRatio(slot);
-        if(world_velocity)ratio=mk5wide::MeasuredRatio(int32_t(ram_long(scroll-w::kVelocityGap)),world_velocity);
-    }
     shadow_walk=v.wide_streaming;   // not while the interrupted run is inside the real streamer: its planes are half built
     if(!shadow_walk){push(pc,w::kStreamerReturn);s.next_original_pc=w::kStreamer;throw TaskBodyStop::Shadow;}
 }
@@ -119,15 +105,12 @@ void Mk5TaskBodyRunner::shadow_pre(uint32_t pc){
         if(!w::StreamerCode(pc))throw TaskBodyStop::Untranslated;
         return;
     }
-    if(pc==w::kWalkEnd){shadow_stop(video->WideList(false,0,0,0) && !shadow_refused);throw TaskBodyStop::Shadow;}
+    if(pc==w::kWalkEnd){shadow_stop(video->WideList() && !shadow_refused);throw TaskBodyStop::Shadow;}
     if(!w::WalkCode(pc))throw TaskBodyStop::Untranslated;
     if(pc==w::kFixedTest){video->WideFixedObject((s.a[7]&1)!=0);return;}
-    for(const auto call:w::kListCalls)if(pc==call){   // a list starts: A0 its head
-        const uint32_t scroll=w::FarScroll(s.a[0]);
-        const auto ram_long=[&](uint32_t bit){const size_t i=(bit-0x01000000)/16;return int32_t(m.ram[i]|uint32_t(m.ram[i+1])<<16);};
-        if(!video->WideList(scroll!=0,(scroll-w::kScrollFirst)/0x20,scroll?ram_long(scroll-w::kVelocityGap):0,
-                            scroll?ram_long(w::kWorldScroll-w::kVelocityGap):0))shadow_refused=true;
-        return;
+    for(const auto call:w::kListCalls)if(pc==call){   // a list starts: A4 its camera x
+        if(!video->WideList())shadow_refused=true;
+        video->WideListCamera(int16_t(s.a[4]));return;
     }
 }
 // Undo the pass: RAM from the journal, the registers and the host histories; time never moved.

@@ -228,7 +228,7 @@ int Mk5BootFlowCli(int argc,wchar_t** argv,bool remastered,Mk5StateHost host){
                     const auto present=[&]{
                         if(screen->wide_presentation_enabled()){
                             auto world=boxes();   // the world's boxes move with the window
-                            const int move=int(Mk5Scanout::kWideWidth-screen->width())/2-screen->wide_shift();
+                            const int move=int(Mk5Scanout::kWideWidth-screen->width())/2;
                             for(auto& box:world)box.x+=move;
                             window->Present(screen->wide_presentation(),Mk5Scanout::kWideWidth,screen->height(),
                                             screen->wide_backdrop_pixels(),screen->wide_fighter_frame(),world);

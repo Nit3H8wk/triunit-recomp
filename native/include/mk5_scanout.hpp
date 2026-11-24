@@ -28,7 +28,7 @@ class Mk5Scanout {
     // pixels that differ from VRAM (0 when exact).
     const Mk5LiveVideo* wide_video=nullptr;
     std::vector<uint32_t> wide_work,wide_complete;
-    uint64_t wide_centre_work=0,wide_centre_=0;mk5wide::Audit wide_audit_work,wide_audit_;int wide_shift_work=0,wide_shift_=0;unsigned wide_fitted_work=0,wide_fitted_=0;
+    uint64_t wide_centre_work=0,wide_centre_=0;mk5wide::Audit wide_audit_work,wide_audit_;
     // Widescreen presentation (Remastered): each wide pixel's arcade column, where its pen is the arcade's own at that column
     // (the world's x = L-56+d; a pixel of a screen-fixed draw, the HUD's x = L-56), so the Remastered layers of that column
     // apply; kRaw where only the shadow pass has it (margins, fitted planes): its raw colour, as scenery, with the wide floor
@@ -55,13 +55,13 @@ class Mk5Scanout {
     // a file's; one with it that loads a state without it starts from blank wide frames until the next one completes.
     template<class A> void WideFields(A& a){
         const bool enabled=wide_video!=nullptr;bool present=enabled;a(present);
-        if(present)a(wide_work,wide_complete,wide_centre_work,wide_centre_,wide_shift_work,wide_shift_,wide_fitted_work,wide_fitted_,
+        if(present)a(wide_work,wide_complete,wide_centre_work,wide_centre_,
                      wide_source_work,wide_source,wide_blood_work,wide_blood);
         if constexpr(A::reading){
             const size_t n=size_t(kWideWidth)*height_;
             if(!enabled){wide_work.clear();wide_complete.clear();wide_source_work.clear();wide_source.clear();wide_blood_work.clear();wide_blood.clear();}
             else if(!present){
-                wide_work.assign(n,0);wide_complete=wide_work;wide_shift_work=wide_shift_=0;wide_fitted_work=wide_fitted_=0;
+                wide_work.assign(n,0);wide_complete=wide_work;
                 wide_centre_work=wide_centre_=0;
                 if(wide_present){wide_source_work.assign(n,kBlank);wide_source=wide_source_work;wide_blood_work.assign(n,0);wide_blood=wide_blood_work;}
             }
@@ -84,8 +84,6 @@ public:
     static constexpr unsigned kWideWidth=mk5wide::kLayerWidth;   // the 16:9 layer (mk5_wide.hpp)
     void EnableWide(const Mk5LiveVideo& video){wide_video=&video;}
     const std::vector<uint32_t>& wide_pixels()const{return wide_complete;}   // kWideWidth x height(), the last complete frame
-    int wide_shift()const{return wide_shift_;}   // its window offset (0: the window stays centred)
-    unsigned wide_fitted()const{return wide_fitted_;}   // its far planes fitted to the window: with none, the centre is exact
     uint64_t wide_centre()const{return wide_centre_;}
     const mk5wide::Audit& wide_audit()const{return wide_audit_;}   // the last complete frame's margins (mk5wide::Layer::debug)
     // Widescreen presentation (Remastered, from the attached video): the frame, backdrop and fighter layers over kWideWidth.

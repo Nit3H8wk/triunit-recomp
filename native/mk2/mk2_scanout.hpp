@@ -26,7 +26,7 @@ class Scanout {
     // Widescreen: every VRAM column of each line, the visible ones at the centre, from the shadow pass's wide layer when it
     // runs (BootVideo::EnableWide). Raw colours of the original scanout.
     mk5wide::Audit wide_audit_work_,wide_audit_;   // diagnostics, not state (mk5wide::Layer::debug)
-    bool wide_on_=false;std::vector<uint32_t> wide_work_,wide_;uint64_t wide_added_work_=0,wide_added_=0,wide_centre_work_=0,wide_centre_=0,wide_filled_work_=0,wide_filled_=0;int wide_shift_work_=0,wide_shift_=0;unsigned wide_fitted_work_=0,wide_fitted_=0;
+    bool wide_on_=false;std::vector<uint32_t> wide_work_,wide_;uint64_t wide_added_work_=0,wide_added_=0,wide_centre_work_=0,wide_centre_=0;
     // Widescreen presentation (Remastered, W3): each wide pixel's arcade column, where its pen is the arcade's own at that
     // column (the world's x = L-56+d; a pixel of a screen-fixed draw, the layer's fixed mark, the HUD's x = L-56), so the
     // Remastered layers of that column apply; kRaw where
@@ -36,7 +36,7 @@ class Scanout {
     std::vector<uint32_t> wide_blood_work_,wide_blood_;   // the floor stain on a kRaw pixel (0: none), dimmed as the frame's
     std::vector<uint32_t> wide_presentation_,wide_backdrop_;mk5presentation::FighterFrame wide_fighters_;
     void ComposeWide(){
-        const size_t n=size_t(kWideWidth)*height_;const int move=int(kWideWidth-width_)/2-wide_shift_;
+        const size_t n=size_t(kWideWidth)*height_;const int move=int(kWideWidth-width_)/2;
         const bool backdrop=!backdrop_.empty(),fighters=fighters_.serial!=0,fighter_backdrop=fighters&&!fighters_.backdrop.empty();
         // Every pixel of each layer is written below: sized, not cleared.
         wide_presentation_.resize(n);wide_backdrop_.resize(backdrop?n:0);
@@ -77,14 +77,13 @@ class Scanout {
     // is not state, ComposeWide makes it again from the rest.
     template<class A> void WideFields(A& a){
         const bool enabled=wide_on_;bool present=enabled;a(present);
-        if(present)a(wide_work_,wide_,wide_added_work_,wide_added_,wide_centre_work_,wide_centre_,wide_filled_work_,wide_filled_,
-                     wide_shift_work_,wide_shift_,wide_fitted_work_,wide_fitted_,wide_source_work_,wide_source_,wide_blood_work_,wide_blood_);
+        if(present)a(wide_work_,wide_,wide_added_work_,wide_added_,wide_centre_work_,wide_centre_,wide_source_work_,wide_source_,wide_blood_work_,wide_blood_);
         if constexpr(A::reading){
             const size_t n=size_t(kWideWidth)*height_;
             if(!enabled){wide_work_.clear();wide_.clear();wide_source_work_.clear();wide_source_.clear();wide_blood_work_.clear();wide_blood_.clear();}
             else if(!present){   // a state saved without widescreen: blank wide frames until the next one completes
-                wide_work_.assign(n,0xff000000);wide_=wide_work_;wide_shift_work_=wide_shift_=0;wide_fitted_work_=wide_fitted_=0;
-                wide_added_work_=wide_added_=wide_centre_work_=wide_centre_=wide_filled_work_=wide_filled_=0;
+                wide_work_.assign(n,0xff000000);wide_=wide_work_;
+                wide_added_work_=wide_added_=wide_centre_work_=wide_centre_=0;
                 if(wide_present_){wide_source_work_.assign(n,kBlank);wide_source_=wide_source_work_;wide_blood_work_.assign(n,0);wide_blood_=wide_blood_work_;}
             }
             if(wide_present_&&wide_.size()==n&&wide_source_.size()==n&&wide_blood_.size()==n&&presentation_.size()==size_t(width_)*height_)ComposeWide();
@@ -105,12 +104,9 @@ public:
     void EnableWide(){wide_on_=true;}
     const std::vector<uint32_t>& wide_pixels() const { return wide_; }
     const mk5wide::Audit& wide_audit() const { return wide_audit_; }   // the last complete frame's margins (Layer::debug)   // kWideWidth x height(), the last complete frame
-    int wide_shift() const { return wide_shift_; }   // its window offset (0: the window stays centred)
-    unsigned wide_fitted() const { return wide_fitted_; }   // its planes fitted to the window (BootVideo::WidePlane); with none, the centre is exact at offset 0
     uint64_t wide_centre() const { return wide_centre_; }   // its visible pixels that differ from VRAM (0 when exact)
     // Its visible pixels the background continuation filled where the arcade leaves its edge columns in the page clear's pen
     // (mk5wide::Layer::edge_fill; not counted in wide_centre).
-    uint64_t wide_filled() const { return wide_filled_; }
     uint64_t wide_added() const { return wide_added_; }   // its margin pixels the shadow drew beyond the arcade's own spill
     // Widescreen presentation (Remastered): the frame, backdrop and fighter layers over kWideWidth columns.
     void EnableWidePresentation(){wide_on_=true;wide_present_=remastered_;}
@@ -137,7 +133,7 @@ public:
         if (board.vcount==io[6]) {
             if (collecting_ && rows_==height_) {
                 complete_=work_;
-                if(wide_on_){wide_=wide_work_;wide_audit_=wide_audit_work_;wide_added_=wide_added_work_;wide_centre_=wide_centre_work_;wide_filled_=wide_filled_work_;wide_shift_=wide_shift_work_;wide_fitted_=wide_fitted_work_;}
+                if(wide_on_){wide_=wide_work_;wide_audit_=wide_audit_work_;wide_added_=wide_added_work_;wide_centre_=wide_centre_work_;}
                 if(remastered_){
                     for(const auto pixel:blood_cover_)blood_work_[pixel]=shade_.Apply(blood_work_[pixel]);
                     presentation_=blood_work_;
@@ -163,7 +159,7 @@ public:
             collecting_=false;return;
         }
         if (board.vcount==io[5]) {
-            collecting_=true;rows_=0;scenery_visible_=false;wide_added_work_=0;wide_centre_work_=0;wide_filled_work_=0;
+            collecting_=true;rows_=0;scenery_visible_=false;wide_added_work_=0;wide_centre_work_=0;
             if(remastered_ && video.BackdropEnabled())backdrop_work_.resize(work_.size());
             else backdrop_work_.clear();
             fighter_capture_started_=false;
@@ -201,45 +197,33 @@ public:
         if(wide_on_){
             const unsigned margin=(kWideWidth-width_)/2;
             const bool layer=video.WideEnabled();
-            if(!rows_){wide_shift_work_=layer?video.WideShiftOfRow(row>>9):0;wide_fitted_work_=layer?video.WideFittedOfRow(row>>9):0;wide_audit_work_={};}
+            if(!rows_)wide_audit_work_={};
             // The wide layer when the shadow pass composes it (BootVideo::EnableWide), else VRAM itself.
             const size_t base=size_t(row>>9)*mk5wide::kLayerWidth;   // the layer's line (mk5_wide.hpp)
             const uint16_t* vram=video.vram.data()+row;const uint16_t* palette=video.palette_ram.data();
             const size_t line=size_t(rows_)*kWideWidth;uint32_t* out=wide_work_.data()+line;
             int16_t* sources=wide_present_?wide_source_work_.data()+line:nullptr;uint32_t* bloods=wide_present_?wide_blood_work_.data()+line:nullptr;
-            const int shift=wide_shift_work_;uint64_t added=0,centre=0,filled=0;
-            const int fill=layer?video.wide.edge_fill:0;const uint16_t clear=layer?video.wide.clear_pen[row>>9]:0;
+            uint64_t added=0,centre=0;
             // The layer's line as plain pointers (the loop's stores cannot move them).
-            const uint16_t* pens=layer?video.wide.pens.data()+base:nullptr;const uint8_t* fixed_marks=layer?video.wide.fixed.data()+base:nullptr;
+            const uint16_t* pens=layer?video.wide.pens.data()+base:nullptr;
             const uint16_t* stains=layer&&!video.wide.blood.empty()?video.wide.blood.data()+base:nullptr;
             for(unsigned dest_x=0;dest_x<kWideWidth;++dest_x){
-                // A margin column past the arena's world shows the column it reflects, a HUD pixel there the nearest scenery
-                // of that column (mk5wide::Layer::ReflectSource; another row's pixel is raw scenery).
-                const auto reflect=layer?video.wide.ReflectSource(row>>9,int(dest_x)):mk5wide::Layer<uint16_t>::Reflection{int(dest_x),0,false};
-                const unsigned x=unsigned(reflect.column);const int dy=reflect.dy;
-                const bool raw=reflect.dy||reflect.under;   // another row's pixel or the scenery under the HUD: raw scenery
-                const ptrdiff_t lx=ptrdiff_t(x)+ptrdiff_t(dy)*mk5wide::kLayerWidth;
-                const uint16_t own=vram[ptrdiff_t(dy)*512+ptrdiff_t((column+x-margin)&511)];
-                const uint16_t pen=layer?(reflect.under?video.wide.under[size_t(ptrdiff_t(base)+lx)]:pens[lx]):own;
-                const bool side=dest_x<margin||dest_x>=margin+width_;
-                const int at=int(x)-int(margin);
-                const bool fills=!side&&pen!=own&&own==clear&&(at<fill||at>=int(width_)-fill);   // edge_fill
-                added+=side&&pen!=own;centre+=!side&&pen!=own&&!fills;filled+=fills;
-                out[dest_x]=enabled?ExpandRgb555(pen&0x8000?video.wide.Colour(size_t(ptrdiff_t(base)+lx),pen,palette):palette[pen&0x7fff]):0xff000000;   // Layer::Book
-                if(layer&&video.wide.debug&&enabled&&side&&!video.wide.written[size_t(ptrdiff_t(base)+lx)])out[dest_x]=mk5wide::kSentinel;
+                const uint16_t own=vram[(column+dest_x-margin)&511];
+                const uint16_t pen=layer?pens[dest_x]:own;
+                const bool side=dest_x<margin||dest_x>=margin+width_,shown=!layer||video.wide.Shown(base+dest_x);
+                added+=side&&pen!=own;centre+=!side&&pen!=own;
+                out[dest_x]=enabled?ExpandRgb555(pen&0x8000?video.wide.Colour(base+dest_x,pen,palette):palette[pen&0x7fff]):0xff000000;   // Layer::Book
+                if(enabled&&!shown)out[dest_x]=video.wide.debug&&!video.wide.written[base+dest_x]?mk5wide::kSentinel:mk5wide::kMasked;
                 if(sources){
-                    const int world=int(x)-int(margin)+shift,hud=int(x)-int(margin);
+                    const int hud=int(dest_x)-int(margin);
                     int16_t source=enabled?kRaw:kBlank;
-                    const bool fixed=layer&&!raw&&(fixed_marks[lx]&mk5wide::Layer<uint16_t>::kFixed);
-                    if(enabled&&!fixed&&!raw&&world>=0&&world<int(width_)&&pen==vram[(column+unsigned(world))&511])source=int16_t(world);
-                    else if(enabled&&(fixed||!layer)&&hud>=0&&hud<int(width_)&&pen==own)source=int16_t(hud);
+                    if(enabled&&!side&&pen==own)source=int16_t(hud);
                     sources[dest_x]=source;
-                    bloods[dest_x]=source==kRaw&&stains&&stains[lx]?ExpandRgb555(stains[lx]):0;
+                    bloods[dest_x]=source==kRaw&&shown&&stains&&stains[dest_x]?ExpandRgb555(stains[dest_x]):0;
                 }
             }
-            wide_added_work_+=added;wide_centre_work_+=centre;wide_filled_work_+=filled;
-            if(layer)video.wide.AuditRow(wide_audit_work_,row>>9,[&](int L){const auto r=video.wide.ReflectSource(row>>9,L);
-                return size_t(ptrdiff_t(base)+ptrdiff_t(r.dy)*mk5wide::kLayerWidth)+size_t(r.column);});
+            wide_added_work_+=added;wide_centre_work_+=centre;
+            if(layer)video.wide.AuditRow(wide_audit_work_,row>>9);
         }
         if(remastered_ && video.FightersEnabled()){
             if(video.FighterVideo().enabled()){

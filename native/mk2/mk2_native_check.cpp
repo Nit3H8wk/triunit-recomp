@@ -192,8 +192,8 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
             uint64_t all=0xcbf29ce484222325ull,centre=all,plain=all;
             for(size_t i=0;i<w.size();++i){all=(all^w[i])*0x100000001b3ull;if(i%n>=margin&&i%n<margin+width)centre=(centre^w[i])*0x100000001b3ull;}
             for(const uint32_t v:scanout.pixels())plain=(plain^v)*0x100000001b3ull;
-            std::printf("{\"wide\":%llu,\"all\":\"%016llx\",\"centre\":\"%016llx\",\"plain\":\"%016llx\",\"faults\":%llu,\"added\":%llu,\"centre_diff\":%llu,\"filled\":%llu,\"shift\":%d,\"fitted\":%u,\"fault_pc\":%u,\"streamer_skips\":%llu,\"streamer\":%d",(unsigned long long)scanout.frames(),
-                        (unsigned long long)all,(unsigned long long)centre,(unsigned long long)plain,(unsigned long long)live_video.margin_faults,(unsigned long long)scanout.wide_added(),(unsigned long long)scanout.wide_centre(),(unsigned long long)scanout.wide_filled(),scanout.wide_shift(),scanout.wide_fitted(),unsigned(live_video.margin_fault_pc),(unsigned long long)live_video.margin_streamer_skips,int(live_video.margin_streamer));
+            std::printf("{\"wide\":%llu,\"all\":\"%016llx\",\"centre\":\"%016llx\",\"plain\":\"%016llx\",\"faults\":%llu,\"added\":%llu,\"centre_diff\":%llu,\"sentinel\":%llu,\"masked\":%llu,\"outside\":%llu,\"generated\":%llu,\"fault_pc\":%u,\"streamer_skips\":%llu,\"streamer\":%d",(unsigned long long)scanout.frames(),
+                        (unsigned long long)all,(unsigned long long)centre,(unsigned long long)plain,(unsigned long long)live_video.margin_faults,(unsigned long long)scanout.wide_added(),(unsigned long long)scanout.wide_centre(),(unsigned long long)scanout.wide_audit().sentinel,(unsigned long long)scanout.wide_audit().masked,(unsigned long long)scanout.wide_audit().outside,(unsigned long long)scanout.wide_audit().generated,unsigned(live_video.margin_fault_pc),(unsigned long long)live_video.margin_streamer_skips,int(live_video.margin_streamer));
             if(wide_dump.count(scanout.frames())){std::printf(",\"rgb\":\"");for(const uint32_t v:w)std::printf("%06x",unsigned(v&0xffffff));std::printf("\"");}
             std::printf("}\n");
         }
@@ -217,7 +217,7 @@ int wmain(int argc, wchar_t** argv) { mk2::ReplayCapture replay;try {
             } else if (!window->Pump()) throw std::runtime_error("native diagnostic window closed");
             if(widescreen && (!hold_frames || speculating)){
                 auto boxes=mk5hitbox::Take();   // the world's boxes move with the window
-                const int move=int(mk2::Scanout::kWideWidth-scanout.width())/2-scanout.wide_shift();
+                const int move=int(mk2::Scanout::kWideWidth-scanout.width())/2;
                 for(auto& box:boxes)box.x+=move;
                 window->Present(scanout.wide_presentation(),mk2::Scanout::kWideWidth,scanout.height(),
                                 scanout.wide_backdrop_pixels(),scanout.wide_fighter_frame(),boxes);

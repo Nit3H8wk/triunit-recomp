@@ -41,7 +41,7 @@ void Mk5Scanout::line(const Mk5ScanlineEvent& edge,const std::array<uint16_t,32>
                 }
             }
             if(wide_video){
-                wide_complete=wide_work;wide_centre_=wide_centre_work;wide_audit_=wide_audit_work;wide_shift_=wide_shift_work;wide_fitted_=wide_fitted_work;
+                wide_complete=wide_work;wide_centre_=wide_centre_work;wide_audit_=wide_audit_work;
                 if(wide_present){wide_source=wide_source_work;wide_blood=wide_blood_work;wide_stale=true;}
             }
         }
@@ -89,42 +89,31 @@ void Mk5Scanout::wide_line(unsigned row,unsigned col,bool enabled){
     if(!rows_){
         wide_work.assign(n,0);
         if(wide_present){wide_source_work.assign(n,kBlank);wide_blood_work.assign(n,0);}
-        wide_shift_work=layer.Enabled()?layer.ShiftOfRow(row>>9):0;wide_fitted_work=layer.Enabled()?layer.FittedOfRow(row>>9):0;
         wide_audit_work={};
     }
     const size_t base=size_t(row>>9)*mk5wide::kLayerWidth;   // the layer's line (mk5_wide.hpp)
     for(unsigned dest_x=0;dest_x<kWideWidth;++dest_x){
-        // A margin column past the arena's world shows the column it reflects, a HUD pixel there the nearest scenery of
-        // that column (mk5wide::Layer::ReflectSource; another row's pixel is raw scenery).
-        const auto reflect=layer.Enabled()?layer.ReflectSource(row>>9,int(dest_x)):mk5wide::Layer<uint8_t>::Reflection{int(dest_x),0,false};
-        const unsigned x=unsigned(reflect.column);const int dy=reflect.dy;
-        const bool raw=reflect.dy||reflect.under;   // another row's pixel or the scenery under the HUD: raw scenery
-        const auto index=row+size_t(ptrdiff_t(dy)*512)+((col+x-margin)&511);
-        const size_t dest=size_t(rows_)*kWideWidth+dest_x,at=size_t(ptrdiff_t(base)+ptrdiff_t(dy)*mk5wide::kLayerWidth)+x;
-        const uint16_t pen=layer.Enabled()?(reflect.under?layer.under[at]:layer.pens[at]):memory.vram[index];
-        // The centre against the arcade, its kEdge columns at each side apart: the wide frame draws there the objects the
-        // arcade drops at its screen's edge (Mk5LiveVideo::WideOutside).
-        constexpr unsigned kEdge=4;
-        wide_centre_work+=dest_x>=margin+kEdge && dest_x<margin+width_-kEdge && pen!=memory.vram[index];
+        const auto index=row+((col+dest_x-margin)&511);
+        const size_t dest=size_t(rows_)*kWideWidth+dest_x,at=base+dest_x;
+        const uint16_t pen=layer.Enabled()?layer.pens[at]:memory.vram[index];
+        const bool side=dest_x<margin || dest_x>=margin+width_,shown=!layer.Enabled() || layer.Shown(at);
+        wide_centre_work+=!side && pen!=memory.vram[index];   // the centre against the arcade
         wide_work[dest]=enabled?expand_rgb(pen&0x8000?layer.Colour(at,pen,memory.palette.data()):memory.palette.at(pen&0x7fff)):0;   // Layer::Book
-        if(layer.debug && enabled && (dest_x<margin || dest_x>=margin+width_) && !layer.written[at])wide_work[dest]=mk5wide::kSentinel;
+        if(enabled && !shown)wide_work[dest]=layer.debug && !layer.written[at]?mk5wide::kSentinel:mk5wide::kMasked;
         if(!wide_present)continue;
-        const int world=int(x)-int(margin)+wide_shift_work,hud=int(x)-int(margin);
-        const bool fixed=layer.Enabled() && !raw && (layer.fixed[at]&mk5wide::Layer<uint8_t>::kFixed);
+        const int hud=int(dest_x)-int(margin);
         int16_t source=enabled?kRaw:kBlank;
-        if(enabled && !fixed && !raw && world>=0 && world<int(width_) && pen==memory.vram[row+((col+unsigned(world))&511)])source=int16_t(world);
-        else if(enabled && (fixed || !layer.Enabled()) && hud>=0 && hud<int(width_) && pen==memory.vram[index])source=int16_t(hud);
+        if(enabled && !side && pen==memory.vram[index])source=int16_t(hud);
         wide_source_work[dest]=source;
-        wide_blood_work[dest]=source==kRaw && layer.Enabled()?wide_video->WideBloodPixel(at):0;
+        wide_blood_work[dest]=source==kRaw && shown && layer.Enabled()?wide_video->WideBloodPixel(at):0;
     }
-    if(layer.Enabled())layer.AuditRow(wide_audit_work,row>>9,[&](int L){const auto r=layer.ReflectSource(row>>9,L);
-        return size_t(ptrdiff_t(base)+ptrdiff_t(r.dy)*mk5wide::kLayerWidth)+size_t(r.column);});
+    if(layer.Enabled())layer.AuditRow(wide_audit_work,row>>9);
 }
 // The wide frame of the Remastered layers: a pixel with an arcade column takes that column's data (colour with blood,
 // backdrop, fighter order and cover); a pixel only the shadow has is its raw colour as scenery, or its floor stain dimmed
 // as the frame's. The fighter layers are world: they move with the window.
 void Mk5Scanout::ComposeWide()const{
-    const size_t n=size_t(kWideWidth)*height_;const int move=int(kWideWidth-width_)/2-wide_shift_;
+    const size_t n=size_t(kWideWidth)*height_;const int move=int(kWideWidth-width_)/2;
     const bool backdrop=!backdrop_complete.empty(),fighters=fighter_complete.serial!=0,fighter_backdrop=fighters && !fighter_complete.backdrop.empty();
     wide_presentation_.resize(n);wide_backdrop_.assign(backdrop?n:0,0);
     auto& f=wide_fighters_;f.serial=fighter_complete.serial;f.layers.clear();

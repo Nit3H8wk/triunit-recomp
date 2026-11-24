@@ -31,11 +31,10 @@ class SaveStateTests(unittest.TestCase):
 
 
 class WideCaptureTests(unittest.TestCase):
-    """Widescreen (W1-W3): the legal tape versus-walls (a versus session whose second fight takes both fighters to the
-    right, then the left wall of the arena) in the Remastered edition without and with the shadow pass: the same game
-    (shown frames and Remastered layers, PCM, CPU, cycles, RAM, VRAM, palette, CMOS), no shadow fault, the wide frame's
-    centre exact in every frame with no fitted plane (raw and presented; the window stays centred, also at both camera
-    limits, where the margins past the arena reflect it) and margins with the arena's art. Harness: native/tests/mk5_widescreen_tests.cpp."""
+    """Widescreen (W1-W5): the legal tape versus-walls (a versus session whose second fight takes both fighters to the
+    right, then the left wall of the arena) in the Remastered edition without and with the shadow pass: the same game in
+    every frame, the wide frame's centre the arcade frame in every frame, margins only from the game's draws (the
+    acceptance criteria of tools/widescreen/acceptance.py). Harness: native/tests/mk5_widescreen_tests.cpp."""
     @unittest.skipUnless((ROOT/'roms/mk1').is_dir(),'requires authenticated ROMs')
     def test_shadow_pass_keeps_the_game_and_the_arcade_centre(self):
         from tools.setup import mk1
@@ -49,8 +48,8 @@ class WideCaptureTests(unittest.TestCase):
                  'MK1_GAME_VOLUME':'0'}
             r=q.command([exe,ROOT,tape,seed],scratch,cwd=ROOT,env=env,timeout=1800,output_limit=1<<20)
             self.assertTrue(r['passed'],q.compact(r))
-            result=json.loads(r['stdout'].strip().splitlines()[-1]);print(result)
-            self.assertEqual(result['shifted'],0);self.assertGreater(result['centred_exact'],4000)
+            result=json.loads(next(l for l in reversed(r['stdout'].splitlines()) if l.startswith('{')));print({k:v for k,v in result.items() if k!='coverage'})
+            self.assertEqual((result['centre_differ'],result['presented_differ']),(0,0));self.assertGreater(result['frames'],4000)
         self.assertFalse(cleanup['exists_after'])
 
 
