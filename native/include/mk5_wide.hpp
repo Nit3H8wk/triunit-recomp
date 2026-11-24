@@ -135,7 +135,8 @@ struct Layer {
     std::array<bool,2> cleared{{true,true}};   // the page clear ran on the page since its last build
     unsigned page=0;
     // The window offset (WindowShift) of the frame being built and of each page's last build. held: the camera and the
-    // offset of the last frame of a fight (a finisher frees the camera: the offset stays while the camera does). limits:
+    // offset of the fight's last frame: after the fight's modes (the finisher, the round's end, the arena fading out) the
+    // offset and the held planes stay while the camera does, build after build. limits:
     // the arena's last usable camera limits (min, max, valid). ratio: per scroll slot, for this arena.
     int shift=0;std::array<int,2> page_shift{},held{};std::array<int,3> limits{};
     std::array<Ratio,10> ratio{};std::array<int,2> ratio_limits{};
@@ -185,12 +186,13 @@ struct Layer {
         if(high!=kNoHigh){const int64_t edge=int64_t(high)*65536,g=(q+move(wide_high-wide))-edge;if(g>0)q=edge-ease(edge-q,g);}
         return settle(q);
     }
-    int Offset(bool shifting,bool holding,int camera,int low,int high){
+    int Offset(bool shifting,int camera,int low,int high){
         if(low<=high&&high-low<=kWorldMax)limits={low,high,1};
         else if(limits[2]){low=limits[0];high=limits[1];}
-        const int d=holding?(camera==held[0]?held[1]:0):shifting?WindowShift(camera,low,high):0;
-        if(!holding)held={camera,d};
-        fight=shifting||holding;
+        const bool hold=!shifting&&fight&&camera==held[0];   // fight: still the last build's
+        const int d=shifting?WindowShift(camera,low,high):hold?held[1]:0;
+        if(shifting)held={camera,d};
+        fight=shifting||hold;
         if(d)Whole();
         return page_shift[page]=shift=d;
     }

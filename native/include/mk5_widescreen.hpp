@@ -46,11 +46,10 @@ inline int FarSlot(uint32_t list){
 constexpr unsigned kScrollSlots=(kFrontScroll-kScrollFirst)/0x20+1,kWorldSlot=(kWorldScroll-kScrollFirst)/0x20;
 // The camera x word, the arena's camera limits (words; the builder's fighter walls are [min+3Ah, max+15Fh]) and the mode
 // word: in the fight (2) and the round's start (6) the wide window follows the camera within the arena's limits
-// (mk5wide::WindowShift); the finisher (3) and the round's end (5) hold its offset while the camera stays.
+// (mk5wide::WindowShift); afterwards its offset stays while the camera does (mk5wide::Layer::Offset).
 constexpr uint32_t kCameraX=kWorldScroll+16,kCameraMin=0x010517e0,kCameraMax=0x010517f0,kMode=0x01051190;
-constexpr unsigned kShiftModes=(1u<<2)|(1u<<6),kHoldModes=(1u<<3)|(1u<<5);
+constexpr unsigned kShiftModes=(1u<<2)|(1u<<6);
 inline bool Shifting(unsigned mode){return mode<16&&(kShiftModes>>mode&1);}
-inline bool Holding(unsigned mode){return mode<16&&(kHoldModes>>mode&1);}
 // The palette slots' table (the allocator FFCE10E0 searches kPaletteSlots entries from kPaletteTable, kPaletteEntry apart):
 // each the long of the palette's ROM pointer in the slot (then its use count). A palette the shadow's streamer allocates is
 // only booked in that table, which the journal undoes: its colours are not in the palette RAM.

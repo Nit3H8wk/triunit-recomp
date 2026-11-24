@@ -24,7 +24,12 @@ FRAME=r'''
                 const uint64_t basis=14695981039346656037ull;
                 const unsigned W=mk2::Scanout::kWideWidth,X=scanout.width(),H=scanout.height(),margin=(W-X)/2;
                 uint64_t centre=0;
-                if(accept_wide){const auto& w=scanout.wide_pixels();for(unsigned y=0;y<H;++y)for(unsigned x=0;x<X;++x)centre+=w[y*W+margin+x]!=scanout.pixels()[y*X+x];}
+                if(accept_wide&&!scanout.wide_whole()){const auto& w=scanout.wide_pixels();for(unsigned y=0;y<H;++y)for(unsigned x=0;x<X;++x)centre+=w[y*W+margin+x]!=scanout.pixels()[y*X+x];}
+                if(accept_wide&&std::getenv("ACCEPT_DUMP_FRAMES")&&(","+std::string(std::getenv("ACCEPT_DUMP_FRAMES"))+",").find(","+std::to_string(scanout.frames())+",")!=std::string::npos){   // diagnostics
+                    std::ofstream dump(std::filesystem::path(std::getenv("ACCEPT_DUMP_DIR"))/("mk2-"+std::to_string(scanout.frames())+".ppm"),std::ios::binary);
+                    dump<<"P6"<<char(10)<<W<<" "<<H<<char(10)<<255<<char(10);for(auto rgb:scanout.wide_pixels()){dump.put(char(rgb>>16));dump.put(char(rgb>>8));dump.put(char(rgb));}
+                }
+                if(accept_wide&&std::getenv("ACCEPT_TRACE")){static int last=1<<20;if(scanout.wide_shift()!=last){last=scanout.wide_shift();std::cerr<<"OUT shift frame "<<scanout.frames()<<" d "<<last<<char(10);}}
                 const auto& a=scanout.wide_audit();const auto& layer=video.wide;
                 uint64_t checked=0,differ=0;
                 if(accept_wide&&layer.builds!=accept_builds){accept_builds=layer.builds;

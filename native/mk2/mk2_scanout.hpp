@@ -27,6 +27,7 @@ class Scanout {
     // runs (BootVideo::EnableWide). Raw colours of the original scanout.
     mk5wide::Audit wide_audit_work_,wide_audit_;   // diagnostics, not state (mk5wide::Layer::debug)
     bool wide_on_=false;std::vector<uint32_t> wide_work_,wide_;uint64_t wide_added_work_=0,wide_added_=0,wide_centre_work_=0,wide_centre_=0;
+    int wide_shift_work_=0,wide_shift_=0;bool wide_whole_work_=false,wide_whole_=false;   // the frame's window offset; its wide camera is not the arcade's (mk5wide::Layer::whole)
     // Widescreen presentation (Remastered, W3): each wide pixel's arcade column, where its pen is the arcade's own at that
     // column (the world's x = L-56+d; a pixel of a screen-fixed draw, the layer's fixed mark, the HUD's x = L-56), so the
     // Remastered layers of that column apply; kRaw where
@@ -36,7 +37,7 @@ class Scanout {
     std::vector<uint32_t> wide_blood_work_,wide_blood_;   // the floor stain on a kRaw pixel (0: none), dimmed as the frame's
     std::vector<uint32_t> wide_presentation_,wide_backdrop_;mk5presentation::FighterFrame wide_fighters_;
     void ComposeWide(){
-        const size_t n=size_t(kWideWidth)*height_;const int move=int(kWideWidth-width_)/2;
+        const size_t n=size_t(kWideWidth)*height_;const int move=int(kWideWidth-width_)/2-wide_shift_;
         const bool backdrop=!backdrop_.empty(),fighters=fighters_.serial!=0,fighter_backdrop=fighters&&!fighters_.backdrop.empty();
         // Every pixel of each layer is written below: sized, not cleared.
         wide_presentation_.resize(n);wide_backdrop_.resize(backdrop?n:0);
@@ -77,7 +78,8 @@ class Scanout {
     // is not state, ComposeWide makes it again from the rest.
     template<class A> void WideFields(A& a){
         const bool enabled=wide_on_;bool present=enabled;a(present);
-        if(present)a(wide_work_,wide_,wide_added_work_,wide_added_,wide_centre_work_,wide_centre_,wide_source_work_,wide_source_,wide_blood_work_,wide_blood_);
+        if(present)a(wide_work_,wide_,wide_added_work_,wide_added_,wide_centre_work_,wide_centre_,wide_source_work_,wide_source_,wide_blood_work_,wide_blood_,
+                     wide_shift_work_,wide_shift_,wide_whole_work_,wide_whole_);
         if constexpr(A::reading){
             const size_t n=size_t(kWideWidth)*height_;
             if(!enabled){wide_work_.clear();wide_.clear();wide_source_work_.clear();wide_source_.clear();wide_blood_work_.clear();wide_blood_.clear();}
@@ -102,6 +104,8 @@ public:
     const mk5blood::Shade& blood_shade() const { return frame_shade_; }   // the last complete frame's
     static constexpr unsigned kWideWidth=mk5wide::kLayerWidth;   // the 16:9 layer (mk5_wide.hpp)
     void EnableWide(){wide_on_=true;}
+    bool wide_whole()const{return wide_whole_;}   // the last complete frame's wide camera is not the arcade's (offset window, held far plane)
+    int wide_shift()const{return wide_shift_;}     // its window offset: arcade column x is wide column x+67-shift
     const std::vector<uint32_t>& wide_pixels() const { return wide_; }
     const mk5wide::Audit& wide_audit() const { return wide_audit_; }   // the last complete frame's margins (Layer::debug)   // kWideWidth x height(), the last complete frame
     uint64_t wide_centre() const { return wide_centre_; }   // its visible pixels that differ from VRAM (0 when exact)
@@ -133,7 +137,8 @@ public:
         if (board.vcount==io[6]) {
             if (collecting_ && rows_==height_) {
                 complete_=work_;
-                if(wide_on_){wide_=wide_work_;wide_audit_=wide_audit_work_;wide_added_=wide_added_work_;wide_centre_=wide_centre_work_;}
+                if(wide_on_){wide_=wide_work_;wide_audit_=wide_audit_work_;wide_added_=wide_added_work_;wide_centre_=wide_centre_work_;
+                    wide_shift_=wide_shift_work_;wide_whole_=wide_whole_work_;}
                 if(remastered_){
                     for(const auto pixel:blood_cover_)blood_work_[pixel]=shade_.Apply(blood_work_[pixel]);
                     presentation_=blood_work_;
@@ -197,7 +202,8 @@ public:
         if(wide_on_){
             const unsigned margin=(kWideWidth-width_)/2;
             const bool layer=video.WideEnabled();
-            if(!rows_)wide_audit_work_={};
+            if(!rows_){wide_audit_work_={};wide_shift_work_=layer?video.wide.page_shift[(row>>17)&1]:0;wide_whole_work_=layer&&video.wide.page_whole[(row>>17)&1];}
+            const int shift=wide_shift_work_;
             // The wide layer when the shadow pass composes it (BootVideo::EnableWide), else VRAM itself.
             const size_t base=size_t(row>>9)*mk5wide::kLayerWidth;   // the layer's line (mk5_wide.hpp)
             const uint16_t* vram=video.vram.data()+row;const uint16_t* palette=video.palette_ram.data();
@@ -207,17 +213,19 @@ public:
             // The layer's line as plain pointers (the loop's stores cannot move them).
             const uint16_t* pens=layer?video.wide.pens.data()+base:nullptr;
             const uint16_t* stains=layer&&!video.wide.blood.empty()?video.wide.blood.data()+base:nullptr;
+            const uint8_t* marks=layer?video.wide.fixed.data()+base:nullptr;
             for(unsigned dest_x=0;dest_x<kWideWidth;++dest_x){
                 const uint16_t own=vram[(column+dest_x-margin)&511];
                 const uint16_t pen=layer?pens[dest_x]:own;
                 const bool side=dest_x<margin||dest_x>=margin+width_,shown=!layer||video.wide.Shown(base+dest_x);
-                added+=side&&pen!=own;centre+=!side&&pen!=own;
+                // The pixel's arcade column: the HUD's (screen space) or, with a window offset, the world's.
+                const int hud=int(dest_x)-int(margin),at=!shift||(marks[dest_x]&mk5wide::Layer<uint16_t>::kFixed)?hud:hud+shift;
+                const bool same=at>=0&&at<int(width_)&&pen==vram[(column+unsigned(at))&511];
+                added+=side&&pen!=own;centre+=!wide_whole_work_&&!side&&pen!=own;
                 out[dest_x]=enabled?ExpandRgb555(pen&0x8000?video.wide.Colour(base+dest_x,pen,palette):palette[pen&0x7fff]):0xff000000;   // Layer::Book
                 if(enabled&&!shown)out[dest_x]=video.wide.debug&&!video.wide.written[base+dest_x]?mk5wide::kSentinel:mk5wide::kMasked;
                 if(sources){
-                    const int hud=int(dest_x)-int(margin);
-                    int16_t source=enabled?kRaw:kBlank;
-                    if(enabled&&!side&&pen==own)source=int16_t(hud);
+                    const int16_t source=!enabled?kBlank:same&&shown?int16_t(at):kRaw;
                     sources[dest_x]=source;
                     bloods[dest_x]=source==kRaw&&shown&&stains&&stains[dest_x]?ExpandRgb555(stains[dest_x]):0;
                 }

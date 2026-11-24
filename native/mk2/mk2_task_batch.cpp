@@ -161,11 +161,25 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
         for(auto it=o.shadow_journal.rbegin();it!=o.shadow_journal.rend();++it)o.out.main_ram[it->first]=it->second;
         o.shadow_journal.clear();std::tie(s.a,s.b,s.status)=shadow_saved;s.next_pc=mk2::wide::kWalkStart;
         if(o.shadow_fault)o.out.video.margin_fault_pc=shadow_fault_pc;
+        if(o.shadow_fault){auto& w=o.out.video.wide;w.page_shift[w.page]=w.shift=0;w.page_whole[w.page]=w.whole=false;}   // the real walk, mirrored: centred
         o.shadow=false;shadow_skip=true;o.out.video.margin_faults+=o.shadow_fault;
         o.out.video.wide_walk_drawn=!o.shadow_fault;   // else the real walk's DMAs are mirrored too
     };
-    // The shadow's clip, written through the journal.
-    const auto shadow_view=[&]{o.Write32(mk2::wide::kClipTopLeft,mk2::wide::WideTopLeft());o.Write32(mk2::wide::kClipBottomRight,mk2::wide::WideBottomRight());};
+    // The shadow's clip and camera, written through the journal: with a window offset (mk5wide::WindowShift) the world's
+    // scroll moves by it and each far plane's by its ratio times it, held where its art covers the wide screen
+    // (mk5wide::Layer::PlaneScroll), so the streamer and the walk build the frame of the wide camera.
+    const auto shadow_view=[&]{
+        namespace w=mk2::wide;auto& layer=o.out.video.wide;
+        o.Write32(w::kClipTopLeft,w::WideTopLeft());o.Write32(w::kClipBottomRight,w::WideBottomRight());
+        const auto scroll_at=[&](uint32_t bit){const size_t i=(bit-0x01000000)/16;return int32_t(o.out.main_ram[i]|uint32_t(o.out.main_ram[i+1])<<16);};
+        const int camera=int16_t(o.out.main_ram[(w::kCameraX-0x01000000)/16]);
+        const int64_t offset=mk5wide::ScrollOffset(scroll_at(w::kScrollFirst+w::kWorldSlot*0x20),layer.shift);
+        for(unsigned slot=0;slot<w::kScrollSlots;++slot){
+            const uint32_t scroll=w::kScrollFirst+slot*0x20;const auto arcade=scroll_at(scroll);
+            const auto wide=slot==w::kWorldSlot?int32_t(arcade+offset):layer.PlaneScroll(slot,arcade,camera,offset);
+            if(wide!=arcade){o.Write32(scroll,uint32_t(wide));layer.Whole();}
+        }
+    };
     while (live_host ? s.cycles<end_cycle :
            s.next_pc != end_pc || (host_controls ? s.cycles<end_cycle : s.cycles!=end_cycle)) {
         if(o.shadow){
@@ -176,9 +190,13 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
                 if(!o.out.video.WideList(o.program.graphics))o.shadow_fault=true;
                 const size_t camera=(s.a[13]-0x01000000u)/16;   // a scenery list's camera word (debug notes)
                 o.out.video.wide_camera=!o.out.video.wide_hud&&camera<o.out.main_ram.size()?int16_t(o.out.main_ram[camera]):int16_t(0);
+                o.out.video.wide_slot=o.out.video.wide_hud?-1:mk2::wide::FarSlot(s.a[13]);
             }
             // Each table entry (a list or a callback) ends the previous one: the waiting scenery layer is measured and placed.
-            if(s.next_pc==mk2::wide::kTableNext&&shadow_walk&&!o.out.video.WideList(o.program.graphics))o.shadow_fault=true;
+            if(s.next_pc==mk2::wide::kTableNext&&shadow_walk){
+                if(!o.out.video.WideList(o.program.graphics))o.shadow_fault=true;
+                o.out.video.wide_slot=-1;   // a callback's layer has no far plane's scroll
+            }
             const uint32_t pc=s.next_pc;
             if(!shadow_walk&&pc==mk2::wide::kStreamerReturn){   // the streamer returned: the walk from its start, with the real registers
                 std::tie(s.a,s.b,s.status)=shadow_saved;s.next_pc=mk2::wide::kWalkStart;shadow_walk=true;continue;
@@ -201,6 +219,15 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
                 for(unsigned slot=0;slot<mk2::wide::kPaletteSlots;++slot)
                     o.out.video.wide_palettes[slot]=ram_long(mk2::wide::kPaletteTable+slot*mk2::wide::kPaletteEntry);
                 shadow_saved={s.a,s.b,s.status};shadow_steps=0;o.shadow=true;o.shadow_fault=false;
+                {   // the frame's window offset; a moving world gives each plane's ratio (its velocity over the world's)
+                    namespace w=mk2::wide;auto& layer=o.out.video.wide;
+                    const auto word=[&](uint32_t bit){return int16_t(o.out.main_ram[(bit-0x01000000)/16]);};
+                    const unsigned mode=uint16_t(word(w::kMode));
+                    layer.Offset(w::Shifting(mode),word(w::kCameraX),word(w::kCameraMin),word(w::kCameraMax));
+                    if(const auto world_velocity=int32_t(ram_long(w::kScrollFirst+w::kWorldSlot*0x20-w::kScrollVelocityGap)))
+                        for(unsigned slot=0;slot<w::kScrollSlots;++slot)
+                            layer.PlaneRatio(slot)=mk5wide::MeasuredRatio(int32_t(ram_long(w::kScrollFirst+slot*0x20-w::kScrollVelocityGap)),world_velocity);
+                }
                 shadow_view();
                 // The free list does not end in 0 (its last link holds another value): the game never takes its last object, but
                 // the shadow's wider window can. In the journal the last link is 0, so the allocator (FF8090D0) takes its own

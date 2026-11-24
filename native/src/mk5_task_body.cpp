@@ -85,7 +85,7 @@ void Mk5TaskBodyRunner::wide_pre(uint32_t pc){
     if(ram_long(w::kClipTopLeft)!=0 || ram_long(w::kClipBottomRight)!=w::kArcadeBottomRight)return;
     v.WideBegin();
     const unsigned mode=word(w::kMode);
-    v.WideOffset(w::Shifting(mode),w::Holding(mode),int16_t(word(w::kCameraX)),int16_t(word(w::kCameraMin)),int16_t(word(w::kCameraMax)));
+    v.WideOffset(w::Shifting(mode),int16_t(word(w::kCameraX)),int16_t(word(w::kCameraMin)),int16_t(word(w::kCameraMax)));
     // A moving world updates each plane's ratio (its velocity over the world's).
     if(const auto world_velocity=int32_t(ram_long(w::kWorldScroll-w::kVelocityGap)))for(unsigned slot=0;slot<w::kScrollSlots;++slot)
         v.WideRatio(slot)=mk5wide::MeasuredRatio(int32_t(ram_long(w::kScrollFirst+slot*0x20-w::kVelocityGap)),world_velocity);

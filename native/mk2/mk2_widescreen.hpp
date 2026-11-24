@@ -42,6 +42,19 @@ constexpr uint32_t kTableNext=0xff804f10;
 // The camera x word (WORLDTLX), the arena's camera limits (words) and the mode word (2: the fight): read by the
 // widescreen acceptance harness only; the layer never reads the camera.
 constexpr uint32_t kCameraX=0x0105d350,kCameraMin=0x0105ecf0,kCameraMax=0x0105ed00,kMode=0x010601d0;
+// The scroll longs (16.16, a camera word is the high word): the far planes' from kScrollFirst every 20h, the world's
+// (kCameraX's long, slot 7) and the front plane's (slot 8); each frame each adds its velocity long, kScrollVelocityGap
+// lower. In the fight's modes (2, 6, 7) the wide window follows the camera within the arena's limits
+// (mk5wide::WindowShift); afterwards its offset stays while the camera does (mk5wide::Layer::Offset).
+constexpr unsigned kScrollSlots=9,kWorldSlot=7;constexpr uint32_t kScrollVelocityGap=0x120;
+static_assert(kScrollFirst+kWorldSlot*0x20+16==kCameraX && kScrollFirst+(kScrollSlots-1)*0x20+16==kScrollLast,"MK2 scroll layout");
+constexpr unsigned kShiftModes=(1u<<2)|(1u<<6)|(1u<<7);
+inline bool Shifting(unsigned mode){return mode<16&&(kShiftModes>>mode&1);}
+// A list's far plane slot from its camera word's address (A13 at kCameraLoad); -1: the world's, the front's or none.
+inline int FarSlot(uint32_t camera){
+    const uint32_t at=camera-16-kScrollFirst;
+    return camera>=kScrollFirst+16&&!(at%0x20)&&at/0x20<kWorldSlot?int(at/0x20):-1;
+}
 // The shadow's clip (y<<16|x): screen x -67 .. 467 plus kReach on each side, so that the streamer builds, and the walk
 // stages, the objects partly inside the layer. Its 10-bit DMA x stays within -256..767.
 constexpr int kReach=mk5wide::kReach;

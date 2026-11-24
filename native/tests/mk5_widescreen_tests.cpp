@@ -134,7 +134,9 @@ Run Play(const std::filesystem::path& root,const std::vector<uint32_t>& tape,con
              for(const auto& k:layer.notes_done)if(was.count(k.layer))camera_move[k.layer]=was[k.layer]-k.camera;}
             // 6: with the camera still every plane stands still (a plane's place depends on the camera alone).
             if(!camera_move.empty()&&!camera_move.rbegin()->second){++run.still_checked;
-                for(const auto& [l,move]:camera_move)if(move){++run.still_moved;break;}}
+                for(const auto& [l,move]:camera_move)if(move){++run.still_moved;
+                    std::cerr<<"parallax still frame "<<before<<" layer "<<l<<" moved "<<move<<" mode "<<word(mk5widescreen::kMode)<<" camera "<<int16_t(word(mk5widescreen::kCameraX))
+                             <<" limits "<<int16_t(word(mk5widescreen::kCameraMin))<<".."<<int16_t(word(mk5widescreen::kCameraMax))<<" d "<<shift<<char(10);break;}}
             for(const auto& [l,both]:moves)if(!both[0].empty()&&!both[1].empty()&&camera_move.count(l)&&camera_move[l]&&mode_of(both[0]).first==camera_move[l]){
                 const auto c=mode_of(both[0]),g=mode_of(both[1]);   // the centre's scenery moved with the camera: the margins' must too
                 if(c.second>=3&&g.second>=3){   // at least 3 draws moved alike on each side: scenery, not one moving object
