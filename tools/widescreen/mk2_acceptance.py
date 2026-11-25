@@ -25,9 +25,14 @@ FRAME=r'''
                 const unsigned W=mk2::Scanout::kWideWidth,X=scanout.width(),H=scanout.height(),margin=(W-X)/2;
                 uint64_t centre=0;
                 if(accept_wide&&!scanout.wide_whole()){const auto& w=scanout.wide_pixels();for(unsigned y=0;y<H;++y)for(unsigned x=0;x<X;++x)centre+=w[y*W+margin+x]!=scanout.pixels()[y*X+x];}
+                if(accept_wide&&std::getenv("ACCEPT_TRACE")){static int flags=-1;const auto& l=video.wide;const int now=int(l.fight)|int(l.scene)<<1|int(l.arena)<<2|int(l.whole)<<3;
+                    if(now!=flags){flags=now;std::cerr<<"OUT state frame "<<scanout.frames()<<" fight "<<l.fight<<" scene "<<l.scene<<" arena "<<l.arena<<" whole "<<l.whole<<" limits "<<l.limits[0]<<".."<<l.limits[1]<<"/"<<l.limits[2]<<" held "<<l.held[0]<<","<<l.held[1]<<char(10);}}
+                if(centre&&std::getenv("ACCEPT_TRACE")){static int traced=0;if(traced++<60)std::cerr<<"OUT centre frame "<<scanout.frames()<<" differ "<<centre<<" shift "<<scanout.wide_shift()<<char(10);}
                 if(accept_wide&&std::getenv("ACCEPT_DUMP_FRAMES")&&(","+std::string(std::getenv("ACCEPT_DUMP_FRAMES"))+",").find(","+std::to_string(scanout.frames())+",")!=std::string::npos){   // diagnostics
                     std::ofstream dump(std::filesystem::path(std::getenv("ACCEPT_DUMP_DIR"))/("mk2-"+std::to_string(scanout.frames())+".ppm"),std::ios::binary);
                     dump<<"P6"<<char(10)<<W<<" "<<H<<char(10)<<255<<char(10);for(auto rgb:scanout.wide_pixels()){dump.put(char(rgb>>16));dump.put(char(rgb>>8));dump.put(char(rgb));}
+                    std::ofstream narrow(std::filesystem::path(std::getenv("ACCEPT_DUMP_DIR"))/("arcade-"+std::to_string(scanout.frames())+".ppm"),std::ios::binary);
+                    narrow<<"P6"<<char(10)<<X<<" "<<H<<char(10)<<255<<char(10);for(auto rgb:scanout.pixels()){narrow.put(char(rgb>>16));narrow.put(char(rgb>>8));narrow.put(char(rgb));}
                 }
                 if(accept_wide&&std::getenv("ACCEPT_DRAWS_FRAMES")&&(","+std::string(std::getenv("ACCEPT_DRAWS_FRAMES"))+",").find(","+std::to_string(scanout.frames())+",")!=std::string::npos){   // diagnostics
                     std::ofstream draws(std::getenv("ACCEPT_DRAWS_FILE")?std::getenv("ACCEPT_DRAWS_FILE"):"NUL",std::ios::app);

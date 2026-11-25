@@ -45,12 +45,15 @@ centre does, and only there:
   art's end meets the wide screen's edge and stays there.
 - **Such frames come from the shadow's draws.** In a frame whose wide camera is not the arcade's, the world of the whole
   picture comes from the shadow pass, and the HUD from the real draws. The acceptance tests count these frames apart.
-- **After the fight.** The finisher, the round's end and the fade keep the fight's last offset while the camera stays.
+- **After the fight.** The round's end, the next round's start and the match's end go on like the fight while the
+  arena's camera limits stand: the window follows the camera, back to the middle when the fighters are put back. Once
+  the limits are gone (a finisher that frees the camera, the fade) the last offset stays while the camera does.
 - **Free-camera arenas.** An arena without camera limits from its start stays centred.
 - **Attract demos.** The attract has one mode word for its demo fights and its other screens. A demo fight is told by
   two things: its camera limits are an arena's (not the ones the game gives a screen without an arena), and the last
   frame's scenery went on past the 4:3 screen (24 columns or more of a margin, on 32 lines or more). Its window then
-  follows the camera like a fight's.
+  follows the camera like a fight's. A frame that measures no scenery (the screen following an uppercut upwards) is
+  still the demo while the camera stands.
 - Any other screen stays centred.
 
 ## Edge policy (where there is still no art)
@@ -64,7 +67,9 @@ object of the game is mirrored, repeated or stretched there, and no stale video 
 - **A line's own pattern goes on.** Past the layer's outermost pixel on a line, the line's last columns are repeated to
   the screen's edge in two cases: most of the layer's short lines on that side (3 in 5) end flat or in a two-column
   dither (a sky's gradient), or they end on one straight edge (9 in 10 at the same column, over 32 lines or more: a
-  backdrop picture narrower than the wide screen). All the layer's lines are treated alike. A gap of at most 24 columns
+  backdrop picture narrower than the wide screen). All the layer's lines are treated alike: a line that could not be
+  measured (its art has a hole inside the arcade's columns) and ends on that same edge goes on too, so a wall that
+  stops a few columns short of the arena's end is not left with a dashed strip. A gap of at most 24 columns
   takes the columns next to it (a floor's texture a few columns on). Only an arena's lines are continued (a fight, or
   a screen with a far plane's picture): a menu's textured background would come out as streaks.
 - **Anything else shows black**, unless something nearer (a fighter, a projectile) is drawn there.

@@ -86,7 +86,8 @@ void Mk5TaskBodyRunner::wide_pre(uint32_t pc){
     v.WideBegin();
     const unsigned mode=word(w::kMode);
     const int low=int16_t(word(w::kCameraMin)),high=int16_t(word(w::kCameraMax));
-    v.WideOffset(w::Shifting(mode)||w::Demo(mode,low,high,v.WideLayerState().arena),int16_t(word(w::kCameraX)),low,high,mode!=w::kAttractMode);
+    const int camera=int16_t(word(w::kCameraX));const auto& layer=v.WideLayerState();
+    v.WideOffset(w::Shifting(mode)||w::Demo(mode,low,high,layer.arena,layer.fight,camera==layer.held[0]),camera,low,high,mode!=w::kAttractMode);
     // A moving world updates each plane's ratio (its velocity over the world's).
     if(const auto world_velocity=int32_t(ram_long(w::kWorldScroll-w::kVelocityGap)))for(unsigned slot=0;slot<w::kScrollSlots;++slot)
         v.WideRatio(slot)=mk5wide::MeasuredRatio(int32_t(ram_long(w::kScrollFirst+slot*0x20-w::kVelocityGap)),world_velocity);
@@ -104,7 +105,7 @@ void Mk5TaskBodyRunner::shadow_window(uint32_t pc){
     write(pc,w::kClipTopLeft,32,w::WideTopLeft());write(pc,w::kClipBottomRight,32,w::WideBottomRight());
     auto& layer=video->WideLayerState();const int camera=int16_t(m.ram[(w::kCameraX-0x01000000)/16]);
     const auto ram_scroll=[&](uint32_t scroll){const size_t i=(scroll-0x01000000)/16;return int32_t(m.ram[i]|uint32_t(m.ram[i+1])<<16);};
-    const int64_t offset=mk5wide::ScrollOffset(ram_scroll(w::kWorldScroll),layer.shift);
+    const int64_t offset=mk5wide::ScrollOffset(ram_scroll(w::kWorldScroll),layer.shift,layer.AtLimit(camera));
     for(unsigned slot=0;slot<w::kScrollSlots;++slot){
         const uint32_t scroll=w::kScrollFirst+slot*0x20;const auto arcade=ram_scroll(scroll);
         const auto wide=slot==w::kWorldSlot?int32_t(arcade+offset):layer.PlaneScroll(slot,arcade,camera,offset);

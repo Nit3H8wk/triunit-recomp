@@ -173,7 +173,7 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
         o.Write32(w::kClipTopLeft,w::WideTopLeft());o.Write32(w::kClipBottomRight,w::WideBottomRight());
         const auto scroll_at=[&](uint32_t bit){const size_t i=(bit-0x01000000)/16;return int32_t(o.out.main_ram[i]|uint32_t(o.out.main_ram[i+1])<<16);};
         const int camera=int16_t(o.out.main_ram[(w::kCameraX-0x01000000)/16]);
-        const int64_t offset=mk5wide::ScrollOffset(scroll_at(w::kScrollFirst+w::kWorldSlot*0x20),layer.shift);
+        const int64_t offset=mk5wide::ScrollOffset(scroll_at(w::kScrollFirst+w::kWorldSlot*0x20),layer.shift,layer.AtLimit(camera));
         for(unsigned slot=0;slot<w::kScrollSlots;++slot){
             const uint32_t scroll=w::kScrollFirst+slot*0x20;const auto arcade=scroll_at(scroll);
             const auto wide=slot==w::kWorldSlot?int32_t(arcade+offset):layer.PlaneScroll(slot,arcade,camera,offset);
@@ -223,7 +223,7 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
                     namespace w=mk2::wide;auto& layer=o.out.video.wide;
                     const auto word=[&](uint32_t bit){return int16_t(o.out.main_ram[(bit-0x01000000)/16]);};
                     const unsigned mode=uint16_t(word(w::kMode));
-                    layer.Offset(w::Shifting(mode)||w::Demo(mode,word(w::kCameraMin),word(w::kCameraMax),layer.arena),word(w::kCameraX),word(w::kCameraMin),word(w::kCameraMax),mode!=w::kAttractMode);
+                    layer.Offset(w::Shifting(mode)||w::Demo(mode,word(w::kCameraMin),word(w::kCameraMax),layer.arena,layer.fight,word(w::kCameraX)==layer.held[0]),word(w::kCameraX),word(w::kCameraMin),word(w::kCameraMax),mode!=w::kAttractMode);
                     if(const auto world_velocity=int32_t(ram_long(w::kScrollFirst+w::kWorldSlot*0x20-w::kScrollVelocityGap)))
                         for(unsigned slot=0;slot<w::kScrollSlots;++slot)
                             layer.PlaneRatio(slot)=mk5wide::MeasuredRatio(int32_t(ram_long(w::kScrollFirst+slot*0x20-w::kScrollVelocityGap)),world_velocity);

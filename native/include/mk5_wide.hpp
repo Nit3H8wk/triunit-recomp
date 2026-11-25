@@ -59,8 +59,10 @@ inline Ratio MeasuredRatio(int32_t velocity,int32_t world_velocity){
 }
 // The window offset as the world scroll's move (16.16): with offset d the shadow's world camera is the whole column
 // camera + d, whatever fraction the arcade's scroll carries (so nothing trembles while the arcade's camera moves under a
-// wide camera that stands at its limit).
-inline int64_t ScrollOffset(int32_t world_scroll,int d){return d?(int64_t((world_scroll>>16)+d)<<16)-world_scroll:0;}
+// wide camera that stands at its limit). whole: the arcade's camera stands on a limit of the wide one, with no offset
+// yet (Layer::AtLimit): a column further on the offset drops the fraction, and a far plane would move by its share of it
+// under a wide camera that stays on the same column.
+inline int64_t ScrollOffset(int32_t world_scroll,int d,bool whole=false){return d||whole?(int64_t((world_scroll>>16)+d)<<16)-world_scroll:0;}
 // Where a pixel of the wide layer came from (diagnostics, Layer::debug): the kind of write and the columns its draw covers
 // in layer columns as they follow one another from its x (Span): a pixel outside them got there by a wrap.
 enum class Kind:uint8_t{none,real,shadow,cpu,clear,generated,continued};   // continued: Layer::MaskBands
@@ -199,6 +201,10 @@ struct Layer {
     static std::array<std::array<int,2>,10> Unbound(){std::array<std::array<int,2>,10> b;b.fill({kNoLow,kNoHigh});return b;}
     std::array<std::array<int,2>,10> bound=Unbound();
     void Whole(){page_whole[page]=whole=true;}
+    // The arcade's camera stands exactly on one of the wide camera's limits in a fight (ScrollOffset).
+    bool AtLimit(int camera)const{
+        return fight&&limits[2]&&limits[0]+kWideMargin<=limits[1]-kWideMargin&&(camera==limits[0]+kWideMargin||camera==limits[1]-kWideMargin);
+    }
     // span: per scroll slot, the plane cameras of the arcade at the arena's camera limits (PlaneScroll; first > second:
     // not known yet).
     std::array<std::array<int,2>,10> span=NoSpan();
@@ -272,14 +278,15 @@ struct Layer {
     //  - a layer most of whose short lines on a side (3 in 5) end flat or in a two-column dither (their last kPattern
     //    columns repeat every two: a sky's gradient), or whose short lines there end on one straight edge (9 in 10 at
     //    the same column, kPicture lines or more: a backdrop picture narrower than the wide screen), keeps each line's
-    //    last columns to the screen's edge, all its lines alike (no line left out among the others);
+    //    last columns to the screen's edge, all its lines alike (no line left out among the others: a line of the page
+    //    that was not measured, its art having a hole inside the arcade's columns, goes on from the same edge);
     //  - a gap of at most kSliver columns takes the columns next to it (a floor's texture a few columns on).
     // Any other shows black. Only an arena's lines are continued (a fight's build, or one with a far plane's picture): a
     // menu's textured background would come out as streaks, and its sides are shown soft instead (page_soft).
     static constexpr int kPattern=8,kSliver=24,kPicture=32;
     void MaskBands(){
         const bool art=fight||scene;
-        for(const auto& b:bands)if(b.first){
+        for(const auto& b:bands)if(b.first&&!b.rows.empty()){
             const auto own=[&](size_t row,int L){return L>=0&&L<kLayerWidth&&written[row+size_t(L)]>=b.first;};   // the band's art or nearer
             // The line's art from `edge` inwards (side -1: the left gap's, +1: the right gap's) repeats every two columns.
             const auto dithered=[&](size_t row,int edge,int side){
@@ -293,29 +300,37 @@ struct Layer {
                 if(r.left>0){++lines[0];patterned[0]+=dithered(row,r.left,-1);++ends[0][size_t(std::min<int>(r.left,kLayerWidth))];}
                 if(r.right<kLayerWidth){++lines[1];patterned[1]+=dithered(row,r.right-1,+1);++ends[1][size_t(std::max<int>(r.right,0))];}
             }
-            const auto straight=[&](int side){   // the short lines end at one column, give or take one
-                int best=0;for(int c=1;c<kLayerWidth;++c)best=std::max(best,ends[size_t(side)][size_t(c-1)]+ends[size_t(side)][size_t(c)]+ends[size_t(side)][size_t(c+1)]);
-                return lines[size_t(side)]>=kPicture&&best*10>=lines[size_t(side)]*9;
+            const auto straight=[&](int side){   // the column the short lines end at, give or take one (0: they do not)
+                const auto& e=ends[size_t(side)];int best=0,at=0;
+                for(int c=1;c<kLayerWidth;++c)if(const int n=e[size_t(c-1)]+e[size_t(c)]+e[size_t(c+1)];n>best){best=n;at=c;}
+                if(lines[size_t(side)]<kPicture||best*10<lines[size_t(side)]*9)return 0;
+                return e[size_t(at+1)]>e[size_t(at)]?at+1:e[size_t(at-1)]>e[size_t(at)]?at-1:at;
             };
-            const std::array<bool,2> gradient{patterned[0]*5>=lines[0]*3||straight(0),patterned[1]*5>=lines[1]*3||straight(1)};
-            for(const auto& r:b.rows){
-                const size_t row=size_t(r.row)*kLayerWidth;
-                const auto gap=[&](int from,int to,int edge,int side){   // the art's first column is `edge`
-                    from=std::max(from,0);to=std::min(to,kLayerWidth);if(from>=to)return;
-                    const int width=to-from;const bool whole=art&&gradient[side>0]&&own(row,edge),dither=whole&&dithered(row,edge,side);
-                    bool sliver=art&&!whole&&width<=kSliver;
-                    for(int k=0;k<width&&sliver;++k)sliver=own(row,edge-side*k);
-                    for(int L=from;L<to;++L){
-                        const size_t at=row+size_t(L);
-                        if(Arcade(L)||written[at]>=b.first)continue;
-                        if(!whole&&!sliver){fixed[at]|=kMask;continue;}
-                        const int away=side<0?edge-L:L-edge;   // columns from the art's first column, outwards (>= 1)
-                        const int source=sliver?edge-side*(width-away):dither?edge-side*(away&1):edge;
-                        pens[at]=pens[row+size_t(source)];fixed[at]=0;if(!blood.empty())blood[at]=Blood{};
-                        written[at]=b.first;if(debug)origin[at]={int16_t(L),int16_t(L+1),Kind::continued,uint8_t(page)};
-                    }
-                };
-                gap(0,r.left,r.left,-1);gap(r.right,kLayerWidth,r.right-1,+1);
+            const std::array<int,2> end{straight(0),straight(1)};
+            const std::array<bool,2> gradient{patterned[0]*5>=lines[0]*3||end[0],patterned[1]*5>=lines[1]*3||end[1]};
+            const auto gap=[&](size_t row,int from,int to,int edge,int side){   // the art's first column is `edge`
+                from=std::max(from,0);to=std::min(to,kLayerWidth);if(from>=to)return;
+                const int width=to-from;const bool whole=art&&gradient[side>0]&&own(row,edge),dither=whole&&dithered(row,edge,side);
+                bool sliver=art&&!whole&&width<=kSliver;
+                for(int k=0;k<width&&sliver;++k)sliver=own(row,edge-side*k);
+                for(int L=from;L<to;++L){
+                    const size_t at=row+size_t(L);
+                    if(Arcade(L)||written[at]>=b.first)continue;
+                    if(!whole&&!sliver){fixed[at]|=kMask;continue;}
+                    const int away=side<0?edge-L:L-edge;   // columns from the art's first column, outwards (>= 1)
+                    const int source=sliver?edge-side*(width-away):dither?edge-side*(away&1):edge;
+                    pens[at]=pens[row+size_t(source)];fixed[at]=0;if(!blood.empty())blood[at]=Blood{};
+                    written[at]=b.first;if(debug)origin[at]={int16_t(L),int16_t(L+1),Kind::continued,uint8_t(page)};
+                }
+            };
+            size_t next=0;
+            for(int y=b.rows.front().row&~255;y<=(b.rows.front().row|255);++y){
+                const size_t row=size_t(y)*kLayerWidth;
+                if(next<b.rows.size()&&b.rows[next].row==y){const auto& r=b.rows[next++];gap(row,0,r.left,r.left,-1);gap(row,r.right,kLayerWidth,r.right-1,+1);}
+                else if(art){   // not measured: only where its art ends on the others' edge
+                    if(end[0]>0&&own(row,end[0])&&!own(row,end[0]-1))gap(row,0,end[0],end[0],-1);
+                    if(end[1]>0&&end[1]<kLayerWidth&&own(row,end[1]-1)&&!own(row,end[1]))gap(row,end[1],kLayerWidth,end[1]-1,+1);
+                }
             }
         }
         if(debug)bands_done=bands;

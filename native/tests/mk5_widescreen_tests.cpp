@@ -20,6 +20,7 @@
 #include "mk5_audio.hpp"
 #include "mk5_audio_link.hpp"
 #include "mk5_widescreen.hpp"
+#include <cstdio>
 #include <algorithm>
 #include <fstream>
 #include <iostream>
@@ -113,7 +114,12 @@ Run Play(const std::filesystem::path& root,const std::vector<uint32_t>& tape,con
         if(std::getenv("WIDE_TRACE")){static std::array<int,3> seen{-1,0,0};   // where the mode or the camera limits change
             if(const std::array<int,3> now{int(word(mk5widescreen::kMode)),int16_t(word(mk5widescreen::kCameraMin)),int16_t(word(mk5widescreen::kCameraMax))};now!=seen){seen=now;
                 std::cerr<<"mode frame "<<before<<" mode "<<now[0]<<" limits "<<now[1]<<".."<<now[2]<<" camera "<<int16_t(word(mk5widescreen::kCameraX))<<char(10);}}
-        if(std::getenv("WIDE_TRACE")){static int last=1<<20;if(shift!=last){last=shift;
+        if(std::getenv("WIDE_TRACE")){static int last=1<<20;
+            static const auto range=[]{std::pair<long,long> r{1,0};if(const char* e=std::getenv("WIDE_TRACE_RANGE"))std::sscanf(e,"%ld-%ld",&r.first,&r.second);return r;}();   // every frame in it
+            const bool every=long(before)>=range.first&&long(before)<=range.second;
+            if(every){const auto wide_long=[&](uint32_t bit){return int32_t(uint32_t(uint16_t(word(bit)))|uint32_t(uint16_t(word(bit+16)))<<16);};
+                for(unsigned k=5;k<8;++k)std::cerr<<"slot "<<k<<" scroll "<<wide_long(mk5widescreen::kScrollFirst+k*0x20)<<" velocity "<<wide_long(mk5widescreen::kScrollFirst+k*0x20-mk5widescreen::kVelocityGap)<<" ";}
+            if(shift!=last||every){last=shift;
             std::cerr<<"shift frame "<<before<<" d "<<shift<<" camera "<<int16_t(word(mk5widescreen::kCameraX))<<" mode "<<word(mk5widescreen::kMode);
             for(const auto& r:layer.ratio)std::cerr<<" "<<r.plane<<"/"<<r.world;
             for(unsigned k=0;k<mk5widescreen::kScrollSlots;++k)std::cerr<<" S"<<k<<"="<<int16_t(word(mk5widescreen::kScrollFirst+k*0x20+16));
