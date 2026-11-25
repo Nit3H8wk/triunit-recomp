@@ -135,30 +135,50 @@ def get_rom_directory(argv):
 
 
 def verify_roms(rom_dir):
-    """Check which ROMs are present. Returns {game_id: bool}."""
+    """Check which ROMs are present (top-level or in game subfolders)."""
     print(f"\n  Checking ROMs in {rom_dir}:")
     found = {}
     for game_id, info in GAME_INFO.items():
+        # Check top-level and game-specific subfolder
+        search_dirs = [rom_dir, rom_dir / game_id]
         missing = []
+        resolved_dir = None
         for rom in info['roms']:
-            if (rom_dir / rom).exists():
+            found_path = None
+            for d in search_dirs:
+                if (d / rom).exists():
+                    found_path = d / rom
+                    if resolved_dir is None:
+                        resolved_dir = d
+                    break
+            if found_path:
                 print(f"    ✓ {rom}")
             else:
                 print(f"    ✗ Missing: {rom}  ({ALL_ROMS.get(rom, '')})")
                 missing.append(rom)
-        found[game_id] = len(missing) == 0
+        found[game_id] = (len(missing) == 0, resolved_dir or rom_dir)
     return found
 
 
 def run_game(game, rom_dir):
-    """Run a game binary."""
+    """Run a game binary with the correct arguments for each game."""
     info = GAME_INFO[game]
     exe = BASE / info['exe']
     if not exe.exists():
         print(f"  ✗ {info['exe']} not found — {game.upper()} not yet ported to Linux.")
         return False
 
-    args = [str(exe), str(rom_dir), 'factory-seed.bin', 'gfx.txt', '--window']
+    # Each game has different argument formats:
+    # MK1: mk5-native-audio --roms /path/to/roms --window
+    # MK2: mk2-native /path/to/roms --window
+    # MK3: mk3 /path/to/roms factory-seed.bin gfx.txt --window
+    if game == 'mk1':
+        args = [str(exe), '--roms', str(rom_dir), '--window']
+    elif game == 'mk2':
+        args = [str(exe), str(rom_dir), '--window']
+    else:  # mk3
+        args = [str(exe), str(rom_dir), 'factory-seed.bin', 'gfx.txt', '--window']
+
     print(f"\n  → Launching {info['label']}...")
     result = subprocess.run(args, cwd=BASE)
     return result.returncode == 0
@@ -178,14 +198,16 @@ def game_menu_tkinter(rom_dir, rom_status):
     tk.Frame(root, height=10).pack()
 
     selected = None
+    selected_rom_dir = None
 
     def choose(game_id):
-        nonlocal selected
+        nonlocal selected, selected_rom_dir
         selected = game_id
+        _, selected_rom_dir = rom_status.get(game_id, (False, rom_dir))
         root.destroy()
 
     for game_id, info in GAME_INFO.items():
-        available = rom_status.get(game_id, False)
+        available, resolved_rom_dir = rom_status.get(game_id, (False, rom_dir))
         status = "ready" if available else "no ROM"
         btn_text = f"{info['label']}  [{status}]"
         btn = tk.Button(
@@ -197,7 +219,7 @@ def game_menu_tkinter(rom_dir, rom_status):
 
     tk.Button(root, text="Cancel", font=("Arial", 10), command=root.destroy).pack(pady=(15, 5))
     root.mainloop()
-    return selected
+    return selected, selected_rom_dir
 
 
 def game_menu_cli(rom_dir, rom_status):
@@ -250,7 +272,7 @@ def main():
     print(f"\n  ROM directory: {rom_dir}")
     rom_status = verify_roms(rom_dir)
 
-    if not any(rom_status.values()):
+    if not any(v[0] for v in rom_status.values()):
         print("\n  No supported ROMs found. Exiting.")
         return 1
 
@@ -258,9 +280,9 @@ def main():
     if sys.stdin.isatty():
         game_menu_cli(rom_dir, rom_status)
     else:
-        selected = game_menu_tkinter(rom_dir, rom_status)
+        selected, resolved_rom_dir = game_menu_tkinter(rom_dir, rom_status)
         if selected:
-            run_game(selected, rom_dir)
+            run_game(selected, resolved_rom_dir or rom_dir)
 
     return 0
 
