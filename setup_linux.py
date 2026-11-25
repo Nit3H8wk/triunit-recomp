@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Interactive Linux setup and launcher for TriUnit Recomp."""
+"""Interactive Linux launcher for TriUnit Recomp — MK1, MK2, MK3."""
 import subprocess
 import sys
 from pathlib import Path
@@ -8,155 +8,106 @@ ROOT = Path(__file__).parent.resolve()
 
 def get_rom_directory():
     """Prompt user to select ROM directory with GUI fallback."""
-    # Try zenity first
-    try:
-        result = subprocess.run(
-            ['zenity', '--file-selection', '--title=Select ROM Directory', '--directory'],
-            capture_output=True, text=True, timeout=30
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return Path(result.stdout.strip())
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-    
-    # Try kdialog
-    try:
-        result = subprocess.run(
-            ['kdialog', '--getexistingdir', '--title=Select ROM Directory'],
-            capture_output=True, text=True, timeout=30
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return Path(result.stdout.strip())
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-    
-    # Try tkinter
+    for cmd in (['zenity', '--file-selection', '--title=Select ROM Directory', '--directory'],
+                ['kdialog', '--getexistingdir', '--title=Select ROM Directory']):
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if result.returncode == 0 and result.stdout.strip():
+                return Path(result.stdout.strip())
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
     try:
         import tkinter as tk
         from tkinter import filedialog
-        root = tk.Tk()
-        root.withdraw()
-        dir_path = filedialog.askdirectory(title="Select ROM Directory")
+        root = tk.Tk(); root.withdraw()
+        d = filedialog.askdirectory(title="Select ROM Directory")
         root.destroy()
-        if dir_path:
-            return Path(dir_path)
+        if d: return Path(d)
     except ImportError:
         pass
-    
-    # CLI fallback
-    print("GUI not available. Enter path to ROM directory:")
-    return Path(input("> ").strip())
+
+    print("GUI not available. Enter path to ROM directory:"); return Path(input("> ").strip())
 
 def verify_roms(rom_dir):
     """Check which ROMs are present."""
-    required = ['mk.zip', 'mk2.zip']
-    optional = ['mk3.zip', 'mk3r21.zip', 'umk3.zip']
-    
+    mk  = ['mk.zip', 'mk2.zip']
+    mk3 = ['mk3.zip', 'mk3r21.zip', 'umk3.zip']
     print(f"\nChecking ROMs in {rom_dir}...")
     found = []
-    for rom in required + optional:
+    for rom in mk + mk3:
         if (rom_dir / rom).exists():
-            print(f"  ✓ Found: {rom}")
-            found.append(rom)
+            print(f"  ✓ Found: {rom}"); found.append(rom)
         else:
             print(f"  ✗ Missing: {rom}")
-    
     return found
 
-def run_generator():
-    """Run the asset generator to build .inc files."""
-    print("\nRunning asset generator...")
-    result = subprocess.run([sys.executable, str(ROOT / 'tools/mk3/generate.py')], cwd=ROOT)
+def run_game(game, rom_dir):
+    """Run a game binary with the user's ROM directory."""
+    game_paths = {
+        'mk1': ROOT / 'build' / 'native' / 'mk1-native' / 'product' / 'mk5-native-audio',
+        'mk2': ROOT / 'build' / 'native' / 'mk2-native' / 'product' / 'mk2-native',
+        'mk3': ROOT / 'build' / 'native' / 'mk3-native' / 'product' / 'mk3',
+    }
+    exe = game_paths.get(game)
+    if not exe or not exe.exists():
+        print(f"  ✗ {game} not yet built for Linux.")
+        return False
+
+    product = exe.parent
+    args = [str(exe), str(rom_dir), 'factory-seed.bin', 'gfx.txt', '--window']
+
+    print(f"\n  → Launching {game.upper()} from {product}...")
+    result = subprocess.run(args, cwd=product)
     return result.returncode == 0
 
-def compile_shaders():
-    """Compile SPIR-V shaders."""
-    print("\nCompiling shaders...")
-    result = subprocess.run(['bash', str(ROOT / 'build/shaders/compile_spirv.sh')], cwd=ROOT)
-    return result.returncode == 0
-
-def build_binaries():
-    """Build the native Linux binaries."""
-    print("\nBuilding binaries...")
-    for game in ['mk1', 'mk2', 'mk3']:
-        script = ROOT / f'tools/{game}/build.py' if game != 'mk3' else ROOT / 'tools/mk3/generate.py'
-        if script.exists():
-            result = subprocess.run([sys.executable, str(script)], cwd=ROOT)
-            if result.returncode == 0:
-                print(f"  ✓ Built {game}")
-            else:
-                print(f"  ✗ Failed to build {game}")
-    return True
+_rom_dir = None
 
 def launcher_menu():
-    """Simple menu to run built games."""
-    product = ROOT / 'build' / 'native' / 'mk3-native' / 'product'
-    exe = product / 'mk3'
-    gfx = product / 'gfx.txt'
-    seed = product / 'factory-seed.bin'
-
+    """Menu to run MK1, MK2, or MK3."""
     print("\n=== TriUnit Recomp Launcher ===")
-    print("1. Run MK1 (not yet ported)")
-    print("2. Run MK2 (not yet ported)")
+    print("1. Run MK1")
+    print("2. Run MK2")
     print("3. Run MK3")
     print("4. Exit")
 
-    while True:
-        choice = input("Select option: ").strip()
+    games = {'1': 'mk1', '2': 'mk2', '3': 'mk3'}
 
-        if choice == '1':
-            print("MK1 is not yet built for Linux.")
-        elif choice == '2':
-            print("MK2 is not yet built for Linux.")
-        elif choice == '3':
-            if not exe.exists():
-                print(f"Error: {exe} not found. Run setup first.")
-                continue
-            if not gfx.exists():
-                print(f"Error: {gfx} not found. Run setup first.")
-                continue
-            if not seed.exists():
-                print(f"Error: {seed} not found. Run setup first.")
-                continue
-            print(f"\nLaunching MK3 from {product}...")
-            subprocess.run([str(exe), 'roms/mk3', 'factory-seed.bin', 'gfx.txt', '--window'], cwd=product)
-        elif choice == '4':
-            break
-        else:
-            print("Invalid option")
+    while True:
+        choice = input("\nSelect option: ").strip()
+        if choice == '4': break
+        game = games.get(choice)
+        if not game:
+            print("  Invalid option")
+            continue
+
+        global _rom_dir
+        if not _rom_dir:
+            _rom_dir = get_rom_directory()
+
+        if not Path(_rom_dir).exists():
+            print(f"  Error: {_rom_dir} does not exist")
+            continue
+
+        roms = verify_roms(Path(_rom_dir))
+        if not roms:
+            print("  No ROMs found. Please provide valid ROM files.")
+            continue
+
+        run_game(game, Path(_rom_dir))
 
 def main():
-    print("=== TriUnit Recomp Linux Setup ===\n")
-    
-    # Step 1: Get ROM directory
-    rom_dir = get_rom_directory()
-    if not rom_dir.exists():
-        print(f"Error: Directory {rom_dir} does not exist")
-        return 1
-    
-    # Step 2: Verify ROMs
-    roms = verify_roms(rom_dir)
-    if not roms:
-        print("No ROMs found. Please provide valid ROM files.")
-        return 1
-    
-    # Step 3: Run generator
-    if not run_generator():
-        print("Asset generation failed")
-        return 1
-    
-    # Step 4: Compile shaders
-    if not compile_shaders():
-        print("Shader compilation failed")
-        return 1
-    
-    # Step 5: Build binaries
-    build_binaries()
-    
-    # Step 6: Launch menu
-    launcher_menu()
-    
-    return 0
+    global _rom_dir
+    print("=== TriUnit Recomp Linux Launcher ===\n")
 
-if __name__ == '__main__':
-    sys.exit(main())
+    _rom_dir = get_rom_directory()
+    if not Path(_rom_dir).exists():
+        print(f"Error: Directory {_rom_dir} does not exist"); return 1
+
+    roms = verify_roms(Path(_rom_dir))
+    if not roms:
+        print("No ROMs found. Please provide valid ROM files."); return 1
+
+    launcher_menu()
+
+main()
