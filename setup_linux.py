@@ -43,12 +43,8 @@ def show_rom_requirements():
             print(f"    • {name:20s} {desc}")
     print()
     print("  Optional (enhanced features):")
-    for name, desc in OPTIONAL:
-        if name not in ALL_ROMS:
-            print(f"    • {name:20s} {desc}")
-    else:
-        for name in ['mk3r21.zip', 'umk3.zip']:
-            print(f"    • {name:20s} {ALL_ROMS[name]}")
+    for name in ['mk3r21.zip', 'umk3.zip']:
+        print(f"    • {name:20s} {MK3_ROMS[name]}")
     print()
     print("  Tips:")
     print("    • Use MAME set names: 'mk', 'mk2', 'mk3', 'mk3r21', 'umk3'")
