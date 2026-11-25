@@ -5,11 +5,14 @@ TRIUNIT_WIDE_DEBUG), and checks:
   1. the game state is identical in every frame (MK1: CPU, cycles, RAM, VRAM, palette per frame; MK2: VRAM and palette per
      frame, CPU and RAM at the replay's end) and so are the shown frames, PCM and CMOS;
   2. the wide frame's 400 centre columns are the arcade frame bit for bit in every frame whose wide camera is the
-     arcade's, before any CRT filter (a frame with an offset window or a held far plane is counted apart);
+     arcade's, before any CRT filter (a frame with an offset window or a held far plane is counted apart); in MK1 two
+     kinds of pixel are counted apart too: a scenery block the arcade has not drawn yet at its edge columns (filled) and,
+     on a screen with soft sides, a line's black end where the soft side starts (joined);
   3. no fight frame shows a margin pixel no draw wrote (the sentinel); masked pixels (edge policy) are counted;
   4. every margin pixel belongs to a draw of the game meant to cover that column (no wrap, copy, mirror or invented pixel);
   5. each scenery layer moves by the same columns per frame in the margins as in the centre;
   6. MK1: with the camera still, every scenery list's camera is still;
+  7. MK1: no fight frame with a lit picture masks more than a speck of its margins (a black bar or block over a sky);
 all of it for MK1 and MK2 (--all adds the long replays that visit every arena).
 It prints the edge coverage table (per arena and scenery layer: the fewest margin columns its art covered) and exits 1 on
 any failure. Needs the authenticated ROMs and the setup's generated code; nothing is written outside a temporary tree."""
@@ -19,7 +22,7 @@ ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT))
 from tools.quality import run as q
 
-MK1_TAPES=['versus-walls','versus-corner-win']   # both walls of an arena; a fight won near the right end
+MK1_TAPES=['versus-walls','versus-corner-win','versus-jumps']   # both walls of an arena; a fight won near the right end; diagonal jumps wall to wall
 MK1_ALL=['campaign-prefix']
 
 

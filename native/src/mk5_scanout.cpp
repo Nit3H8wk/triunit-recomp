@@ -46,10 +46,9 @@ void Mk5Scanout::line(const Mk5ScanlineEvent& edge,const std::array<uint16_t,32>
             }
             if(wide_video){
                 if(wide_soft_work&&wide_work.size()==size_t(kWideWidth)*height_){   // a menu's soft sides (mk5wide::SoftMargins)
-                    mk5wide::SoftMargins(wide_work.data(),height_);
-                    for(size_t i=0;i<wide_work.size()&&wide_present;++i)if(!mk5wide::ArcadeColumn(int(i%kWideWidth))){wide_source_work[i]=kRaw;wide_blood_work[i]=0;}
+                    mk5wide::SoftMargins(wide_work.data(),height_,true,[&](size_t i){if(wide_present){wide_source_work[i]=kRaw;wide_blood_work[i]=0;}});
                 }
-                wide_complete=wide_work;wide_centre_=wide_centre_work;wide_audit_=wide_audit_work;wide_shift_=wide_shift_work;wide_whole_=wide_whole_work;
+                wide_complete=wide_work;wide_centre_=wide_centre_work;wide_audit_=wide_audit_work;wide_shift_=wide_shift_work;wide_whole_=wide_whole_work;wide_soft_=wide_soft_work;
                 if(wide_present){wide_source=wide_source_work;wide_blood=wide_blood_work;wide_stale=true;}
             }
         }
@@ -98,7 +97,7 @@ void Mk5Scanout::wide_line(unsigned row,unsigned col,bool enabled){
         wide_work.assign(n,0);
         if(wide_present){wide_source_work.assign(n,kBlank);wide_blood_work.assign(n,0);}
         wide_audit_work={};wide_shift_work=layer.Enabled()?layer.page_shift[(row>>17)&1]:0;wide_whole_work=layer.Enabled()&&layer.page_whole[(row>>17)&1];
-        wide_soft_work=layer.Enabled()&&layer.page_soft[(row>>17)&1];
+        wide_soft_work=layer.Enabled()&&layer.page_soft[(row>>17)&1];wide_dim_work=wide_video->WideDim();
     }
     const int shift=wide_shift_work;
     const size_t base=size_t(row>>9)*mk5wide::kLayerWidth;   // the layer's line (mk5_wide.hpp)
@@ -113,7 +112,9 @@ void Mk5Scanout::wide_line(unsigned row,unsigned col,bool enabled){
         const int column=fixed?hud:world;const bool arcade=column>=0 && column<int(width_);
         const bool same=arcade && pen==memory.vram[row+((col+unsigned(column))&511)];
         wide_centre_work+=arcade && !same;   // the arcade's columns against the arcade
-        wide_work[dest]=enabled?expand_rgb(pen&0x8000?layer.Colour(at,pen,memory.palette.data()):memory.palette.at(pen&0x7fff)):0;   // Layer::Book
+        if(arcade && !same && layer.debug && layer.origin[at].kind==mk5wide::Kind::shadow && layer.origin[at].Covers(int(dest_x)) &&
+           layer.written[at]>layer.page_start[(row>>17)&1])++wide_audit_work.filled;
+        wide_work[dest]=enabled?expand_rgb(pen&0x8000?layer.Colour(at,pen,memory.palette.data(),wide_dim_work):memory.palette.at(pen&0x7fff)):0;   // Layer::Book
         if(enabled && !shown)wide_work[dest]=layer.debug && !layer.written[at]?mk5wide::kSentinel:mk5wide::kMasked;
         if(!wide_present)continue;
         const int16_t source=!enabled?kBlank:same && shown?int16_t(column):kRaw;

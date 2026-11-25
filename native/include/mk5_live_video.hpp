@@ -64,10 +64,13 @@ class Mk5LiveVideo {
     // object, so its colours are not loaded) takes its colours from the ROM (mk5wide::Layer::Book).
     std::array<uint32_t,64> wide_palettes{};const std::vector<uint8_t>* wide_rom=nullptr;   // the program image (Layer::Book)
     void WidePalettes(std::array<uint32_t,64>& to)const;
+public:
+    unsigned WideDim()const;   // the game's fade right now, of 256 (mk5wide::Layer::Colour)
+private:
     void WideStage(const WideEntry& e);
     const WideEntry* WideMerge(uint32_t object);
     void WideFlush(size_t end);
-    void WideOutside(const WideEntry& e);
+    void WideOutside(const WideEntry& e,bool unmade=false);
     // Save states: gfx and blood_sprite come from the ROMs and stay with the live object.
     template<class A> friend void Fields(A& a,Mk5LiveVideo& v){
         a(v.regs,v.due,v.pending,v.data_bank,v.blood_stains,v.blood_layer,v.blood_pen,v.blood_floor,v.backdrop,v.fighters,v.fighter_objects,v.held_prop,
@@ -115,7 +118,7 @@ public:
     uint16_t Read(unsigned offset)const;
     void Write(uint32_t pc,unsigned offset,uint16_t value);
     uint32_t CpuRead(uint32_t bit,unsigned width)const;
-    void CpuWrite(uint32_t bit,unsigned width,uint32_t value);
+    void CpuWrite(uint32_t bit,unsigned width,uint32_t value,bool draw=true);   // draw: it belongs to the picture (the wide layer takes it)
     void Control(uint16_t value){data_bank=(value&32)!=0;}
     uint32_t ShiftLoad(uint32_t bit);
     uint32_t FillXY(ResetTrace&);
@@ -125,7 +128,7 @@ public:
     bool WideEnabled()const{return wide.Enabled();}
     const mk5wide::Layer<uint8_t>& WideLayer()const{return wide;}
     uint32_t WideBloodPixel(size_t index)const{const auto shade=wide.blood.empty()?0:wide.blood[index];return shade?blood_sprite.colors[shade]:0;}
-    void WideFrame(unsigned page_row){wide.StartFrame(page_row,m.vram,blood_layer);wide_walk_drawn=false;wide_staged.clear();wide_cursor=0;}
+    void WideFrame(unsigned page_row,bool still){wide.StartFrame(page_row,m.vram,blood_layer,still);wide_walk_drawn=false;wide_staged.clear();wide_cursor=0;}   // still: mk5wide::Layer::StartFrame
     void WideEndUnbuilt();
     // The real walk starts / ends: its draws merge the staged ones; at its end the rest of them are drawn.
     void WideRealWalk(bool inside){

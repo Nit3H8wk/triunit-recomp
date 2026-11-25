@@ -2,12 +2,14 @@
 // without and with the widescreen shadow pass (debug diagnostics on, mk5wide::Layer::debug).
 //  1. The game is the same in every shown frame: a hash of CPU registers, cycles, RAM, VRAM and palette per frame, the
 //     shown frame and its Remastered layers, and at the end the PCM and CMOS.
-//  2. The wide frame's 400 centre columns are the arcade frame bit for bit in every frame (raw and presented).
+//  2. The wide frame's 400 centre columns are the arcade frame bit for bit in every frame (raw and presented), but for the
+//     pixels of a scenery block the arcade has not drawn yet (filled) and a soft side's start (joined), counted apart.
 //  3. No margin pixel is left unwritten (sentinel) in a fight frame; masked pixels are counted (the edge policy).
 //  4. No margin pixel comes from a draw that never meant to cover its column, or from no draw of the game.
 //  2b. A frame whose wide camera is not the arcade's (mk5wide::WindowShift at an arena's end, a far plane held at its
 //     art's end) is counted apart: its world is the shadow's draws, its HUD the real ones.
 //  6. With the camera still, every scenery list's camera is still.
+//  7. No fight frame with a lit picture masks more than a speck (kSpeck pixels) of its margins.
 //  5. Each scenery layer's draws in the margins move by the same columns per frame as the layer's draws in the centre: per
 //     layer and pair of builds, the most frequent move of its draws (one image on one row, paired in column order) wholly
 //     in the margins equals that of its draws wholly in the centre, when at least 3 draws share it on each side, the
@@ -32,12 +34,15 @@ void check(bool value,const std::string& message){if(!value)throw std::runtime_e
 std::vector<uint8_t> bytes(const std::filesystem::path& p){std::ifstream f(p,std::ios::binary);check(bool(f),"cannot open chip ROM");return {std::istreambuf_iterator<char>(f),{}};}
 template<class V> uint64_t Fnv(uint64_t h,const V& v){for(auto x:v)h=(h^uint64_t(x))*0x100000001b3ull;return h;}
 constexpr uint64_t kBasis=14695981039346656037ull;
+constexpr uint64_t kSpeck=16;   // masked margin pixels a fight frame may show (a farther layer's pixel at the screen's last column)
 struct Frame{uint64_t state,shown;};
 // The edge coverage table: per arena (camera limits) and scenery layer, the fewest margin columns its art covered.
 struct Coverage{int left=mk5wide::kWideMargin,right=mk5wide::kWideMargin;unsigned frames=0;int camera_low=1<<20,camera_high=-(1<<20);};
 struct Run{
-    std::vector<Frame> frames;std::vector<int16_t> pcm;std::vector<uint16_t> cmos;uint64_t faults=0;
+    std::vector<Frame> frames;std::vector<int16_t> pcm;std::vector<uint16_t> cmos;uint64_t faults=0,streamer_skips=0;   // streamer_skips: builds whose shadow ran without its scenery streamer
     uint64_t centre=0,presented=0,fight_frames=0;mk5wide::Audit fight,other;
+    uint64_t filled=0,joined=0;   // centre pixels the shadow filled (frames with the arcade's window); soft sides started inside the arcade's columns
+    uint64_t masked_frames=0;     // lit fight frames with more than kSpeck masked margin pixels
     // Frames with a window offset (mk5wide::WindowShift): how many, their arcade columns that differ from the arcade frame
     // at the offset (far planes stand elsewhere there), and their masked margin pixels.
     uint64_t shifted_frames=0,shifted_differ=0,shifted_masked=0;
@@ -87,16 +92,37 @@ Run Play(const std::filesystem::path& root,const std::vector<uint32_t>& tape,con
         const auto& wide=screen.wide_pixels();const auto& p=screen.wide_presentation();const auto& b=screen.wide_backdrop_pixels();
         const int shift=screen.wide_shift();const bool whole=screen.wide_whole();
         if(whole){++run.shifted_frames;run.shifted_masked+=screen.wide_audit().masked;}
+        // Two differences belong to the picture: a pixel the shadow filled where the arcade has not drawn an object yet (the
+        // frame's audit counts them, each at most once raw, once presented and once in the backdrop), and, on a screen with
+        // soft sides, an arcade line's black end within kSoftSkip columns of its edge, where the soft side starts.
+        uint64_t raw=0,presented=0;const uint64_t filled=screen.wide_audit().filled;
         for(unsigned y=0;y<H;++y)for(unsigned x=0;x<X;++x){
-            if(whole){run.shifted_differ+=p[y*W+margin+x-shift]!=screen.pixels()[y*X+x];continue;}
-            run.centre+=wide[y*W+margin+x]!=screen.pixels()[y*X+x];
-            run.presented+=p[y*W+margin+x]!=screen.pixels()[y*X+x];
-            if(!screen.backdrop_pixels().empty())run.presented+=b[y*W+margin+x]!=screen.backdrop_pixels()[y*X+x];
+            const uint32_t arcade=screen.pixels()[y*X+x];
+            if(whole){if(const int at=int(margin+x)-shift;at>=0&&at<int(W))run.shifted_differ+=p[y*W+unsigned(at)]!=arcade;continue;}   // past a limit the arcade's last columns are off the wide picture (mk5wide::kOvershoot)
+            if(screen.wide_soft()&&!(arcade&0xffffff)&&(x<unsigned(mk5wide::kSoftSkip)||x>=X-unsigned(mk5wide::kSoftSkip))){run.joined+=p[y*W+margin+x]!=arcade;continue;}
+            raw+=wide[y*W+margin+x]!=arcade;presented+=p[y*W+margin+x]!=arcade;
+            if(!screen.backdrop_pixels().empty())presented+=b[y*W+margin+x]!=screen.backdrop_pixels()[y*X+x];
         }
+        if(!whole){run.filled+=filled;run.centre+=raw>filled?raw-filled:0;run.presented+=presented>2*filled?presented-2*filled:0;}
+        if(std::getenv("WIDE_TRACE")&&!whole&&(filled||raw)){static uint64_t was=0;if(filled!=was){was=filled;std::cerr<<"filled frame "<<before<<" "<<filled<<" raw "<<raw<<" presented "<<presented<<char(10);}}
         // Diagnostics: WIDE_DUMP_FRAMES (frame numbers, commas) writes each one's presented wide frame as a PPM in WIDE_DUMP_DIR.
         if(const char* list=std::getenv("WIDE_DUMP_FRAMES");list&&(","+std::string(list)+",").find(","+std::to_string(before)+",")!=std::string::npos){
             std::ofstream out(std::filesystem::path(std::getenv("WIDE_DUMP_DIR"))/("wide-"+std::to_string(before)+".ppm"),std::ios::binary);
-            out<<"P6"<<char(10)<<W<<" "<<H<<char(10)<<255<<char(10);for(auto rgb:p){out.put(char(rgb>>16));out.put(char(rgb>>8));out.put(char(rgb));}
+            out<<"P6"<<char(10)<<W<<" "<<H<<char(10)<<255<<char(10);
+            const bool mark=std::getenv("WIDE_DUMP_MASK");   // masked margin pixels in green (a fight frame: soft sides can be the same black)
+            for(auto rgb:p){if(mark&&rgb==mk5wide::kMasked)rgb=0x00ff00;out.put(char(rgb>>16));out.put(char(rgb>>8));out.put(char(rgb));}
+            // WIDE_DUMP_SHOWN: the frame as the window shows it (4x: fighter layers over the scaled scenery), wide and arcade.
+            if(std::getenv("WIDE_DUMP_SHOWN")){
+                const auto shown=[&](const char* name,const std::vector<uint32_t>& pixels,const std::vector<uint32_t>& backdrop,const mk5presentation::FighterFrame& fighters,unsigned w){
+                    std::vector<uint32_t> image;
+                    if(!fighters.layers.empty())mk5presentation::ComposeFighterFrame4x(fighters,w,H,image);
+                    else if(!backdrop.empty())mk5stage::Bicubic4x(pixels,backdrop,w,H,image);
+                    else for(unsigned y=0;y<H*4;++y)for(unsigned x=0;x<w*4;++x)image.push_back(pixels[(y/4)*w+x/4]);
+                    std::ofstream file(std::filesystem::path(std::getenv("WIDE_DUMP_DIR"))/(name+std::to_string(before)+".ppm"),std::ios::binary);
+                    file<<"P6"<<char(10)<<w*4<<" "<<H*4<<char(10)<<255<<char(10);for(auto rgb:image){file.put(char(rgb>>16));file.put(char(rgb>>8));file.put(char(rgb));}
+                };
+                shown("shown-",p,b,screen.wide_fighter_frame(),W);shown("arcade-",screen.pixels(),screen.backdrop_pixels(),screen.fighter_frame(),X);
+            }
         }
         // Diagnostics: WIDE_DRAWS_FRAMES lists each one's staged draws per scenery layer and its measured layers.
         if(const char* list=std::getenv("WIDE_DRAWS_FRAMES");list&&(","+std::string(list)+",").find(","+std::to_string(before)+",")!=std::string::npos){
@@ -111,6 +137,8 @@ Run Play(const std::filesystem::path& root,const std::vector<uint32_t>& tape,con
             for(const auto& m:layer.bands_done){int lo=1<<20,hi=-(1<<20),narrow=0;for(const auto& r:m.rows){lo=std::min<int>(lo,r.left);hi=std::max<int>(hi,r.right);narrow+=r.left>43&&r.right<491;}
                 std::cerr<<" L"<<m.layer<<":full "<<m.full<<" rows "<<m.rows.size()<<" narrow "<<narrow<<" "<<lo<<".."<<hi;}
             std::cerr<<char(10);}}
+        if(std::getenv("WIDE_TRACE")){static int was=-1;if(int(layer.open)!=was){was=layer.open;   // where the picture starts or stops showing the page's background
+            std::cerr<<"open frame "<<before<<" "<<was<<" mode "<<word(mk5widescreen::kMode)<<" camera "<<int16_t(word(mk5widescreen::kCameraX))<<char(10);}}
         if(std::getenv("WIDE_TRACE")){static std::array<int,3> seen{-1,0,0};   // where the mode or the camera limits change
             if(const std::array<int,3> now{int(word(mk5widescreen::kMode)),int16_t(word(mk5widescreen::kCameraMin)),int16_t(word(mk5widescreen::kCameraMax))};now!=seen){seen=now;
                 std::cerr<<"mode frame "<<before<<" mode "<<now[0]<<" limits "<<now[1]<<".."<<now[2]<<" camera "<<int16_t(word(mk5widescreen::kCameraX))<<char(10);}}
@@ -120,7 +148,7 @@ Run Play(const std::filesystem::path& root,const std::vector<uint32_t>& tape,con
             if(every){const auto wide_long=[&](uint32_t bit){return int32_t(uint32_t(uint16_t(word(bit)))|uint32_t(uint16_t(word(bit+16)))<<16);};
                 for(unsigned k=5;k<8;++k)std::cerr<<"slot "<<k<<" scroll "<<wide_long(mk5widescreen::kScrollFirst+k*0x20)<<" velocity "<<wide_long(mk5widescreen::kScrollFirst+k*0x20-mk5widescreen::kVelocityGap)<<" ";}
             if(shift!=last||every){last=shift;
-            std::cerr<<"shift frame "<<before<<" d "<<shift<<" camera "<<int16_t(word(mk5widescreen::kCameraX))<<" mode "<<word(mk5widescreen::kMode);
+            std::cerr<<"shift frame "<<before<<" d "<<shift<<" camera "<<int16_t(word(mk5widescreen::kCameraX))<<" mode "<<word(mk5widescreen::kMode);std::cerr<<" dim "<<runner.Video().WideDim();
             for(const auto& r:layer.ratio)std::cerr<<" "<<r.plane<<"/"<<r.world;
             for(unsigned k=0;k<mk5widescreen::kScrollSlots;++k)std::cerr<<" S"<<k<<"="<<int16_t(word(mk5widescreen::kScrollFirst+k*0x20+16));
             for(const auto& lim:layer.bound)std::cerr<<" ["<<lim[0]<<","<<lim[1]<<"]";
@@ -130,6 +158,13 @@ Run Play(const std::filesystem::path& root,const std::vector<uint32_t>& tape,con
         // 3, 4: the margins' audit; fight frames apart.
         const unsigned mode=word(mk5widescreen::kMode);const bool fight=mode==2||mode==3||mode==5||mode==6;
         (fight?run.fight:run.other).Add(screen.wide_audit());run.fight_frames+=fight;
+        // 7: no fight frame with a lit picture masks more than a speck of its margins (a black bar or block over a sky); a
+        // frame with soft sides shows none of its margins (a menu's page still up when the mode word changes).
+        run.masked_frames+=fight&&!screen.wide_soft()&&screen.wide_audit().masked>kSpeck&&std::any_of(screen.pixels().begin(),screen.pixels().end(),[](uint32_t rgb){return (rgb&0xffffff)!=0;});
+        if(std::getenv("WIDE_TRACE")&&fight){static uint64_t was=0;   // where a fight frame's masked margin pixels change
+            if(const uint64_t now=screen.wide_audit().masked;now!=was){was=now;
+                unsigned box[4]={W,0,H,0};for(unsigned y=0;y<H;++y)for(unsigned x=0;x<W;++x)if(wide[y*W+x]==mk5wide::kMasked){box[0]=std::min(box[0],x);box[1]=std::max(box[1],x);box[2]=std::min(box[2],y);box[3]=std::max(box[3],y);}
+                std::cerr<<"masked frame "<<before<<" "<<now<<" d "<<shift<<" camera "<<int16_t(word(mk5widescreen::kCameraX))<<" mode "<<mode<<" columns "<<box[0]<<".."<<box[1]<<" lines "<<box[2]<<".."<<box[3]<<char(10);}}
         // 5: per layer, the most frequent move of its draws (same image and row in the last build) in the margins and in
         // the centre.
         if(layer.builds!=seen_builds){seen_builds=layer.builds;
@@ -181,7 +216,7 @@ Run Play(const std::filesystem::path& root,const std::vector<uint32_t>& tape,con
         }
     }
     check(screen.frames()==tape.size(),"legal tape endpoint not reached");
-    run.cmos=f.cmos;run.faults=runner.Video().wide_faults;
+    run.cmos=f.cmos;run.faults=runner.Video().wide_faults;run.streamer_skips=runner.Video().wide_streamer_skips;
     return run;
 }
 std::string Json(const mk5wide::Audit& a){
@@ -197,7 +232,8 @@ int wmain(int argc,wchar_t** argv){
         std::vector<uint32_t> tape;unsigned frame,duration;uint32_t mask;
         while(timeline>>frame>>duration>>mask){if(tape.size()<frame+duration)tape.resize(frame+duration);for(unsigned k=0;k<duration;++k)tape[frame+k]=mask;}
         const auto cmos=LoadMk5CmosSnapshot(argv[3]);
-        const auto plain=Play(argv[1],tape,cmos,false),wide=Play(argv[1],tape,cmos,true);
+        const bool wide_only=std::getenv("WIDE_ONLY");   // diagnostics: no 4:3 run, criterion 1 not checked, never a pass
+        const auto wide=Play(argv[1],tape,cmos,true),plain=wide_only?wide:Play(argv[1],tape,cmos,false);
         check(plain.frames.size()==wide.frames.size(),"frame counts differ");
         for(size_t i=0;i<wide.frames.size();++i){
             check(plain.frames[i].state==wide.frames[i].state,"1: widescreen changed the game state at frame "+std::to_string(i));
@@ -206,9 +242,9 @@ int wmain(int argc,wchar_t** argv){
         check(plain.pcm==wide.pcm && plain.cmos==wide.cmos,"1: widescreen changed the PCM or the CMOS");
         check(!wide.faults,"the shadow pass faulted");
         std::cout<<"{\"frames\":"<<wide.frames.size()<<",\"fight_frames\":"<<wide.fight_frames<<",\"centre_differ\":"<<wide.centre
-                 <<",\"presented_differ\":"<<wide.presented<<",\"shifted_frames\":"<<wide.shifted_frames<<",\"shifted_differ\":"<<wide.shifted_differ
+                 <<",\"presented_differ\":"<<wide.presented<<",\"filled\":"<<wide.filled<<",\"joined\":"<<wide.joined<<",\"masked_frames\":"<<wide.masked_frames<<",\"shifted_frames\":"<<wide.shifted_frames<<",\"shifted_differ\":"<<wide.shifted_differ
                  <<",\"shifted_masked\":"<<wide.shifted_masked<<",\"still_checked\":"<<wide.still_checked<<",\"still_moved\":"<<wide.still_moved<<",\"fight\":"<<Json(wide.fight)<<",\"other\":"<<Json(wide.other)
-                 <<",\"parallax_checked\":"<<wide.parallax_checked<<",\"parallax_differ\":"<<wide.parallax_differ<<",\"coverage\":[";
+                 <<",\"streamer_skips\":"<<wide.streamer_skips<<",\"parallax_checked\":"<<wide.parallax_checked<<",\"parallax_differ\":"<<wide.parallax_differ<<",\"coverage\":[";
         bool first=true;
         for(const auto& [key,c]:wide.coverage){
             std::cout<<(first?"":",")<<"["<<std::get<0>(key)<<","<<std::get<1>(key)<<","<<std::get<2>(key)<<","<<c.frames<<","<<c.camera_low<<","<<c.camera_high<<","<<c.left<<","<<c.right<<"]";first=false;
@@ -221,6 +257,8 @@ int wmain(int argc,wchar_t** argv){
               "4: a margin pixel does not belong to a draw meant to cover its column");
         check(!wide.parallax_differ && wide.parallax_checked,"5: a layer moves differently in the margins and in the centre");
         check(!wide.still_moved,"6: a scenery plane moved while the camera stood still");
+        check(!wide.masked_frames,"7: a lit fight frame masks part of its margins");
+        check(!wide_only,"WIDE_ONLY: diagnostic run, criterion 1 not checked");
         return 0;
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }
