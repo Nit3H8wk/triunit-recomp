@@ -66,6 +66,9 @@ inline bool Demo(unsigned mode,int low,int high,bool arena,bool fight,bool still
 // each the long of the palette's ROM pointer in the slot (then its use count). A palette the shadow's streamer allocates is
 // only booked in that table, which the journal undoes: its colours are not in the palette RAM.
 constexpr uint32_t kPaletteTable=0x0104fc20,kPaletteEntry=0x40;constexpr unsigned kPaletteSlots=0x3c;
+// A store through a null pointer (MOVE A8,*A0 with A0 = 0): the long lands on VRAM's first four words, far left of the
+// arcade's columns on the first page's first line. It is no draw: the wide layer leaves it out of its margin.
+constexpr uint32_t kNullWrite=0xffc99ea0;
 // The shadow's clip (y<<16|x): screen x -67 .. 467 plus mk5wide::kReach on each side.
 constexpr uint32_t WideTopLeft(){return uint32_t(uint16_t(int16_t(-mk5wide::kWideMargin-mk5wide::kReach)));}
 constexpr uint32_t WideBottomRight(){

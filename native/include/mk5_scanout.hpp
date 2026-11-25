@@ -29,7 +29,7 @@ class Mk5Scanout {
     const Mk5LiveVideo* wide_video=nullptr;
     std::vector<uint32_t> wide_work,wide_complete;
     uint64_t wide_centre_work=0,wide_centre_=0;mk5wide::Audit wide_audit_work,wide_audit_;
-    int wide_shift_work=0,wide_shift_=0;bool wide_whole_work=false,wide_whole_=false,wide_soft_work=false;   // the frame's window offset; its world from the shadow alone (mk5wide::Layer::whole)
+    int wide_shift_work=0,wide_shift_=0;bool wide_whole_work=false,wide_whole_=false,wide_soft_work=false,wide_soft_=false;   // the frame's window offset; its world from the shadow alone (mk5wide::Layer::whole); its sides soft
     // Widescreen presentation (Remastered): each wide pixel's arcade column, where its pen is the arcade's own at that column
     // (the world's x = L-67+d; a pixel of a screen-fixed draw, the HUD's x = L-67), so the Remastered layers of that column
     // apply; kRaw where only the shadow pass has it (margins, fitted planes): its raw colour, as scenery, with the wide floor
@@ -42,6 +42,7 @@ class Mk5Scanout {
     // snapshot's load) is never composed.
     mutable std::vector<uint32_t> wide_presentation_,wide_backdrop_;mutable mk5presentation::FighterFrame wide_fighters_;
     mutable bool wide_stale=false;
+    unsigned wide_dim_work=256;   // the frame's fade for booked colours (Mk5LiveVideo::WideDim); found again at each frame's first line
     void wide_line(unsigned row,unsigned col,bool enabled);
     void ComposeWide()const;
     void Composed()const{if(wide_stale){wide_stale=false;ComposeWide();}}
@@ -88,6 +89,7 @@ public:
     uint64_t wide_centre()const{return wide_centre_;}
     bool wide_whole()const{return wide_whole_;}   // the last complete frame's arcade columns are not the real draws' (offset window, held far plane)
     int wide_shift()const{return wide_shift_;}   // the last complete frame's window offset: arcade column x is wide column x+67-shift
+    bool wide_soft()const{return wide_soft_;}   // the last complete frame has soft sides (mk5wide::SoftMargins); diagnostics, not state
     const mk5wide::Audit& wide_audit()const{return wide_audit_;}   // the last complete frame's margins (mk5wide::Layer::debug)
     // Widescreen presentation (Remastered, from the attached video): the frame, backdrop and fighter layers over kWideWidth.
     void EnableWidePresentation(const Mk5LiveVideo& video){wide_video=&video;wide_present=presentation!=nullptr;}

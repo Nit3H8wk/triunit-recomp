@@ -74,7 +74,7 @@ void Mk5TaskBodyRunner::wide_pre(uint32_t pc){
     const auto ram_long=[&](uint32_t bit){return uint32_t(word(bit))|uint32_t(word(bit+16))<<16;};
     switch(pc){
     case w::kDisplayIrq:v.WideEndUnbuilt();return;
-    case w::kBuilder:v.WideFrame(ram_long(w::kPageOrigin)>>16&0x1ff);return;   // after the page clear
+    case w::kBuilder:v.WideFrame(ram_long(w::kPageOrigin)>>16&0x1ff,int16_t(word(w::kCameraX))==v.WideLayerState().held[0]);return;   // after the page clear
     case w::kStreamer:v.wide_streaming=true;return;
     case w::kStreamerEnd:v.wide_streaming=false;return;
     case w::kWalkEnd:v.WideRealWalk(false);return;
@@ -323,7 +323,7 @@ void Mk5TaskBodyRunner::write(uint32_t pc,uint32_t a,unsigned width,uint32_t v){
         bool touched=std::any_of(f.byte_writes.begin(),f.byte_writes.end(),[&](const auto& w){return w.applied_to_cmos && w.address_bit==a;});
         if(!touched)++f.unique_words_written;
         f.byte_writes.push_back({pc,a,uint8_t(v),true,before,cell,s.writes.size()});++f.memory_write_count;s.writes.push_back({pc,a,cell});
-    }else if(video && a<0x00400000){video->CpuWrite(a,width,v);
+    }else if(video && a<0x00400000){video->CpuWrite(a,width,v,!(pc==mk5widescreen::kNullWrite && !a));
     }else if(a<0x00400000 && uint64_t(a)+width<=0x00400000 && !(a&7) && (width==8 || width==16 || width==32)){
         // Pinned midtunit_v vram_w: in the data bank each CPU byte becomes a
         // pixel whose upper byte is the DMA palette byte of its parity.

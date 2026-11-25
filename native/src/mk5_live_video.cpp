@@ -317,20 +317,41 @@ void Mk5LiveVideo::WideStage(const WideEntry& e){wide_staged.push_back(e);}
 void Mk5LiveVideo::WidePalettes(std::array<uint32_t,64>& to)const{
     for(unsigned slot=0;slot<mk5widescreen::kPaletteSlots;++slot)to[slot]=ram_pointer(m,mk5widescreen::kPaletteTable+slot*mk5widescreen::kPaletteEntry);
 }
+// The game's fade right now, of 256: per palette slot, its colours' light in the palette RAM against the ROM palette the
+// slot holds; the median slot (the HUD's palettes do not fade with the scene). 256 when nothing fades.
+unsigned Mk5LiveVideo::WideDim()const{
+    if(!wide_rom)return 256;
+    const auto rom=[&](uint32_t bit){const size_t at=(bit-0xff800000u)/8;return unsigned((*wide_rom)[at]|(*wide_rom)[at+1]<<8);};
+    const auto light=[](unsigned c){return (c>>10&31)+(c>>5&31)+(c&31);};
+    std::vector<unsigned> slots;
+    for(unsigned slot=0;slot<mk5widescreen::kPaletteSlots;++slot){
+        const uint32_t pointer=ram_pointer(m,mk5widescreen::kPaletteTable+slot*mk5widescreen::kPaletteEntry);
+        if(pointer<0xff800000u || size_t(pointer-0xff800000u)/8+2*257>wide_rom->size())continue;
+        unsigned was=0,now=0;
+        for(unsigned k=0,count=std::min(rom(pointer),256u);k<count;++k){was+=light(rom(pointer+16+16*k));now+=light(m.palette[slot*256+k]);}
+        if(was)slots.push_back(std::min(256u,now*256/was));
+    }
+    if(slots.empty())return 256;
+    std::nth_element(slots.begin(),slots.begin()+slots.size()/2,slots.end());
+    return slots[slots.size()/2];
+}
 // The real walk draws `object`: the staged draws before its own (and its own) reach the layer; returns its own, if staged.
 const Mk5LiveVideo::WideEntry* Mk5LiveVideo::WideMerge(uint32_t object){
     for(size_t i=wide_cursor;i<wide_staged.size();++i)if(wide_staged[i].object==object){
         WideFlush(i);WideOutside(wide_staged[i]);wide_cursor=i+1;return &wide_staged[i];}
     return nullptr;
 }
-// Staged draws the real walk did not make (the arcade's clip dropped them): drawn in the margins.
+// Staged draws the real walk did not make: the arcade's clip dropped them, or the arcade has not built the object yet (its
+// scenery streamer fills the 4:3 window every few frames: a block entering the screen while it scrolls shows late, and
+// the arcade's edge columns hold the page's background meanwhile). Drawn whole: the wide picture already has the object
+// beside those columns.
 void Mk5LiveVideo::WideFlush(size_t end){
-    for(;wide_cursor<end && wide_cursor<wide_staged.size();++wide_cursor)WideOutside(wide_staged[wide_cursor]);
+    for(;wide_cursor<end && wide_cursor<wide_staged.size();++wide_cursor)WideOutside(wide_staged[wide_cursor],true);
 }
 // A staged draw on the layer, rendered in layer columns at the x the game gave it, outside the arcade's columns (the real
 // draws own those). A screen-fixed draw (the HUD) still marks its arcade pixels fixed. With a window offset a world draw
-// is rendered whole (the real draws stand elsewhere).
-void Mk5LiveVideo::WideOutside(const WideEntry& e){
+// is rendered whole (the real draws stand elsewhere), and so is one the real walk did not make (unmade).
+void Mk5LiveVideo::WideOutside(const WideEntry& e,bool unmade){
     auto r=e.regs;
     {const auto [a,b]=mk5wide::Span(r[4],r[6],r[10],(r[1]&16)!=0);   // the draw as the game meant it
         wide.Draw(mk5wide::Kind::shadow,a+mk5wide::kExtra,b+mk5wide::kExtra,e.layer);}
@@ -342,7 +363,7 @@ void Mk5LiveVideo::WideOutside(const WideEntry& e){
     const auto put=[&](size_t dest,uint16_t pen){
         if(dest>=wide.pens.size())return;
         wide.Write(dest,pen,e.fixed);if(actor)wide.fixed[dest]|=mk5wide::Layer<uint8_t>::kActor;};
-    if(wide.whole && !e.fixed){r[16]=0;r[17]=mk5wide::kLayerWidth-1;Blit(r,d,gfx,put,mk5wide::kLayerWidth);return;}
+    if((wide.whole || unmade) && !e.fixed){r[16]=0;r[17]=mk5wide::kLayerWidth-1;Blit(r,d,gfx,put,mk5wide::kLayerWidth);return;}
     if(lo+mk5wide::kExtra<first){r[16]=0;r[17]=first-1;Blit(r,d,gfx,put,mk5wide::kLayerWidth);}
     if(hi+mk5wide::kExtra>last){r[16]=last;r[17]=mk5wide::kLayerWidth-1;Blit(r,d,gfx,put,mk5wide::kLayerWidth);}
     if(e.fixed && hi+mk5wide::kExtra>first && lo+mk5wide::kExtra<last){   // its arcade pixels are the HUD's
@@ -380,7 +401,7 @@ uint32_t Mk5LiveVideo::CpuRead(uint32_t bit,unsigned width)const{
     if(!width || width>32 || uint64_t(bit)+width>0x400000)throw std::runtime_error("MK5 CPU VRAM read field frontier");
     uint32_t value=0;for(unsigned b=0;b<width;++b){auto pixel=m.vram.at((bit+b)/8);unsigned byte=data_bank?pixel&255:pixel>>8;value|=((byte>>((bit+b)&7))&1)<<b;}return value;
 }
-void Mk5LiveVideo::CpuWrite(uint32_t bit,unsigned width,uint32_t value){
+void Mk5LiveVideo::CpuWrite(uint32_t bit,unsigned width,uint32_t value,bool draw){
     if((bit&7) || (width!=8 && width!=16 && width!=32) || uint64_t(bit)+width>0x400000)throw std::runtime_error("MK5 CPU VRAM field frontier");
     for(unsigned b=0;b<width;b+=8){
         unsigned shift=((bit+b)&8)?8:0;
@@ -388,7 +409,7 @@ void Mk5LiveVideo::CpuWrite(uint32_t bit,unsigned width,uint32_t value){
         auto& dest=m.vram.at(index);dest=data_bank?uint16_t(((value>>b)&255)|(((regs[8]>>shift)&255)<<8)):uint16_t((dest&255)|(((value>>b)&255)<<8));
         if(!blood_layer.empty())blood_layer[index]=0;
         if(!backdrop.empty())backdrop[index]&=~backdrop_owner;
-        wide.Mirror(m.vram,index,1);
+        if(draw)wide.Mirror(m.vram,index,1);
     }
     const auto first=bit/8;
     fighters.ClearWith(first,width/8,[this,first](size_t x){return uint16_t(m.vram[first+x]&0x7fff);});

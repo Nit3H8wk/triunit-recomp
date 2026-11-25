@@ -138,8 +138,7 @@ public:
             if (collecting_ && rows_==height_) {
                 complete_=work_;
                 if(wide_on_&&wide_soft_work_&&wide_work_.size()==size_t(kWideWidth)*height_){   // a menu's soft sides (mk5wide::SoftMargins)
-                    mk5wide::SoftMargins(wide_work_.data(),height_);
-                    for(size_t i=0;i<wide_work_.size()&&wide_present_;++i)if(!mk5wide::ArcadeColumn(int(i%kWideWidth))){wide_source_work_[i]=kRaw;wide_blood_work_[i]=0;}
+                    mk5wide::SoftMargins(wide_work_.data(),height_,false,[&](size_t i){if(wide_present_){wide_source_work_[i]=kRaw;wide_blood_work_[i]=0;}});
                 }
                 if(wide_on_){wide_=wide_work_;wide_audit_=wide_audit_work_;wide_added_=wide_added_work_;wide_centre_=wide_centre_work_;
                     wide_shift_=wide_shift_work_;wide_whole_=wide_whole_work_;}

@@ -2,8 +2,9 @@
 
 The Remastered edition of MK1 rev 5.0 and MK2 L3.1 can show a 16:9 picture: the arcade's own 400 columns in the
 middle and 67 more on each side. It is purely visual: the game runs exactly as in 4:3. The picture's 400 centre columns
-are the arcade frame, bit for bit, except near an arena's ends in a fight, where the wide picture stops at the end of
-the arena's art instead of showing black beside it (see *Arena ends* below).
+are the arcade frame, bit for bit, with two exceptions: near an arena's ends in a fight, where the wide picture stops at
+the end of the arena's art instead of showing black beside it (see *Arena ends* below), and, in MK1, where a scenery
+block is entering the arcade's screen and the arcade has not drawn it yet (see *Blocks entering the screen*).
 
 ## Turning it on
 
@@ -22,11 +23,23 @@ and keep whole scanlines.
   fighters, projectiles, blood) are built and drawn there at the x the game gives them, with each layer's own parallax
   scroll. The game's culling and scenery streamer run with the wider clip, so objects just outside the 4:3 screen are
   drawn too.
+- **Colours of objects only the wide picture has (MK1).** An object the arcade has not built has no colours in the
+  palette RAM, so it takes them from the ROM palette. While the game fades its palette, those colours take the same
+  fade, measured from the palettes the game has loaded (the middle one of their ratios to the ROM).
 - **No wraparound.** The margins live in a layer 534 columns wide, separate from the board's 512-column video RAM. A
   draw at x = −40 lands in the left margin, never on the other side. Samplers in the D3D12 presentation clamp; none wraps.
 - **The centre is the arcade's.** While the wide camera is the arcade's, the arcade's 400 columns come from the real
   frame (MK1: the real draws; MK2: the shadow's draws, checked against the real frame). The HUD stays in screen space,
   centred on those 400 columns, always.
+- **Blocks entering the screen (MK1).** The game builds its scenery blocks for the 4:3 window every 8 frames. While
+  the screen scrolls fast (diagonal jumps from wall to wall), a block reaches the arcade's last columns a few frames
+  before the game builds it, and the arcade shows the page's background there (a thin streak in the sky's colour over
+  a wall). On a 4:3 screen that is the picture's very edge; in 16:9 it would sit inside the picture, next to a margin
+  that already shows the block. The shadow pass has built the block for its wider window, so the wide picture draws it
+  whole, those columns included. The acceptance tests count these pixels (`filled`).
+- **A store that is no draw (MK1).** The game stores a long through a null pointer, which lands on video RAM's first
+  four words, 56 columns left of the arcade's screen (`mk5widescreen::kNullWrite`). The wide layer leaves it out, and
+  takes its margins from the game's draws alone, never from video RAM's own columns beside the screen.
 
 ## Arena ends: the limited wide camera
 
@@ -39,15 +52,24 @@ centre does, and only there:
   own camera limits moved in by 67 columns. Away from the ends nothing changes. Within 67 camera columns of an end the
   whole world (scenery, fighters, projectiles, blood) is shown up to 67 columns off the centre, and the picture stays
   full. The offset depends on the camera alone: no ramp, no delay, nothing moves while the camera stands still.
+- **The arcade's camera passes its limits a little.** At a wall the game's camera goes up to 3 columns past its own
+  limit, and the arcade's last columns then show the page's background past the art's end. The wide camera stays on
+  its limit meanwhile (for up to 8 columns), so those columns fall outside the wide picture.
 - **Far planes stop at their own ends.** A far plane (sky, walls, crowd) scrolls slower than the world and its art can
   end sooner. The plane's ratio to the world is measured from the game's own scroll velocities, and its art's ends are
   measured from its draws on a canvas wider than the screen. The plane then eases into the camera position where its
   art's end meets the wide screen's edge and stays there.
+  A jump scrolls the screen up and shows lines of a plane whose art ends sooner. A stop learned while the plane already
+  stands near that end would move it at once, with the camera still, so it is taken only when taking it moves nothing
+  (the camera away from that end); until then those lines follow the edge policy below.
 - **Such frames come from the shadow's draws.** In a frame whose wide camera is not the arcade's, the world of the whole
   picture comes from the shadow pass, and the HUD from the real draws. The acceptance tests count these frames apart.
 - **After the fight.** The round's end, the next round's start and the match's end go on like the fight while the
   arena's camera limits stand: the window follows the camera, back to the middle when the fighters are put back. Once
   the limits are gone (a finisher that frees the camera, the fade) the last offset stays while the camera does.
+- **The continue screen (MK1).** When a match is lost the game stops clearing the page and draws its countdown over the
+  fight's last picture. If that fight ended near an arena's end, the wide picture keeps that last picture and its
+  window while the camera stands (video RAM holds the arcade's window there, not the wide one).
 - **Free-camera arenas.** An arena without camera limits from its start stays centred.
 - **Attract demos.** The attract has one mode word for its demo fights and its other screens. A demo fight is told by
   two things: its camera limits are an arena's (not the ones the game gives a screen without an arena), and the last
@@ -69,13 +91,21 @@ object of the game is mirrored, repeated or stretched there, and no stale video 
   dither (a sky's gradient), or they end on one straight edge (9 in 10 at the same column, over 32 lines or more: a
   backdrop picture narrower than the wide screen). All the layer's lines are treated alike: a line that could not be
   measured (its art has a hole inside the arcade's columns) and ends on that same edge goes on too, so a wall that
-  stops a few columns short of the arena's end is not left with a dashed strip. A gap of at most 24 columns
-  takes the columns next to it (a floor's texture a few columns on). Only an arena's lines are continued (a fight, or
+  stops a few columns short of the arena's end is not left with a dashed strip. A gap that shows at most 24 columns
+  past the art (something nearer may cover the rest of the way to the screen's edge) takes the columns next to it (a
+  floor's texture a few columns on). Only an arena's lines are continued (a fight, or
   a screen with a far plane's picture): a menu's textured background would come out as streaks.
 - **Anything else shows black**, unless something nearer (a fighter, a projectile) is drawn there.
 - A margin pixel that no draw wrote since its page came plain from video RAM shows black.
-- On a line the frame redrew across all 400 arcade columns, a margin pixel the frame did not redraw shows black. This
-  stops an older pose of a fighter from staying in the margin.
+- On a line the frame redrew across all 400 arcade columns, a margin pixel an earlier frame drew and this one did not
+  shows black. This stops an older pose of a fighter from staying in the margin.
+- **The page's background belongs to a picture that shows it.** Some arenas have no sky of their own: their sky is the
+  page's background, the colour the game clears the page with (MK1's Courtyard and Palace Gates, the light behind the
+  Throne Room's windows). In a frame whose arcade columns show that background on 32 lines or more, it is part of the
+  picture wherever it shows, in the margins too: it is never blackened, whatever covers a line in the arcade's columns
+  (the life bars, a fighter in a jump, a roof). In a frame that shows none of it (art over the whole screen, as in
+  MK2's arenas), background in a margin is a place without art: it shows black on a line the arcade's columns cover
+  whole.
 
 ## Screens without an arena
 
@@ -83,8 +113,10 @@ Menus, story and biography screens, the select screen and the like often draw no
 backgrounds are single pictures the size of the 4:3 screen, or a little wider. When such a screen leaves its margins
 unfilled, both margins get **soft sides**: each margin line takes the average colour of the last 4 columns of the
 arcade line beside it, blurred over 10 lines up and down and dimmed from 59% beside the picture to 23% at the screen's
-edge. Nothing of the picture is copied, so no object can appear twice. A screen whose draws do fill the margins (a
-title, an arena shown outside a fight) keeps them as drawn.
+edge. Nothing of the picture is copied, so no object can appear twice. In MK1 the soft side starts where the line's
+picture ends: when a picture stops a few columns short of the arcade's edge (the select screen, on the right), those
+black columns take the side's first colour, so no black line stands between the picture and its side. A screen whose
+draws do fill the margins (a title, an arena shown outside a fight) keeps them as drawn.
 
 Some pictures are drawn with no display walk at all, straight to the page (a story picture after an attract demo).
 After 3 frames without a walk, with something written meanwhile, the pages drop the window the last walk left on them:
@@ -114,7 +146,10 @@ runs without and with widescreen, and the command checks:
    also match.
 2. **Centre.** The 400 centre columns equal the arcade frame bit for bit in every frame whose wide camera is the
    arcade's. MK1 compares the presented frames (its wide layer takes the floor stains at presentation, so the raw layer
-   alone differs where blood lies). Frames with an offset window or a held far plane are counted apart.
+   alone differs where blood lies). Frames with an offset window or a held far plane are counted apart. So are, in
+   MK1, the pixels of a block the arcade has not drawn yet (`filled`: each must come from a draw of that frame's
+   shadow pass meant to cover its column) and, on a screen with soft sides, a line's black end within 12 columns of the
+   arcade's edge, where the soft side starts (`joined`).
 3. **Sentinel.** No fight frame (the game's mode word: the fight, a round's start or end, a finisher) shows a margin
    pixel no draw wrote. Masked pixels are counted, and MK2's replays must reach a scenery layer's edge in a fight
    (the mask at work).
@@ -126,11 +161,15 @@ runs without and with widescreen, and the command checks:
    scenery.
 6. **Still camera.** In MK1, with the camera still, every scenery list's camera is still: a plane's place depends on
    the camera alone.
+7. **No black over the picture.** In MK1 no fight frame with a lit picture masks more than a speck (16 pixels) of its
+   margins (a frame with soft sides shows none of them and is left out). A black bar or block over a sky fails; what is left is a pixel of a farther layer at the screen's last
+   column, masked for a few frames of an animation.
 
 Continued lines and soft sides are derived from the picture's own edge colours, not drawn by the game; criterion 4
 covers the game's draws.
 
 The command also prints the edge coverage table: for each arena (its camera limits) and scenery layer, the fewest
-margin columns its art covered and the camera range seen. Replays: MK1 `versus-walls` (both walls of the Courtyard)
-and `versus-corner-win` (a fight won near the Courtyard's right end); MK2 `finisher_replays/case00`, `case05` and
+margin columns its art covered and the camera range seen. Replays: MK1 `versus-walls` (both walls of the Courtyard),
+`versus-corner-win` (a fight won near the Courtyard's right end) and `versus-jumps` (diagonal jumps from wall to
+wall, both fighters); MK2 `finisher_replays/case00`, `case05` and
 `natural-f01-stage-a`.
