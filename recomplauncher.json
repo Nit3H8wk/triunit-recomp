@@ -12,8 +12,8 @@
     }
   ],
   "start": {
-    "program": ["bin/mk3"],
-    "args": ["{input:roms}", "factory-seed.bin", "gfx.txt", "--window"]
+    "program": ["bin/launcher"],
+    "args": ["{input:roms}"]
   },
   "saves": [
     "{install}/recompdata/saves"
