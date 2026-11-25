@@ -138,7 +138,7 @@ public:
         WidePalettes(wide_palettes);shadow_active=true;
     }
     // The frame's window offset (mk5wide::Layer::Offset) and a scroll slot's ratio, set when the shadow pass starts.
-    int WideOffset(bool shifting,int camera,int low,int high){return wide.Offset(shifting,camera,low,high);}
+    int WideOffset(bool shifting,int camera,int low,int high,bool keep){return wide.Offset(shifting,camera,low,high,keep);}
     mk5wide::Ratio& WideRatio(unsigned slot){return wide.PlaneRatio(slot);}
     bool shadow_active=false;   // no VRAM, layer or timing effect may happen while it is set
     bool wide_streaming=false;  // the real streamer is running (the shadow does not run it then)

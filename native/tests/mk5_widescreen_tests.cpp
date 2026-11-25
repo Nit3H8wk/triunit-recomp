@@ -97,6 +97,22 @@ Run Play(const std::filesystem::path& root,const std::vector<uint32_t>& tape,con
             std::ofstream out(std::filesystem::path(std::getenv("WIDE_DUMP_DIR"))/("wide-"+std::to_string(before)+".ppm"),std::ios::binary);
             out<<"P6"<<char(10)<<W<<" "<<H<<char(10)<<255<<char(10);for(auto rgb:p){out.put(char(rgb>>16));out.put(char(rgb>>8));out.put(char(rgb));}
         }
+        // Diagnostics: WIDE_DRAWS_FRAMES lists each one's staged draws per scenery layer and its measured layers.
+        if(const char* list=std::getenv("WIDE_DRAWS_FRAMES");list&&(","+std::string(list)+",").find(","+std::to_string(before)+",")!=std::string::npos){
+            std::map<int,std::array<int,4>> per;   // layer -> draws, fixed, lowest column, highest
+            for(const auto& d:layer.placed_done){auto [it,fresh]=per.try_emplace(d.layer,std::array<int,4>{0,0,d.lo,d.hi});auto& v=it->second;++v[0];v[1]+=d.fixed;v[2]=std::min<int>(v[2],d.lo);v[3]=std::max<int>(v[3],d.hi);}
+            for(const auto& [l,v]:per)std::cerr<<"draws frame "<<before<<" layer "<<l<<" n "<<v[0]<<" fixed "<<v[1]<<" x "<<v[2]<<".."<<v[3]<<char(10);
+            for(const auto& m:layer.bands_done){int lo=1<<20,hi=-(1<<20);for(const auto& r:m.rows){lo=std::min<int>(lo,r.left);hi=std::max<int>(hi,r.right);}
+                std::cerr<<"band frame "<<before<<" layer "<<m.layer<<" full "<<m.full<<" rows "<<m.rows.size()<<" left>="<<lo<<" right<="<<hi<<char(10);}
+        }
+        if(std::getenv("WIDE_TRACE")){static int was=-1;if(int(layer.arena)!=was){was=layer.arena;   // where the layer's arena flag changes
+            std::cerr<<"arena frame "<<before<<" "<<was<<" camera "<<int16_t(word(mk5widescreen::kCameraX))<<" fight "<<layer.fight<<" scene "<<layer.scene<<" builds "<<layer.builds;
+            for(const auto& m:layer.bands_done){int lo=1<<20,hi=-(1<<20),narrow=0;for(const auto& r:m.rows){lo=std::min<int>(lo,r.left);hi=std::max<int>(hi,r.right);narrow+=r.left>43&&r.right<491;}
+                std::cerr<<" L"<<m.layer<<":full "<<m.full<<" rows "<<m.rows.size()<<" narrow "<<narrow<<" "<<lo<<".."<<hi;}
+            std::cerr<<char(10);}}
+        if(std::getenv("WIDE_TRACE")){static std::array<int,3> seen{-1,0,0};   // where the mode or the camera limits change
+            if(const std::array<int,3> now{int(word(mk5widescreen::kMode)),int16_t(word(mk5widescreen::kCameraMin)),int16_t(word(mk5widescreen::kCameraMax))};now!=seen){seen=now;
+                std::cerr<<"mode frame "<<before<<" mode "<<now[0]<<" limits "<<now[1]<<".."<<now[2]<<" camera "<<int16_t(word(mk5widescreen::kCameraX))<<char(10);}}
         if(std::getenv("WIDE_TRACE")){static int last=1<<20;if(shift!=last){last=shift;
             std::cerr<<"shift frame "<<before<<" d "<<shift<<" camera "<<int16_t(word(mk5widescreen::kCameraX))<<" mode "<<word(mk5widescreen::kMode);
             for(const auto& r:layer.ratio)std::cerr<<" "<<r.plane<<"/"<<r.world;

@@ -45,11 +45,17 @@ constexpr uint32_t kCameraX=0x0105d350,kCameraMin=0x0105ecf0,kCameraMax=0x0105ed
 // The scroll longs (16.16, a camera word is the high word): the far planes' from kScrollFirst every 20h, the world's
 // (kCameraX's long, slot 7) and the front plane's (slot 8); each frame each adds its velocity long, kScrollVelocityGap
 // lower. In the fight's modes (2, 6, 7) the wide window follows the camera within the arena's limits
-// (mk5wide::WindowShift); afterwards its offset stays while the camera does (mk5wide::Layer::Offset).
+// (mk5wide::WindowShift); afterwards its offset stays while the camera does (mk5wide::Layer::Offset). The attract (1)
+// has one mode for its demo fights and its other screens: there the window follows the camera while the layer shows an
+// arena (mk5wide::Layer::arena) and the limits are an arena's: not the ones the game gives a screen without an arena
+// (kScreenMin, kScreenMax) nor wider than an arena's (mk5wide::kWorldMax).
 constexpr unsigned kScrollSlots=9,kWorldSlot=7;constexpr uint32_t kScrollVelocityGap=0x120;
 static_assert(kScrollFirst+kWorldSlot*0x20+16==kCameraX && kScrollFirst+(kScrollSlots-1)*0x20+16==kScrollLast,"MK2 scroll layout");
-constexpr unsigned kShiftModes=(1u<<2)|(1u<<6)|(1u<<7);
+constexpr unsigned kShiftModes=(1u<<2)|(1u<<6)|(1u<<7),kAttractMode=1;constexpr int kScreenMin=-1280,kScreenMax=1280;
 inline bool Shifting(unsigned mode){return mode<16&&(kShiftModes>>mode&1);}
+inline bool Demo(unsigned mode,int low,int high,bool arena){
+    return mode==kAttractMode&&arena&&low<high&&high-low<=mk5wide::kWorldMax&&!(low==kScreenMin&&high==kScreenMax);
+}
 // A list's far plane slot from its camera word's address (A13 at kCameraLoad); -1: the world's, the front's or none.
 inline int FarSlot(uint32_t camera){
     const uint32_t at=camera-16-kScrollFirst;

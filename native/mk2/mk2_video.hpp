@@ -451,8 +451,7 @@ struct BootVideo {
         auto band=mk5wide::MeasureBand(uint16_t(wide_layer),draws,meant,[&](const std::array<uint16_t,18>& r,auto&& put){
             try{Render(r[1],r,r[8],graphics,[&](size_t index,uint16_t,bool){put(index);},[]{},kCanvas,Passes::check);}   // the check pass (write false) gives every pixel
             catch(const std::runtime_error&){}},kCanvas,kOrigin);
-        if(wide_slot>=0){wide.scene|=band.full>=wide.kPicture;wide.Learn(unsigned(wide_slot),wide_camera,band);}
-        if(!band.rows.empty())wide.bands.push_back(std::move(band));
+        wide.Measured(wide_slot,wide_camera,std::move(band));
         bool placed=true;
         for(const auto& [e,fresh]:wide_plane)placed&=WidePlace({e,false,fresh&&WideOnArcade(e),wide_layer},graphics);
         wide_plane.clear();return placed;

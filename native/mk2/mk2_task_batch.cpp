@@ -223,7 +223,7 @@ static TaskBatchInit ExecuteTaskBatch(const Program& program, const BootContinua
                     namespace w=mk2::wide;auto& layer=o.out.video.wide;
                     const auto word=[&](uint32_t bit){return int16_t(o.out.main_ram[(bit-0x01000000)/16]);};
                     const unsigned mode=uint16_t(word(w::kMode));
-                    layer.Offset(w::Shifting(mode),word(w::kCameraX),word(w::kCameraMin),word(w::kCameraMax));
+                    layer.Offset(w::Shifting(mode)||w::Demo(mode,word(w::kCameraMin),word(w::kCameraMax),layer.arena),word(w::kCameraX),word(w::kCameraMin),word(w::kCameraMax),mode!=w::kAttractMode);
                     if(const auto world_velocity=int32_t(ram_long(w::kScrollFirst+w::kWorldSlot*0x20-w::kScrollVelocityGap)))
                         for(unsigned slot=0;slot<w::kScrollSlots;++slot)
                             layer.PlaneRatio(slot)=mk5wide::MeasuredRatio(int32_t(ram_long(w::kScrollFirst+slot*0x20-w::kScrollVelocityGap)),world_velocity);

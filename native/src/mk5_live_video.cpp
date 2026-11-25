@@ -367,8 +367,7 @@ bool Mk5LiveVideo::WidePlane(){
     }
     auto band=mk5wide::MeasureBand(uint16_t(wide_plane.front().layer),draws,meant,[&](const std::array<uint16_t,18>& r,auto&& put){
         DmaShape d;if(Shape(r,gfx,d))Blit(r,d,gfx,[&](size_t dest,uint16_t){put(dest);},kCanvas);},kCanvas,kOrigin);
-    if(wide_slot>=0){wide.scene|=band.full>=wide.kPicture;wide.Learn(unsigned(wide_slot),wide_camera,band);}
-    if(!band.rows.empty())wide.bands.push_back(std::move(band));
+    wide.Measured(wide_slot,wide_camera,std::move(band));
     for(const auto& e:wide_plane)WideStage(e);
     wide_plane.clear();return true;
 }

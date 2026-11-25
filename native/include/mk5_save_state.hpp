@@ -10,7 +10,7 @@
 #include "../audio/host_gain.hpp"
 #include "../mk2/mk2_state_io.hpp"
 
-inline constexpr uint32_t kMk5SaveStateVersion=13;   // 2: the floor blood's fade references (mk5_blood_shade.hpp); 3: widescreen; 4: 16:9 layer; 5: mirrored planes; 6: backdrop margins; 7: wrapping planes; 8: booked palettes; 9: far-plane lag; 10: centred window, reflected world ends; 11: margins from draws only, masks; 12: limited wide camera; 13: soft menu sides
+inline constexpr uint32_t kMk5SaveStateVersion=14;   // 2: the floor blood's fade references (mk5_blood_shade.hpp); 3: widescreen; 4: 16:9 layer; 5: mirrored planes; 6: backdrop margins; 7: wrapping planes; 8: booked palettes; 9: far-plane lag; 10: centred window, reflected world ends; 11: margins from draws only, masks; 12: limited wide camera; 13: soft menu sides; 14: attract demos
 inline constexpr const char* kMk5SaveStateRevision="mk1 5.0";
 inline constexpr const char* kMk5SaveStateMagic="TRIUNIT-MK1-STATE";
 

@@ -133,6 +133,9 @@ def run(all_replays,table):
             if r0.stdout.splitlines()[-1:]!=r1.stdout.splitlines()[-1:]:bad.append('1: the replay ends differently')
             # Each frame takes its live chunk's camera, limits and mode; a fight frame (FIGHT_MODES) is an arena's.
             limits=[(int(c[1]),int(c[6]),int(c[7]),int(c[5]),int(c[8])) for c in cw]
+            if os.environ.get('ACCEPT_TRACE'):   # diagnostics: where the mode or the camera limits change
+                for (f,low,high,camera,mode),before in zip(limits,[None]+limits):
+                    if before is None or (mode,low,high)!=(before[4],before[1],before[2]):print(f'  chunk frame {f}: mode {mode} limits {low}..{high} camera {camera}')
             def chunk(frames):
                 k=0
                 for x in frames:
