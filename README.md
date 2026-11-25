@@ -26,6 +26,7 @@
   <a href="#the-app-triunitexe">The app</a> ·
   <a href="#build-a-game-from-the-command-line">Command line</a> ·
   <a href="#recomplauncher">RecompLauncher</a> ·
+  <a href="#roadmap">Roadmap</a> ·
   <a href="#legal-notice">Legal</a>
 </p>
 
@@ -50,7 +51,8 @@ hardware (**ADSP-2105 DCS**, **6809** sound board, **YM2151**, **OKI ADPCM**).
 |---|---|
 | ⚙️ **Native, not emulated** | Each game's program becomes C++ compiled into a Windows executable on your machine. The board's hardware is modelled in the project's own C++. |
 | 🕹️ **Two editions per game** | *Arcade Original* keeps the arcade's image and audio; *Remastered* adds presentation options. Rules, timing, voices and effects are the same in both. |
-| 🖥️ **Modern display** | CRT and scanline presets, ScaleFX, CAS, SMAA, VRR, high refresh and HDR10. |
+| 🖥️ **Modern display** | Widescreen 16:9 drawn by the game itself, CRT and scanline presets, ScaleFX, CAS, SMAA, VRR, high refresh and HDR10. |
+| 🎮 **Made to be played** | Save states, run-ahead (one frame less input lag), training mode with the game's own hit boxes, arcade sticks, your own music. |
 | 🔒 **Local and verifiable** | Nothing is downloaded. Every ROM file is checked against a manifest, and the generated output is checked against pinned digests. |
 
 ## Quick start
@@ -111,12 +113,49 @@ The digests that the generated output must reproduce are in
 
 ## Features
 
+### What each game has
+
+| | Mortal Kombat | Mortal Kombat II | Mortal Kombat 3 |
+|---|:---:|:---:|:---:|
+| Arcade Original and Remastered editions | ✅ | ✅ | ✅ |
+| Widescreen 16:9 (Remastered) | ✅ | ✅ | 🔜 coming soon |
+| Floor blood that stays (Remastered) | ✅ | ✅ | ✅ |
+| Video filters, CRT presets, TV frame, VRR, HDR10 | ✅ | ✅ | ✅ |
+| Save states, run-ahead, training mode | ✅ | ✅ | ✅ |
+| Your own music (Remastered) | ✅ | ✅ | — |
+| Arcade adjustments (difficulty, coinage, free play) | ✅ | ✅ | — |
+
 ### Native C++ games
 
 Each game's program becomes C++ generated from your own ROM and compiled into a
 Windows executable on your machine. The board's hardware (TMS34010 video, DCS
 ADSP-2105 / 6809 sound, CMOS, inputs) is modelled in the project's own C++.
 No emulator runs the game.
+
+### Widescreen 16:9 (Remastered)
+
+Mortal Kombat and Mortal Kombat II can fill a 16:9 screen (*Settings > Display >
+Screen: Widescreen*, Remastered edition; off by default, which keeps the
+arcade's 4:3). Mortal Kombat 3 is next: see the [roadmap](#roadmap).
+
+- **Drawn by the game itself.** The picture gains 67 columns on each side,
+  filled with what the game draws there: scenery, fighters, projectiles and
+  blood, each layer with its own parallax. Nothing is stretched, mirrored or
+  repeated, and the pixel's shape does not change.
+- **The game does not change.** Frames, RAM, cycles and audio are identical
+  with widescreen on and off, and the 400 centre columns are the arcade's
+  picture away from an arena's ends.
+- **Full to the edges.** At an arena's end the wide picture stops with the
+  arena's art, so the sides stay full; far backdrops stop at their own ends.
+- **The sky stays the sky.** Where an arena's sky is the page's own background,
+  it goes on into the sides whatever happens on screen: diagonal jumps from
+  wall to wall, the life bars, a roof.
+- **Fast scrolling.** Scenery that enters the arcade's screen is shown at once,
+  without the short gap the arcade leaves at the edge of its 4:3 picture.
+- **Menus.** Screens without an arena (menus, story and biography pictures, the
+  select screen) get soft sides in the colour of the picture's own edge.
+
+How it works, its rules and its tests: [`docs/WIDESCREEN.md`](docs/WIDESCREEN.md).
 
 ### Floor blood that stays (Remastered)
 
@@ -146,13 +185,8 @@ layer: the game's state, rules and timing do not change.
 - **HDR10** when Windows HDR is on (paper white and peak from Windows or set by
   hand; highlight expansion in Remastered only).
 - The arcade runs at its own **54.7069** frames per second.
-- **Widescreen 16:9** (MK1 and MK2 Remastered, Video → SCREEN → Widescreen; off
-  by default, which keeps the arcade's 4:3): 67 more columns on each side, filled
-  with what the game itself draws there, each layer with its own parallax. The
-  game stays the arcade's, and so do the 400 centre columns away from an arena's
-  ends. At an end the wide picture stops with the arena's art, so the sides
-  stay full. No object is mirrored or repeated; menus get soft sides. See
-  [`docs/WIDESCREEN.md`](docs/WIDESCREEN.md).
+- **Screen** per game: the CRT television frame, plain 4:3 or
+  [widescreen 16:9](#widescreen-169-remastered).
 
 ### Controls
 
@@ -212,7 +246,7 @@ the SHA-256 that record holds. Each game has two modes:
 |---|---|---|
 | Image | Arcade image (video filters stay optional) | Video filters (scaling, CRT presets, ScaleFX, CAS, SMAA, bilateral filter) and a CRT television frame drawn in code |
 | Audio | The board's audio exactly as the arcade produces it; never reads `custom_audio/` | Optional music supplied by you (Mortal Kombat 3 Remastered changes the video only and keeps the arcade audio) |
-| Extras | — | Floor blood that stays for the whole fight (Mortal Kombat and Mortal Kombat II) |
+| Extras | — | Floor blood that stays for the whole fight (all three games); widescreen 16:9 (Mortal Kombat and Mortal Kombat II) |
 | Rules, timing, voices, effects | Arcade | Same as Arcade Original |
 
 `python tools/launcher/build.py` builds the app by hand (`--if-stale` skips an
@@ -337,11 +371,24 @@ python tools/quality/run.py fast
 files and the setup output: run the setup of the three games first.
 
 The widescreen acceptance tests (same game, exact centre away from an arena's
-ends, no duplicated margin pixels, parallax) run with one command:
+ends, no duplicated margin pixels, parallax, nothing black over the picture)
+run with one command:
 
 ```powershell
 python tools/widescreen/acceptance.py
 ```
+
+## Roadmap
+
+| Planned | Status |
+|---------|--------|
+| **Widescreen 16:9 for Mortal Kombat 3** | Coming soon. The same method as the other two games: the sides drawn by the game itself, the game unchanged. |
+| **Linux and macOS versions** | Planned ([issue #1](https://github.com/macielrecomp/triunit-recomp/issues/1)). Today the video, input and build are Windows-only. |
+
+Already shipped, most recent first: widescreen 16:9 for Mortal Kombat and
+Mortal Kombat II, training mode, run-ahead, save states, controller and arcade
+stick remapping with SOCD, the CRT television frame, HDR10, floor blood that
+stays in all three games, RecompLauncher support.
 
 ## Documentation
 

@@ -8,7 +8,7 @@ block is entering the arcade's screen and the arcade has not drawn it yet (see *
 
 ## Turning it on
 
-In the launcher, **Video → Remastered → SCREEN → Widescreen** (MK1 and MK2 only). The launcher starts the game with
+In the app, with the Remastered edition selected, **Settings > Display > Screen: Widescreen** (MK1 and MK2 only). The launcher starts the game with
 `MK1_WIDESCREEN=1` or `MK2_WIDESCREEN=1`. Without it, or in the Original edition, the game shows the arcade's 4:3 frame,
 which is also the safe fallback. Widescreen leaves out the TV frame. The CRT and Phosphor filters work at the new width
 and keep whole scanlines.
