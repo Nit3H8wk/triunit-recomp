@@ -171,17 +171,19 @@ def verify_roms(rom_dir):
 
 def run_game(game, rom_dir):
     """Run a game binary with the user's ROM directory."""
+    # Binaries are alongside the launcher in bin/
+    base = Path(__file__).parent
     game_paths = {
-        'mk1': ROOT / 'build' / 'native' / 'mk1-native' / 'product' / 'mk5-native-audio',
-        'mk2': ROOT / 'build' / 'native' / 'mk2-native' / 'product' / 'mk2-native',
-        'mk3': ROOT / 'build' / 'native' / 'mk3-native' / 'product' / 'mk3',
+        'mk1': base / 'mk5-native-audio',
+        'mk2': base / 'mk2-native',
+        'mk3': base / 'mk3',
     }
     exe = game_paths.get(game)
     if not exe or not exe.exists():
         print(f"  ✗ {game} not yet ported to Linux.")
         return False
 
-    product = exe.parent
+    product = base
     args = [str(exe), str(rom_dir), 'factory-seed.bin', 'gfx.txt', '--window']
 
     print(f"\n  → Launching {game.upper()} from {product}...")
