@@ -90,21 +90,36 @@ def build_binaries():
 
 def launcher_menu():
     """Simple menu to run built games."""
+    product = ROOT / 'build' / 'native' / 'mk3-native' / 'product'
+    exe = product / 'mk3.exe'
+    gfx = product / 'gfx.txt'
+    seed = product / 'factory-seed.bin'
+
+    print("\n=== TriUnit Recomp Launcher ===")
+    print("1. Run MK1 (not yet ported)")
+    print("2. Run MK2 (not yet ported)")
+    print("3. Run MK3")
+    print("4. Exit")
+
     while True:
-        print("\n=== TriUnit Recomp Launcher ===")
-        print("1. Run MK1")
-        print("2. Run MK2")
-        print("3. Run MK3")
-        print("4. Exit")
-        
         choice = input("Select option: ").strip()
-        
+
         if choice == '1':
-            subprocess.run([str(ROOT / 'bin/mk1')], cwd=ROOT)
+            print("MK1 is not yet built for Linux.")
         elif choice == '2':
-            subprocess.run([str(ROOT / 'bin/mk2')], cwd=ROOT)
+            print("MK2 is not yet built for Linux.")
         elif choice == '3':
-            subprocess.run([str(ROOT / 'bin/mk3')], cwd=ROOT)
+            if not exe.exists():
+                print(f"Error: {exe} not found. Run setup first.")
+                continue
+            if not gfx.exists():
+                print(f"Error: {gfx} not found. Run setup first.")
+                continue
+            if not seed.exists():
+                print(f"Error: {seed} not found. Run setup first.")
+                continue
+            print(f"\nLaunching MK3 from {product}...")
+            subprocess.run([str(exe), 'roms/mk3', 'factory-seed.bin', 'gfx.txt', '--window'], cwd=product)
         elif choice == '4':
             break
         else:

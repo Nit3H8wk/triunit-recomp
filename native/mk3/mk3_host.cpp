@@ -7,6 +7,7 @@
 #include <windows.h>
 #else
 #include "mk5_win_compat.hpp"
+#include <unistd.h>
 #endif
 #include "mk5_gamepad.hpp"
 #include "mk5_hid.hpp"
@@ -14,6 +15,7 @@
 #include <cstdio>
 #include <cwchar>
 #include <filesystem>
+#include <fstream>
 #include <stdexcept>
 
 namespace mk3host {
@@ -189,6 +191,7 @@ std::vector<uint8_t> CmosImage(const std::vector<uint16_t>& words) {
     return image;
 }
 bool ReplaceFileBytes(const std::filesystem::path& file, const std::vector<uint8_t>& bytes) {
+#ifdef _WIN32
     const fs::path pending = file.parent_path() / (L".pending-" + std::to_wstring(GetCurrentProcessId()) + L"-" + file.filename().wstring());
     HANDLE h = CreateFileW(pending.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_FLAG_WRITE_THROUGH, nullptr);
     DWORD written = 0;
@@ -198,6 +201,25 @@ bool ReplaceFileBytes(const std::filesystem::path& file, const std::vector<uint8
     if (ok && MoveFileExW(pending.c_str(), file.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) return true;
     if (h != INVALID_HANDLE_VALUE) DeleteFileW(pending.c_str());
     return false;
+#else
+    // Portable implementation: write to temp file, then atomically rename
+    const fs::path pending = file.parent_path() / (".pending-" + std::to_string(getpid()) + "-" + file.filename().string());
+    {
+        std::ofstream out(pending, std::ios::binary);
+        if (!out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()))) {
+            fs::remove(pending);
+            return false;
+        }
+        out.flush();
+    }
+    std::error_code ec;
+    fs::rename(pending, file, ec);
+    if (ec) {
+        fs::remove(pending);
+        return false;
+    }
+    return true;
+#endif
 }
 
 void SetTitle(const std::wstring& title) { if (HWND h = Window()) SetWindowTextW(h, title.c_str()); }

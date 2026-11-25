@@ -22,13 +22,19 @@ from tools.mk3 import reference,reference_dma,roms
 
 ROOT=Path(__file__).resolve().parents[2]
 SOURCES=['native/mk3/mk3_preview_main.cpp','native/mk3/mk3_host.cpp','native/mk3/mk3_adsp.cpp','native/mk2/mk2_dcs.cpp',
-         'native/src/mk5_program.cpp','native/src/mk5_window.cpp','native/src/mk5_audio_output.cpp']
+         'native/src/mk5_program.cpp','native/src/' + ('mk5_window_linux.cpp' if sys.platform.startswith('linux') else 'mk5_window.cpp'),
+         'native/src/mk5_audio_output.cpp']
+if sys.platform.startswith('linux'):
+    SOURCES.append('native/src/linux_main_wrapper.cpp')
 CMOS_PROFILE=ROOT/'build/native/mk3-native/profiles/player'   # own profile: not the seed, the installed product or MK1/MK2
 # Layer 1 video profiles per edition (the MK1/MK2 host presets: native/include/mk5_video_presets.hpp, bezel, ScaleFX).
 EDITIONS={'original':{'MK1_CRT_PRESET':'off','MK1_SCANLINES':'0','MK1_SCALEFX':'0','MK1_BEZEL':'1'},
           'remastered':{'MK1_CRT_PRESET':'bvm-1080','MK1_SCANLINES':'0','MK1_SCALEFX':'100','MK1_BEZEL':'1'}}
 UNDERRUN=re.compile(r'\{"audio_underrun_sample":\d+,"producer_gap_ms":\d+\}\r?\n?')
-LIBRARIES=['-l'+n for n in ('bcrypt','user32','gdi32','winmm','d3d12','dxgi','d3dcompiler','dxguid','windowscodecs','ole32','uuid')]
+if sys.platform.startswith('linux'):
+    LIBRARIES=['-lSDL3','-lvulkan']
+else:
+    LIBRARIES=['-l'+n for n in ('bcrypt','user32','gdi32','winmm','d3d12','dxgi','d3dcompiler','dxguid','windowscodecs','ole32','uuid')]
 
 
 class Preview:

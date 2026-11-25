@@ -43,14 +43,25 @@ BYTES_MEMORY = 0.3
 
 def available_memory():
     import ctypes
-    class Status(ctypes.Structure):
-        _fields_ = [('length', ctypes.c_uint32), ('load', ctypes.c_uint32), ('total', ctypes.c_uint64),
-                    ('available', ctypes.c_uint64), ('page_total', ctypes.c_uint64), ('page_available', ctypes.c_uint64),
-                    ('virtual_total', ctypes.c_uint64), ('virtual_available', ctypes.c_uint64), ('extended', ctypes.c_uint64)]
-    status = Status(length=ctypes.sizeof(Status))
-    if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+    if sys.platform.startswith('win'):
+        class Status(ctypes.Structure):
+            _fields_ = [('length', ctypes.c_uint32), ('load', ctypes.c_uint32), ('total', ctypes.c_uint64),
+                        ('available', ctypes.c_uint64), ('page_total', ctypes.c_uint64), ('page_available', ctypes.c_uint64),
+                        ('virtual_total', ctypes.c_uint64), ('virtual_available', ctypes.c_uint64), ('extended', ctypes.c_uint64)]
+        status = Status(length=ctypes.sizeof(Status))
+        if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+            return UNIT_MEMORY * 4
+        return int(status.available)
+    else:
+        # Linux: read from /proc/meminfo
+        try:
+            with open('/proc/meminfo') as f:
+                for line in f:
+                    if line.startswith('MemAvailable:'):
+                        return int(line.split()[1]) * 1024  # Convert kB to bytes
+        except (OSError, ValueError):
+            pass
         return UNIT_MEMORY * 4
-    return int(status.available)
 
 
 def auto_workers(units):

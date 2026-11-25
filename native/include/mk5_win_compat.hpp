@@ -116,8 +116,54 @@ struct FILE_DISPOSITION_INFO{BOOL DeleteFile;};
 #define FileDispositionInfo 0
 inline BOOL FlushFileBuffers(HANDLE){return FALSE;}
 inline BOOL SetWindowTextW(HWND,const wchar_t*){return FALSE;}
-inline UINT MultiByteToWideChar(unsigned,int,const char*,int,wchar_t*,int){return 0;}
-inline UINT WideCharToMultiByte(unsigned,int,const wchar_t*,int,char*,int,const char*,const char*){return 0;}
+inline UINT MultiByteToWideChar(unsigned codepage,int flags,const char* src,int srclen,wchar_t* dst,int dstlen) {
+    if (!src || !srclen) return 0;
+    if (!dst) {
+        // Count characters needed
+        int count = 0;
+        for (int i = 0; i < srclen && src[i]; ++i) ++count;
+        return count;
+    }
+    for (int i = 0; i < srclen && src[i]; ++i) dst[i] = static_cast<wchar_t>(src[i]);
+    if (srclen > 0) dst[srclen-1] = L'\0';
+    return srclen;
+}
+inline UINT WideCharToMultiByte(unsigned codepage,int flags,const wchar_t* src,int srclen,char* dst,int dstlen,const char* defchar,const char** used) {
+    if (!src || !srclen) return 0;
+    if (!dst) {
+        // Count bytes needed (UTF-8 encoding of each wchar)
+        int count = 0;
+        for (int i = 0; i < srclen && src[i]; ++i) {
+            unsigned long cp = static_cast<unsigned long>(src[i]);
+            if (cp < 0x80) count += 1;
+            else if (cp < 0x800) count += 2;
+            else if (cp < 0x10000) count += 3;
+            else count += 4;
+        }
+        return count;
+    }
+    int pos = 0;
+    for (int i = 0; i < srclen && src[i]; ++i) {
+        unsigned long cp = static_cast<unsigned long>(src[i]);
+        if (cp < 0x80) {
+            dst[pos++] = static_cast<char>(cp);
+        } else if (cp < 0x800) {
+            dst[pos++] = static_cast<char>(0xC0 | (cp >> 6));
+            dst[pos++] = static_cast<char>(0x80 | (cp & 0x3F));
+        } else if (cp < 0x10000) {
+            dst[pos++] = static_cast<char>(0xE0 | (cp >> 12));
+            dst[pos++] = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+            dst[pos++] = static_cast<char>(0x80 | (cp & 0x3F));
+        } else {
+            dst[pos++] = static_cast<char>(0xF0 | (cp >> 18));
+            dst[pos++] = static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+            dst[pos++] = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+            dst[pos++] = static_cast<char>(0x80 | (cp & 0x3F));
+        }
+    }
+    if (pos < dstlen) dst[pos] = '\0';
+    return pos;
+}
 struct FILE_RENAME_INFO{BOOL ReplaceIfExists;HANDLE RootDirectory;wchar_t* FileName;unsigned long FileNameLength;};
 #define FileRenameInfo 2
 #define ERROR_ACCESS_DENIED 5
