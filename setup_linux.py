@@ -1,33 +1,38 @@
 #!/usr/bin/env python3
-"""Interactive Linux launcher for TriUnit Recomp — MK1, MK2, MK3."""
-import subprocess
+"""CLI-only Linux launcher for TriUnit Recomp — MK1, MK2, MK3.
+
+Sandbox-safe: no GUI file dialogs (compatible with Recomplauncher/WebKit).
+ROM directory is set via:
+  1. Command-line argument:   ./run.sh /path/to/roms
+  2. Config file:             ~/.config/triunit-recomp/roms.path
+  3. CLI prompt (last resort)
+"""
 import os
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).parent.resolve()
+BASE = Path(__file__).parent.resolve()
+CONFIG_DIR = Path.home() / '.config' / 'triunit-recomp'
+CONFIG_FILE = CONFIG_DIR / 'roms.path'
 
 # ── ROM requirements ──────────────────────────────────────────────────────
 
 MK_ROMS = {
-    'mk.zip':   'Mortal Kombat (1994) — 1MB',
-    'mk2.zip':  'Mortal Kombat 2 (1994) — 1MB',
+    'mk.zip':   'Mortal Kombat (1994)',
+    'mk2.zip':  'Mortal Kombat 2 (1994)',
 }
 
 MK3_ROMS = {
-    'mk3.zip':     'Mortal Kombat 3 (1995) — 1MB',
-    'mk3r21.zip':  'Mortal Kombat 3 R2.1 — 1MB',
-    'umk3.zip':    'Ultimate Mortal Kombat 3 — 1MB',
+    'mk3.zip':     'Mortal Kombat 3 (1995)',
+    'mk3r21.zip':  'Mortal Kombat 3 R2.1',
+    'umk3.zip':    'Ultimate Mortal Kombat 3',
 }
 
 ALL_ROMS = {**MK_ROMS, **MK3_ROMS}
 
-REQUIRED = ['mk.zip', 'mk2.zip', 'mk3.zip']
-OPTIONAL = ['mk3r21.zip', 'umk3.zip', 'umk3.zip']
-
 
 def show_rom_requirements():
-    """Display what ROM files are needed and where to get them."""
+    """Display what ROM files are needed."""
     print("\n" + "=" * 60)
     print("  ROM FILES REQUIRED")
     print("=" * 60)
@@ -46,99 +51,50 @@ def show_rom_requirements():
     for name in ['mk3r21.zip', 'umk3.zip']:
         print(f"    • {name:20s} {MK3_ROMS[name]}")
     print()
-    print("  Tips:")
-    print("    • Use MAME set names: 'mk', 'mk2', 'mk3', 'mk3r21', 'umk3'")
-    print("    • ROMs go in a single directory — structure doesn't matter")
-    print("    • The launcher will verify which files are present")
+    print("  How to set your ROM directory:")
+    print(f"    1. Pass as argument:     ./run.sh /path/to/roms")
+    print(f"    2. Create config file:   echo '/path/to/roms' > {CONFIG_FILE}")
     print()
 
 
-def get_rom_directory():
-    """Prompt user to select ROM directory using native file chooser."""
-    # Try KDE kdialog first (best for KDE/Plasma)
-    try:
-        result = subprocess.run(
-            ['kdialog', '--getexistingdir', '--title=Select ROM Directory'],
-            capture_output=True, text=True, timeout=30
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return Path(result.stdout.strip())
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+def get_rom_directory(argv):
+    """Resolve ROM directory from arg, config, or prompt. No GUI calls."""
+    # 1. Command-line argument
+    if len(argv) > 1 and argv[1]:
+        p = Path(argv[1]).expanduser()
+        if p.is_dir():
+            return p
+        print(f"  Warning: {p} is not a directory, falling through...")
 
-    # Try GNOME zenity (works on GNOME, KDE, XFCE, etc.)
-    try:
-        result = subprocess.run(
-            ['zenity', '--file-selection', '--title=Select ROM Directory', '--directory'],
-            capture_output=True, text=True, timeout=30
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return Path(result.stdout.strip())
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+    # 2. Config file
+    if CONFIG_FILE.exists():
+        content = CONFIG_FILE.read_text().strip()
+        if content:
+            p = Path(content).expanduser()
+            if p.is_dir():
+                return p
+            print(f"  Warning: config points to {p} which doesn't exist, falling through...")
 
-    # Try KDE Dolphin (if launched as file picker)
+    # 3. CLI prompt (no GUI)
+    print("No ROM directory set.")
+    print(f"  Create a config file:  echo '/path/to/roms' > {CONFIG_FILE}")
+    print()
+    print("  Or enter path now:")
     try:
-        result = subprocess.run(
-            ['dolphin', '--select', '~'],
-            capture_output=True, text=True, timeout=30,
-            env={**os.environ, 'QT_QPA_PLATFORM': 'xcb'}
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return Path(result.stdout.strip())
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-
-    # Try Thunar (XFCE)
+        raw = input("> ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return None
+    if not raw:
+        return None
+    p = Path(raw).expanduser()
+    # Save to config for next time
     try:
-        result = subprocess.run(
-            ['thunar', '--select', '~'],
-            capture_output=True, text=True, timeout=30
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return Path(result.stdout.strip())
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        CONFIG_FILE.write_text(str(p))
+        print(f"  Saved to {CONFIG_FILE}")
+    except OSError:
         pass
-
-    # Try PCManFM (LXDE/LXQt)
-    try:
-        result = subprocess.run(
-            ['pcmanfm', '--desktop-profile', '--select', '~'],
-            capture_output=True, text=True, timeout=30
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return Path(result.stdout.strip())
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-
-    # Try Nemo (Cinnamon)
-    try:
-        result = subprocess.run(
-            ['nemo', '--select', '~'],
-            capture_output=True, text=True, timeout=30
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return Path(result.stdout.strip())
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-
-    # Try tkinter (works on most DEs with X11/Wayland)
-    try:
-        import tkinter as tk
-        from tkinter import filedialog
-        root = tk.Tk()
-        root.withdraw()
-        root.call('tk', 'scaling', 1.5)  # Better HiDPI support
-        d = filedialog.askdirectory(title="Select ROM Directory")
-        root.destroy()
-        if d: return Path(d)
-    except ImportError:
-        pass
-
-    # CLI fallback
-    print("GUI file browser not available.")
-    print("\nEnter path to ROM directory (or Ctrl+C to cancel):")
-    return Path(input("> ").strip())
+    return p
 
 
 def verify_roms(rom_dir):
@@ -147,8 +103,7 @@ def verify_roms(rom_dir):
     mk3 = [r for r in MK3_ROMS if r not in mk]
 
     print(f"\nChecking ROMs in {rom_dir}...")
-    found_mk = []
-    found_mk3 = []
+    found_mk, found_mk3 = [], []
 
     for rom in mk:
         if (rom_dir / rom).exists():
@@ -171,31 +126,33 @@ def verify_roms(rom_dir):
 
 def run_game(game, rom_dir):
     """Run a game binary with the user's ROM directory."""
-    # Binaries are alongside the launcher in bin/
-    base = Path(__file__).parent
     game_paths = {
-        'mk1': base / 'mk5-native-audio',
-        'mk2': base / 'mk2-native',
-        'mk3': base / 'mk3',
+        'mk1': BASE / 'mk5-native-audio',
+        'mk2': BASE / 'mk2-native',
+        'mk3': BASE / 'mk3',
     }
     exe = game_paths.get(game)
     if not exe or not exe.exists():
         print(f"  ✗ {game} not yet ported to Linux.")
         return False
 
-    product = base
     args = [str(exe), str(rom_dir), 'factory-seed.bin', 'gfx.txt', '--window']
-
-    print(f"\n  → Launching {game.upper()} from {product}...")
-    result = subprocess.run(args, cwd=product)
+    print(f"\n  → Launching {game.upper()} from {BASE}...")
+    result = subprocess_run(args, cwd=BASE)
     return result.returncode == 0
+
+
+def subprocess_run(args, cwd=None):
+    """Thin wrapper so we can stub in tests if needed."""
+    import subprocess
+    return subprocess.run(args, cwd=cwd)
 
 
 _rom_dir = None
 
 
 def launcher_menu():
-    """Menu to run MK1, MK2, or MK3."""
+    """Menu to run MK1, MK2, or MK3. CLI-only, no GUI."""
     global _rom_dir
     print("\n" + "=" * 40)
     print("  TriUnit Recomp Launcher")
@@ -211,19 +168,30 @@ def launcher_menu():
     games = {'1': 'mk1', '2': 'mk2', '3': 'mk3'}
 
     while True:
-        choice = input("  Select option: ").strip()
-        if choice == '5': break
+        try:
+            choice = input("  Select option: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            break
+
+        if choice == '5' or not choice:
+            break
         elif choice == '4':
-            _rom_dir = get_rom_directory()
-            print(f"  ROM directory set to: {_rom_dir}")
+            p = get_rom_directory([])
+            if p:
+                _rom_dir = p
+                print(f"  ROM directory set to: {_rom_dir}")
             continue
+
         game = games.get(choice)
         if not game:
             print("  Invalid option")
             continue
 
         if not _rom_dir:
-            _rom_dir = get_rom_directory()
+            p = get_rom_directory([])
+            if not p:
+                break
+            _rom_dir = p
 
         if not Path(_rom_dir).exists():
             print(f"  Error: {_rom_dir} does not exist")
@@ -243,10 +211,13 @@ def launcher_menu():
 def main():
     global _rom_dir
     print("=== TriUnit Recomp Linux Launcher ===\n")
-
     show_rom_requirements()
 
-    _rom_dir = get_rom_directory()
+    _rom_dir = get_rom_directory(sys.argv)
+    if not _rom_dir:
+        print("\n  No ROM directory provided. Exiting.")
+        return 1
+
     if not Path(_rom_dir).exists():
         print(f"\nError: Directory {_rom_dir} does not exist")
         return 1
@@ -257,6 +228,8 @@ def main():
         return 1
 
     launcher_menu()
+    return 0
 
 
-main()
+if __name__ == '__main__':
+    sys.exit(main())
