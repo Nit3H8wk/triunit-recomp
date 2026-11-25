@@ -4,7 +4,7 @@
     python tools/mk3/preview_install.py --swap-plan  # DRY-RUN: what --install changes on this root, and the way back
     python tools/mk3/preview_install.py --install    # installs (needs the user's OK), receipt build/native/mk3-native/install.json
 
-Package (the build/native/mk2-native-v1 pattern): build/native/mk3-native/product with mk3.exe, package.ini
+Package (the build/native/mk2-native-v1 pattern): build/native/mk3-native/product with mk3, package.ini
 (kind=mk3-native, readiness=product), hard-linked authenticated ROMs, roms.txt, gfx.txt, factory-seed.bin,
 package-identity.json and profiles/player; the MK3 launcher profile in build/native/mk3-native/profile/launcher.ini; logs in
 logs/mk3-native.
@@ -28,7 +28,7 @@ ROOT=preview.ROOT
 STAGE=Path('build/native/mk3-native')
 PRODUCT=STAGE/'product'
 PROFILE=STAGE/'profile/launcher.ini'
-EXE='mk3.exe'
+EXE='mk3'
 LABEL='MK3 nativo'
 PLAYER_CMOS=Path('profiles/player/cmos.bin')
 LAUNCHER=ROOT/'triunit.exe'
@@ -36,7 +36,7 @@ LIBS=['d3d12','dxgi','d3dcompiler','dxguid','windowscodecs','ole32','uuid','gdi3
 arguments=runpy.run_path(str(ROOT/'tools/launcher_backend_build.py'))['arguments']
 # Hashed before and after --install: the MK1/MK2 profiles and packages.
 PRESERVED=['build/native/manual-temporary-8-20261025/profile','build/native/mk2-arcade-v1/profile','build/native/mk2-native-v1/product/profiles',
-           'build/native/mk2-native-v1/product/native-package.ini','build/native/mk2-native-v1/product/mk2-native.exe','build/native/mk2-arcade-v1/product/manifest.json']
+           'build/native/mk2-native-v1/product/native-package.ini','build/native/mk2-native-v1/product/mk2-native','build/native/mk2-arcade-v1/product/manifest.json']
 KEPT=['triunit.exe','build/native/mk2-native-v1/product','build/native/mk2-arcade-v1/product','build/native/manual-temporary-8-20261025/profile']
 IDENTITY='package-identity.json'
 
@@ -165,7 +165,7 @@ def swap_plan():
         change=['triunit.exe from the current tree (MK3 card: 1 native Original, 2 native Remastered)',
                 f'{PRODUCT.as_posix()} rebuilt (write_product); the installed one moves to {STAGE.as_posix()}/rollback/product-<time>',
                 f'{(PRODUCT/PLAYER_CMOS).as_posix()} copied from the previous package (carry); {PROFILE.as_posix()} is not touched'],
-        steps=['move the installed package to the rollback folder; build mk3.exe (tools/mk3/preview.py) and write the package',
+        steps=['move the installed package to the rollback folder; build mk3 (tools/mk3/preview.py) and write the package',
                'build triunit.exe in scratch (LIBS, tools/launcher_backend_build.py arguments)',
                f'keep the current launcher as {rollback.as_posix()} (copy only if its SHA-256 differs)',
                'replace triunit.exe and compare its SHA-256 with the scratch build',

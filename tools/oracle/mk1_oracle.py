@@ -630,7 +630,7 @@ def product_control(scratch,env,graphs=None,name='cand'):
     """original-product-control.py mk1_case: installed engine vs a candidate built from the current tree, same
     decompressor route and arguments; plus the headless main-loop route of tools/quality/run.py headless."""
     from tools.quality import cpp_build
-    installed=Path(os.environ.get('MK1_ORACLE_INSTALLED',ROOT/'build/native/manual-temporary-8-20261025/product/mk5-native-audio.exe'))
+    installed=Path(os.environ.get('MK1_ORACLE_INSTALLED',ROOT/'build/native/manual-temporary-8-20261025/product/mk5-native-audio'))
     candidate=scratch/f'mk1-{name}.exe'
     flags=['-std=c++17','-O2','-DUNICODE','-D_UNICODE','-municode','-I'+str(ROOT/'native/include'),'-I'+str(ROOT/'native/audio'),
            '-Wall','-Wextra','-Werror','-Wno-unused-parameter','-Wno-missing-field-initializers','-pthread','-static']
@@ -738,7 +738,7 @@ def native_task_entry(exe,image,scratch):
 
 def engine_path():
     from tools.setup import paths
-    exe=paths.output('mk1')/'mk5-native-audio.exe'
+    exe=paths.output('mk1')/'mk5-native-audio'
     if not exe.is_file():raise SystemExit('MK1 engine missing: python tools/setup/setup.py --game mk1 --roms <folder>')
     return exe
 

@@ -25,8 +25,8 @@ def main():
     try:
         built=build.engine(out)
         if not built['passed']:raise RuntimeError(built.get('output_tail',''))
-        PRODUCT.mkdir(parents=True,exist_ok=True);shutil.copy2(out/'mk5-native-audio.exe',PRODUCT/'mk5-native-audio.exe')
-        rec.update(passed=True,sha256=sha(PRODUCT/'mk5-native-audio.exe'),compiler_sha256=sha(q.DEFAULT_CC),generated=mk1.files(),
+        PRODUCT.mkdir(parents=True,exist_ok=True);shutil.copy2(out/'mk5-native-audio',PRODUCT/'mk5-native-audio')
+        rec.update(passed=True,sha256=sha(PRODUCT/'mk5-native-audio'),compiler_sha256=sha(q.DEFAULT_CC),generated=mk1.files(),
                    game_rules_changed=False)
     except BaseException as e:
         rec['error']=str(e)[-4000:];raise

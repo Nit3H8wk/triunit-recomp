@@ -6,12 +6,12 @@
                                                           # [Video.Preview.Remastered] migration, every native MK1_* value
                                                           # (video, GameVolume, AudioLatency), MK3 Settings controls, the D7
                                                           # Settings text, package-identity.json against the staged files
-    python tools/launcher_mk3_engine_contract.py --live   # also both native editions through the backend (built mk3.exe, windows)
-    python tools/launcher_mk3_engine_contract.py --live --exe build/native/mk3-native/product/mk3.exe
-                                                          # stages a copy of an existing mk3.exe instead of building
+    python tools/launcher_mk3_engine_contract.py --live   # also both native editions through the backend (native mk3, windows)
+    python tools/launcher_mk3_engine_contract.py --live --exe build/native/mk3-native/product/mk3
+                                                          # stages a copy of an existing mk3 instead of building
 
-The UI run (native/tests/mk3_launcher_ui_tests.cpp) stages its own binary as mk3.exe, so the launcher's real MK3 launch
-path runs and the probe records the edition and every MK1_* value it received. --live stages the real mk3.exe
+The UI run (native/tests/mk3_launcher_ui_tests.cpp) stages its own binary as mk3, so the launcher's real MK3 launch
+path runs and the probe records the edition and every MK1_* value it received. --live stages the real mk3
 (tools/mk3/preview.py) and runs native/tests/mk3_launcher_tests.cpp native against the staged root.
 """
 from pathlib import Path

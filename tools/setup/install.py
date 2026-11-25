@@ -33,8 +33,8 @@ def _retire(product):
 def mk1(out):
     from tools.mk1.product import build
     _retire(build.PRODUCT) # before the package manifest lists the product files
-    if not build.main('setup',out/'mk5-native-audio.exe'):raise RuntimeError('MK1 package failed (build/native/manual-temporary-8-20261025/package.json)')
-    engine=build.PRODUCT/'mk5-native-audio.exe'
+    if not build.main('setup',out/'mk5-native-audio'):raise RuntimeError('MK1 package failed (build/native/manual-temporary-8-20261025/package.json)')
+    engine=build.PRODUCT/'mk5-native-audio'
     return dict(product=build.PRODUCT.relative_to(ROOT).as_posix(),executable_sha256=q.sha(engine))
 
 
@@ -49,16 +49,16 @@ def mk2(out):
         if not target.exists():os.link(ROOT/'roms/mk2'/rom['path'],target)
         if q.sha(target)!=rom['sha256']:raise RuntimeError('MK2 package ROM differs: '+rom['path'])
     _replace(ROOT/'native/runtime/LICENSE-video.txt',product/'LICENSE-video.txt')
-    _replace(out/'mk2-native.exe',product/'mk2-native.exe');_retire(product)
+    _replace(out/'mk2-native',product/'mk2-native');_retire(product)
     seed=product/'factory-seed.bin';_unlinked(seed)
     seed.with_name('factory-seed.partial').write_bytes(profile._read(profile.FACTORY_SEED,factory=True));os.replace(seed.with_name('factory-seed.partial'),seed)
-    executable=q.sha(product/'mk2-native.exe')
-    if executable!=q.sha(out/'mk2-native.exe'):raise RuntimeError('MK2 package executable differs from the setup build')
+    executable=q.sha(product/'mk2-native')
+    if executable!=q.sha(out/'mk2-native'):raise RuntimeError('MK2 package executable differs from the setup build')
     # The fields of tools/mk2/package_native.py (native-playable package read by the launcher's nativeSpec).
     fields=dict(format='1',kind='mk2-native-static-cpp17',readiness='native-playable',source='native/mk2/mk2_native_check.cpp',
         **{k:sources[k] for k in ('source_sha256','runtime_sources_sha256','core_overlays_sha256')},
         rom_profile_sha256=q.sha(run.MANIFEST),first_fight_pcs='63906',chunk_request_cycles='2000000',cooperative_slack_cycles='2000000',
-        chunk_wall_timeout_ms='10000',bounded_observations='true',executable='mk2-native.exe',executable_sha256=executable,
+        chunk_wall_timeout_ms='10000',bounded_observations='true',executable='mk2-native',executable_sha256=executable,
         rom_directory='roms',profile_directory='profiles/player',factory_seed='factory-seed.bin')
     manifest=product/'native-package.ini';pending=product/'native-package.pending';_unlinked(manifest);_unlinked(pending)
     pending.write_text(''.join(f'{k}={v}\n' for k,v in fields.items()),encoding='utf8');os.replace(pending,manifest)
@@ -68,7 +68,7 @@ def mk2(out):
 def mk3(out):
     from tools.mk3 import preview_install as package
     from tools.quality import temporary_tree
-    stage=ROOT/package.STAGE;product=ROOT/package.PRODUCT;exe=out/'mk3.exe';units=sorted((out/'tms').glob('*.cpp'))
+    stage=ROOT/package.STAGE;product=ROOT/package.PRODUCT;exe=out/'mk3';units=sorted((out/'tms').glob('*.cpp'))
     _unlinked(stage);stage.mkdir(parents=True,exist_ok=True)
     if not product.exists():info=package.write_product(exe,ROOT,units)
     else:

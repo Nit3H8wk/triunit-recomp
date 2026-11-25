@@ -1,4 +1,4 @@
-"""MK3 2.1 native (J2; the file keeps its J2 name): build native/mk3/mk3_preview_main.cpp as mk3.exe with the whole-image TMS units and run it.
+"""MK3 2.1 native (J2; the file keeps its J2 name): build native/mk3/mk3_preview_main.cpp as mk3 with the whole-image TMS units and run it.
 
 The build reuses tools/mk3/generate.py (one scan, units written into the scratch tree) and the bounded object cache of
 tools/quality/cpp_build.py with generate.FLAGS (as generate.build), so the units hit the same cache entries; the shared MK1/MK2 host (native/src/mk5_window.cpp, mk5_audio_output.cpp) links with the MK2 package libraries.
@@ -38,7 +38,7 @@ else:
 
 
 class Preview:
-    """Context manager: builds mk3.exe once into a scratch tree; run() executes it there."""
+    """Context manager: builds mk3 once into a scratch tree; run() executes it there."""
     def __enter__(self):
         self._tree=q.scratch_tree();self.temp,self.cleanup=self._tree.__enter__()
         try:
@@ -49,7 +49,7 @@ class Preview:
             rows,_=generate.scan(rom);units,self.generation=generate.write(self.temp,rom,rows);self.units=units
             self.generation_seconds=round(time.perf_counter()-started,3)
             cc=q.DEFAULT_CC;self.env={'PATH':str(cc.parent)+os.pathsep+os.environ['PATH']}
-            self.exe=self.temp/'mk3.exe'
+            self.exe=self.temp/'mk3'
             from tools.setup import mk3 as setup_mk3
             flags=[*generate.FLAGS,'-I'+str(ROOT/'native/include'),'-I'+str(ROOT/'native/mk3'),'-I'+str(ROOT/'native/mk2'),setup_mk3.include()]
             sources=[ROOT/p for p in SOURCES]+[ROOT/'native/mk3'/n for n in generate.RUNTIME]+list(units)

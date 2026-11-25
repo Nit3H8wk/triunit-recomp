@@ -59,7 +59,7 @@ def main(installation_root=ROOT):
             backend=(ROOT/'native/launcher/launcher_backend.cpp').read_text(encoding='utf8')
             for key in ('source_sha256','runtime_sources_sha256','core_overlays_sha256'):
                 assert before[key]in backend,'Launcher does not pin these sources: '+key
-            exe=scratch/'mk2-native.exe'
+            exe=scratch/'mk2-native'
             build=q.command([q.DEFAULT_CC,*FLAGS,'-static',*[ROOT/p for p in SOURCES],*LIBRARIES,
                 '-Wl,--no-insert-timestamp','-o',exe],scratch,cwd=ROOT,env=env,timeout=240)
             r['native_build']=q.compact(build);assert build['passed'],build['stdout']
@@ -78,7 +78,7 @@ def main(installation_root=ROOT):
                 assert q.sha(target)==rom['sha256']
             video_notice=product/'LICENSE-video.txt'
             unlinked(video_notice);shutil.copy2(ROOT/'native/runtime/LICENSE-video.txt',video_notice)
-            for source,target in ((exe,product/'mk2-native.exe'),(launcher,installation_root/'triunit.exe')):
+            for source,target in ((exe,product/'mk2-native'),(launcher,installation_root/'triunit.exe')):
                 unlinked(target);shutil.copy2(source,target)
             seed_path=product/'factory-seed.bin';unlinked(seed_path)
             if seed_path.exists():assert seed_path.read_bytes()==seed
@@ -87,12 +87,12 @@ def main(installation_root=ROOT):
                 source='native/mk2/mk2_native_check.cpp',**{k:before[k]for k in ('source_sha256','runtime_sources_sha256','core_overlays_sha256')},
                 rom_profile_sha256=q.sha(run.MANIFEST),first_fight_pcs='63906',chunk_request_cycles='2000000',
                 cooperative_slack_cycles='2000000',chunk_wall_timeout_ms='10000',bounded_observations='true',
-                executable='mk2-native.exe',executable_sha256=q.sha(exe),rom_directory='roms',
+                executable='mk2-native',executable_sha256=q.sha(exe),rom_directory='roms',
                 profile_directory='profiles/player',factory_seed='factory-seed.bin')
             manifest=product/'native-package.ini';unlinked(manifest)
             pending=product/'native-package.pending';unlinked(pending)
             pending.write_text(''.join(f'{k}={v}\n'for k,v in fields.items()),encoding='utf8');os.replace(pending,manifest)
-            r.update(passed=True,executable=str(product/'mk2-native.exe'),executable_sha256=q.sha(exe),
+            r.update(passed=True,executable=str(product/'mk2-native'),executable_sha256=q.sha(exe),
                 launcher_sha256=q.sha(launcher),manifest_sha256=q.sha(manifest))
     except Exception as error:r['error']=repr(error)
     try:

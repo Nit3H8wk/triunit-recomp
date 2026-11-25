@@ -91,7 +91,7 @@ def build_binaries():
 def launcher_menu():
     """Simple menu to run built games."""
     product = ROOT / 'build' / 'native' / 'mk3-native' / 'product'
-    exe = product / 'mk3.exe'
+    exe = product / 'mk3'
     gfx = product / 'gfx.txt'
     seed = product / 'factory-seed.bin'
 

@@ -180,21 +180,21 @@ class InstallTests(unittest.TestCase):
         from tools.mk3 import preview_install as package
         from tools.quality import run as q
         with tempfile.TemporaryDirectory() as temp:
-            root=Path(temp);out=root/'out';out.mkdir();(out/'mk3.exe').write_bytes(b'new build')
+            root=Path(temp);out=root/'out';out.mkdir();(out/'mk3').write_bytes(b'new build')
             product=root/package.PRODUCT;(product/'profiles/player').mkdir(parents=True)
-            (product/'profiles/player/cmos.bin').write_bytes(b'player save');(product/'mk3.exe').write_bytes(b'old build')
+            (product/'profiles/player/cmos.bin').write_bytes(b'player save');(product/'mk3').write_bytes(b'old build')
             (product/'package.ini').write_text('old');(product/'arcade-bezel.png').write_bytes(b'old neon frame')
             def write_product(exe,where,units):
-                fresh=where/package.PRODUCT;(fresh/'profiles/player').mkdir(parents=True);shutil.copy2(exe,fresh/'mk3.exe')
+                fresh=where/package.PRODUCT;(fresh/'profiles/player').mkdir(parents=True);shutil.copy2(exe,fresh/'mk3')
                 (fresh/'package.ini').write_text('new');(fresh/'profiles/player/cmos.bin').write_bytes(b'seed')
-                return dict(executable_sha256=q.sha(fresh/'mk3.exe'),files=3)
+                return dict(executable_sha256=q.sha(fresh/'mk3'),files=3)
             with mock.patch.object(install,'ROOT',root),mock.patch.object(package,'write_product',write_product):
                 found=install.mk3(out)
-            self.assertEqual(((product/'mk3.exe').read_bytes(),(product/'package.ini').read_text()),(b'new build','new'))
+            self.assertEqual(((product/'mk3').read_bytes(),(product/'package.ini').read_text()),(b'new build','new'))
             self.assertEqual((product/'profiles/player/cmos.bin').read_bytes(),b'player save')
             self.assertFalse((product/'arcade-bezel.png').exists())   # the old frame image is retired
             self.assertEqual([p.name for p in (root/package.STAGE).iterdir()],['product'])   # temporary root removed
-            self.assertEqual(found['executable_sha256'],q.sha(out/'mk3.exe'))
+            self.assertEqual(found['executable_sha256'],q.sha(out/'mk3'))
 
 
 class VersionTests(unittest.TestCase):

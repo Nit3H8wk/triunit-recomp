@@ -99,9 +99,9 @@ the shared host in `native/src/`.
 
 | Game | Script | Output exe | Key flags / libs |
 |------|--------|-----------|------------------|
-| **MK1** | `tools/mk1/build.py` | `mk5-native-audio.exe` | `-std=c++17 -O2 -DUNICODE -D_UNICODE -Wall -Wextra -Werror -pthread -municode`; libs: `-static -lbcrypt -luser32 -lgdi32 -lwinmm -ld3d12 -ldxgi -ld3dcompiler -ldxguid -lwindowscodecs -lole32 -luuid -s -Wl,--no-insert-timestamp` |
-| **MK2** | `tools/mk2/package_native.py` | `mk2-native.exe` (+ `triunit.exe`) | `-std=c++17 -O1 -Wall -Wextra -Werror -pthread -municode`; libs: `bcrypt user32 gdi32 winmm d3d12 dxgi d3dcompiler dxguid windowscodecs ole32 uuid` |
-| **MK3** | `tools/mk3/preview.py` / `setup_mk3()` in `setup.py` | `mk3.exe` | FLAGS from `tools/mk3/generate.py`: `-std=c++17 -O2 -Wall -Wextra -Werror -static -municode`; libs same as MK2 |
+| **MK1** | `tools/mk1/build.py` / `tools/mk1/product/build.py` | `mk5-native-audio` | `-std=c++17 -O2 -Wall -Wextra -Werror -pthread -static`; libs: SDL3, Vulkan (Linux) / D3D12, bcrypt, etc. (Windows) |
+| **MK2** | `tools/mk2/package_native.py` | `mk2-native` (+ `triunit.exe` launcher) | `-std=c++17 -O1 -Wall -Wextra -Werror -pthread -static`; libs: SDL3, Vulkan (Linux) / bcrypt, user32, etc. (Windows) |
+| **MK3** | `tools/mk3/preview.py` / `setup_mk3()` in `setup.py` | `mk3` | FLAGS from `tools/mk3/generate.py`: `-std=c++17 -O2 -Wall -Wextra -Werror -static`; libs same as MK2 (SDL3, Vulkan) |
 
 ### Setup orchestrator
 - **`tools/setup/setup.py`** — 8-step pipeline: verify → stage → decoder →

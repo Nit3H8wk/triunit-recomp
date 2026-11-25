@@ -281,21 +281,21 @@ def setup_mk3(roms,compile_exe):
         flags=[*generate.FLAGS,'-I'+str(ROOT/'native/include'),'-I'+str(ROOT/'native/mk3'),'-I'+str(ROOT/'native/mk2'),mk3.include()]
         sources=[ROOT/p for p in preview.SOURCES]+[ROOT/'native/mk3'/n for n in generate.RUNTIME]+sorted(units_dir.glob('*.cpp'))
         key=compile_inputs([*flags,*sources,*preview.LIBRARIES],[*units_dir.glob('*'),*(adsp/n for n in mk3.ADSP_INCS)])
-        old=previous('mk3',key,out/'mk3.exe')
+        old=previous('mk3',key,out/'mk3')
         if old:receipt['compile']=dict(old['compile'],reused=True)
         else:
             if scratch.exists():shutil.rmtree(scratch)
             scratch.mkdir()
             try:
                 cc=q.DEFAULT_CC;env={'PATH':str(cc.parent)+os.pathsep+os.environ['PATH']}
-                built=cpp_build.build(cc,flags,sources,preview.LIBRARIES,scratch/'mk3.exe',scratch,env=env,timeout=3600,compile_from_scratch=True)
+                built=cpp_build.build(cc,flags,sources,preview.LIBRARIES,scratch/'mk3',scratch,env=env,timeout=3600,compile_from_scratch=True)
                 if not built['passed']:raise build_failed(built)
-                os.replace(scratch/'mk3.exe',out/'mk3.exe')
+                os.replace(scratch/'mk3',out/'mk3')
             finally:shutil.rmtree(scratch,ignore_errors=True)
-            receipt['compile']=dict(executable=str((out/'mk3.exe').relative_to(ROOT)).replace('\\','/'),sha256=_sha(out/'mk3.exe'),
+            receipt['compile']=dict(executable=str((out/'mk3').relative_to(ROOT)).replace('\\','/'),sha256=_sha(out/'mk3'),
                                     seconds=round(time.perf_counter()-t,1),workers=built.get('workers'),inputs=key)
         # The factory CMOS seed: the program's own restore from a cleared CMOS, run by the executable just built.
-        progress('seed');receipt['seed']=kept_seed(old) or mk3.factory_seed(out/'mk3.exe')
+        progress('seed');receipt['seed']=kept_seed(old) or mk3.factory_seed(out/'mk3')
         receipt['accept'].update(accept('mk3',{'native/runtime/mk3-factory-default-cmos.bin':receipt['seed']['sha256']}))
     return receipt
 
@@ -321,19 +321,19 @@ def setup_mk2(roms,compile_exe):
         progress('compile');t=time.perf_counter();scratch=out/'build'
         args=[*package_native.FLAGS,'-static',*[ROOT/p for p in package_native.SOURCES],*package_native.LIBRARIES,'-Wl,--no-insert-timestamp']
         key=compile_inputs(args,[*out.glob('*.inc'),*out.glob('*.cpp')])
-        old=previous('mk2',key,out/'mk2-native.exe')
+        old=previous('mk2',key,out/'mk2-native')
         if old:receipt['compile']=dict(old['compile'],reused=True)
         else:
             if scratch.exists():shutil.rmtree(scratch)
             scratch.mkdir()
             try:
                 env={'PATH':str(q.DEFAULT_CC.parent)+os.pathsep+os.environ['PATH'],'TEMP':str(scratch),'TMP':str(scratch)}
-                built=q.command([q.DEFAULT_CC,*args,'-o',scratch/'mk2-native.exe'],scratch,cwd=ROOT,env=env,timeout=3600)
+                built=q.command([q.DEFAULT_CC,*args,'-o',scratch/'mk2-native'],scratch,cwd=ROOT,env=env,timeout=3600)
                 if not built['passed']:raise build_failed(built)
-                os.replace(scratch/'mk2-native.exe',out/'mk2-native.exe')
+                os.replace(scratch/'mk2-native',out/'mk2-native')
             finally:shutil.rmtree(scratch,ignore_errors=True)
-            receipt['compile']=dict(executable=str((out/'mk2-native.exe').relative_to(ROOT)).replace('\\','/'),
-                                    sha256=_sha(out/'mk2-native.exe'),seconds=round(time.perf_counter()-t,1),
+            receipt['compile']=dict(executable=str((out/'mk2-native').relative_to(ROOT)).replace('\\','/'),
+                                    sha256=_sha(out/'mk2-native'),seconds=round(time.perf_counter()-t,1),
                                     workers=built.get('workers'),inputs=key)
     return receipt
 
@@ -353,7 +353,7 @@ def setup_mk1(roms,compile_exe):
     receipt['generate_seconds']=round(time.perf_counter()-t,1)
     if compile_exe:
         from tools.mk1 import build
-        progress('compile');t=time.perf_counter();exe=out/'mk5-native-audio.exe'
+        progress('compile');t=time.perf_counter();exe=out/'mk5-native-audio'
         key=compile_inputs([*build.FLAGS,*build.sources(),*build.LIBRARIES],[*out.glob('*.inc'),*out.glob('*.cpp')])
         old=previous('mk1',key,exe)
         if old:receipt['compile']=dict(old['compile'],reused=True)

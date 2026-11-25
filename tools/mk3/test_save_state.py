@@ -1,4 +1,4 @@
-"""MK3 save states (F5/F7) through the live loop of mk3.exe (native/mk3/mk3_preview_main.cpp), headless, with the legal
+"""MK3 save states (F5/F7) through the live loop of mk3 (native/mk3/mk3_preview_main.cpp), headless, with the legal
 round start tape (tools/mk3/fight_route.tape) as the inputs. In each edition (Original; Remastered with its DMA layers):
 - save at frame S, digest the state at frame E, load (from memory) and replay to E: every frame line of S+1..E (raster,
   previous frame, palette, machine time and cycle, host PCM, Remastered composite) and the state digest at E identical;

@@ -51,12 +51,12 @@ def main(action,engine=None):
    rec.update(launcher=destination.name,launcher_sha256=sha(destination),launcher_bytes=destination.stat().st_size)
   else:
    if action=='setup':
-    built=Path(engine);target=PRODUCT/'mk5-native-audio.exe';unlinked(built);unlinked(target)
+    built=Path(engine);target=PRODUCT/'mk5-native-audio';unlinked(built);unlinked(target)
     shutil.copy2(built,temp/target.name);os.replace(temp/target.name,target);engine=target
     assert sha(engine)==sha(built),'engine copy differs'
    else:
     build=json.loads((STAGE/'build.json').read_text());assert build['passed']
-    engine=PRODUCT/'mk5-native-audio.exe';assert sha(engine)==build['sha256']
+    engine=PRODUCT/'mk5-native-audio';assert sha(engine)==build['sha256']
    old=json.loads((OLD/'manifest.json').read_text()) if (OLD/'manifest.json').is_file() else json.loads((ROOT/'tools/mk1/runtime-inputs.json').read_text())
    for name,want in old.get('files',{}).items():
     assert Path(name).name==name and sha(OLD/name)==want,'Predecessor integrity: '+name

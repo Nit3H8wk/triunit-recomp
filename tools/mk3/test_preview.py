@@ -1,4 +1,4 @@
-"""J3 host: the MK3 native executable mk3.exe (native/mk3/mk3_preview_main.cpp through tools/mk3/preview.py).
+"""J3 host: the MK3 native executable mk3 (native/mk3/mk3_preview_main.cpp through tools/mk3/preview.py).
 
 Checks, all on one build in one scratch tree:
 - inputs: every key and pad control alone (mk3 --input-map) against the ports of INPUT_PORTS(mk3), parsed from

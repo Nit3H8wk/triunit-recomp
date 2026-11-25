@@ -540,7 +540,7 @@ def fast(cc, sanitizer, scratch, graphics=False):
 
 def smoke(scratch):
     launcher = ROOT / "triunit.exe"
-    paths = [launcher, PRODUCT / "mk5-native-audio.exe", PRODUCT / "manifest.json"]
+    paths = [launcher, PRODUCT / "mk5-native-audio", PRODUCT / "manifest.json"]
     identities = {str(p.relative_to(ROOT)): sha(p) for p in paths}
     rows = []
     for mode, frames in (("original", 113), ("remastered", 127)):
@@ -579,7 +579,7 @@ def smoke(scratch):
 
 
 def headless(scratch, repetitions):
-    exe = PRODUCT / "mk5-native-audio.exe"
+    exe = PRODUCT / "mk5-native-audio"
     from tools.setup import mk1 as setup_mk1
     seed = setup_mk1.seed_path()   # CMOS seed written by the setup
     arguments = [exe, "--roms", ROOT / "roms", "--stage", "main-loop",
