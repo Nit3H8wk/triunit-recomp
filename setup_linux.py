@@ -198,6 +198,7 @@ _rom_dir = None
 
 def launcher_menu():
     """Menu to run MK1, MK2, or MK3."""
+    global _rom_dir
     print("\n" + "=" * 40)
     print("  TriUnit Recomp Launcher")
     print("=" * 40)
@@ -215,7 +216,6 @@ def launcher_menu():
         choice = input("  Select option: ").strip()
         if choice == '5': break
         elif choice == '4':
-            global _rom_dir
             _rom_dir = get_rom_directory()
             print(f"  ROM directory set to: {_rom_dir}")
             continue
@@ -224,7 +224,6 @@ def launcher_menu():
             print("  Invalid option")
             continue
 
-        global _rom_dir
         if not _rom_dir:
             _rom_dir = get_rom_directory()
 
