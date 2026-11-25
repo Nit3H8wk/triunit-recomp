@@ -4,8 +4,12 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#ifdef _WIN32
 #include <windows.h>
 #include <mmsystem.h>
+#else
+#include "mk5_win_compat.hpp"
+#endif
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -13,6 +17,7 @@
 #include <cstdlib>
 #include <stdexcept>
 namespace mk5audio {
+#ifdef _WIN32
 struct WaveOutSink::Impl {
  // Keep reserves in milliseconds so packet granularity does not change the latency policy.
  static constexpr size_t kSamplesPerMs=48,kMaxPacketSamples=20*kSamplesPerMs,kQueueSlots=16;
@@ -67,6 +72,28 @@ struct WaveOutSink::Impl {
  void cleanup(){if(device){waveOutReset(device);for(auto& slot:slots)if(slot.prepared)waveOutUnprepareHeader(device,&slot.header,sizeof(WAVEHDR));waveOutClose(device);device=nullptr;}if(completion){CloseHandle(completion);completion=nullptr;}}
  ~Impl(){cleanup();}
 };
+#else
+// Headless Linux sink: tracks sample counts for diagnostics but emits no audio.
+// Phase 2 replaces this with an SDL3 audio stream callback.
+struct WaveOutSink::Impl {
+ const unsigned packet_ms;const size_t packet_samples;size_t active_slots=0,startup_target=0;
+ unsigned channels=1,volume=100;uint64_t max_producer_gap=0;uint64_t submitted=0,completed=0,underruns=0;
+ explicit Impl(unsigned channel_count,WaveOutPacket packet):packet_ms(unsigned(packet)),packet_samples(packet_ms*48),channels(channel_count){
+  if(channels!=1&&channels!=2)throw std::invalid_argument("PCM channels must be 1 or 2");
+  const auto* configured_volume=std::getenv("MK1_GAME_VOLUME");volume=ParseGameVolume(configured_volume?configured_volume:"");
+  startup_target=8;active_slots=8;
+ }
+ void poll(){}void start(){if(submitted)completed=submitted;}
+ void submit(){submitted+=packet_samples/channels;}
+ void push(const int16_t* data,size_t count){
+  if(count && !data)throw std::invalid_argument("null PCM buffer");
+  if(count%channels)throw std::invalid_argument("partial stereo PCM frame");
+  submitted+=count/channels;completed=submitted;(void)data;
+ }
+ void drain(){completed=submitted;}
+ ~Impl()=default;
+};
+#endif
 WaveOutSink::WaveOutSink(unsigned channels,WaveOutPacket packet):impl(std::make_unique<Impl>(channels,packet)){}WaveOutSink::~WaveOutSink()=default;
 void WaveOutSink::Push(const int16_t* data,size_t count){impl->push(data,count);}void WaveOutSink::Drain(){impl->drain();}
 uint64_t WaveOutSink::Submitted()const{return impl->submitted;}uint64_t WaveOutSink::Completed()const{return impl->completed;}

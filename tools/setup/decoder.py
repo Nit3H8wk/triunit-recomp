@@ -31,7 +31,7 @@ def identity(cc=None):
 
 def command(cc,exe):
     return [str(cc),'-std=c++17','-O2','-static','-I'+str(SOURCE/'shim'),'-I'+str(SOURCE/'upstream'),str(SOURCE/'disassemble.cpp'),
-            str(SOURCE/'upstream/34010dsm.cpp'),'-Wl,--no-insert-timestamp','-o',str(exe)]
+            str(SOURCE/'upstream/34010dsm.cpp'),'-o',str(exe)]
 
 
 def tms34010(cc=None):

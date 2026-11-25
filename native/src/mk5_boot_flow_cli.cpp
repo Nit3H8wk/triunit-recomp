@@ -16,7 +16,11 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include "mk5_win_compat.hpp"
+#endif
 
 namespace {
 struct FlowOptions {

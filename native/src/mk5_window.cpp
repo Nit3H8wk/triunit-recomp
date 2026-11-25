@@ -1,6 +1,7 @@
 #ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0A00
 #endif
+#ifdef _WIN32
 #include "mk5_window.hpp"
 #include "mk5_crt.hpp"
 #include "mk5_crt_shader.hpp"
@@ -1310,3 +1311,4 @@ std::string Mk5Window::presentation_json()const{
       <<",\"hdr_validation_frames\":"<<impl->hdr_validation_frames<<",\"hdr_validation_mismatches\":"<<impl->hdr_validation_mismatches
       <<",\"move_size_enter\":"<<impl->move_enter<<",\"move_size_exit\":"<<impl->move_exit<<",\"physical_aspect\":\""<<(impl->source_aspect?"source":impl->across*3==impl->down*4?"4:3":"wide")<<"\"}";return s.str();
 }
+#endif // _WIN32

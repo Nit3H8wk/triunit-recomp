@@ -390,7 +390,9 @@ def write(directory,rom,rows=None):
 
 # Native test/driver build of the units: same flags as the earlier single-command builds, separate compilation in two
 # workers with the project's single bounded object cache (tools/quality/cpp_build.py, build/native/compiler-cache).
-FLAGS=['-std=c++17','-O2','-Wall','-Wextra','-Werror','-static','-municode']
+FLAGS=['-std=c++17','-O2','-Wall','-Wextra','-Werror']
+if not sys.platform.startswith("linux"):
+    FLAGS += ['-static','-municode']
 RUNTIME=('mk3_program.cpp','mk3_dcs.cpp','mk3_cmos_check.cpp','mk3_pic.cpp')
 
 def build(scratch,sources,executable,*,defines=(),rows=None,timeout=1800,unicode=True):

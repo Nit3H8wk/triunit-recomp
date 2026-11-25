@@ -11,10 +11,15 @@ from tools.quality import run as q
 
 ROOT=q.ROOT
 INPUTS=ROOT/'tools/mk1/runtime-inputs.json'
-FLAGS=['-std=c++17','-O2','-DUNICODE','-D_UNICODE','-Wall','-Wextra','-Werror','-Wno-unused-parameter',
-       '-Wno-missing-field-initializers','-pthread','-municode','-I'+str(ROOT/'native/include'),'-I'+str(ROOT/'native/audio')]
-LIBRARIES=['-static','-lbcrypt','-luser32','-lgdi32','-lwinmm','-ld3d12','-ldxgi','-ld3dcompiler','-ldxguid','-lwindowscodecs',
-           '-lole32','-luuid','-s','-Wl,--no-insert-timestamp']
+if sys.platform.startswith("linux"):
+    FLAGS=['-std=c++17','-O2','-Wall','-Wextra','-Werror','-Wno-unused-parameter',
+           '-Wno-missing-field-initializers','-pthread','-I'+str(ROOT/'native/include'),'-I'+str(ROOT/'native/audio')]
+    LIBRARIES=['-s','-Wl,--no-insert-timestamp','-lSDL3','-lvulkan']
+else:
+    FLAGS=['-std=c++17','-O2','-DUNICODE','-D_UNICODE','-Wall','-Wextra','-Werror','-Wno-unused-parameter',
+           '-Wno-missing-field-initializers','-pthread','-municode','-I'+str(ROOT/'native/include'),'-I'+str(ROOT/'native/audio')]
+    LIBRARIES=['-static','-lbcrypt','-luser32','-lgdi32','-lwinmm','-ld3d12','-ldxgi','-ld3dcompiler','-ldxguid','-lwindowscodecs',
+               '-lole32','-luuid','-s','-Wl,--no-insert-timestamp']
 
 
 def sources():

@@ -1,7 +1,11 @@
 #include "mk2_profile.hpp"
 #include "mk5_program.hpp"
 #define WIN32_LEAN_AND_MEAN
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include "mk5_win_compat.hpp"
+#endif
 #include <algorithm>
 #include <atomic>
 #include <cstddef>

@@ -2,10 +2,14 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#ifdef _WIN32
 #include <windows.h>
 #include <winternl.h>
 #include <hidusage.h>
 #include <hidpi.h>
+#else
+#include "mk5_win_compat.hpp"
+#endif
 #include <algorithm>
 #include <cstdint>
 #include <cwchar>
@@ -18,6 +22,7 @@
 // device name) are left to XInput.
 namespace mk5hid {
 struct Pad {uint32_t buttons=0;unsigned directions=0;}; // buttons: mk5controls mask; directions: bits Up Down Left Right
+#ifdef _WIN32
 class Reader {
     using Caps=NTSTATUS(NTAPI*)(PHIDP_PREPARSED_DATA,PHIDP_CAPS);
     using ValueCaps=NTSTATUS(NTAPI*)(HIDP_REPORT_TYPE,PHIDP_VALUE_CAPS,PUSHORT,PHIDP_PREPARSED_DATA);
@@ -93,5 +98,19 @@ public:
         std::vector<Pad> out;for(const auto& item:list)out.push_back(item.second);return out;
     }
 };
+#else
+// Headless Linux stub: no HID controllers are ever connected. Phase 2 replaces
+// this with an SDL3 HIDAPI poll.
+class Reader {
+public:
+    Reader()=default;
+    ~Reader()=default;
+    Reader(const Reader&)=delete;Reader& operator=(const Reader&)=delete;
+    void listen(HWND){}
+    void removed(HANDLE){}
+    void input(LPARAM){}
+    std::vector<Pad> pads(){return {};}
+};
+#endif
 inline Reader& shared(){static Reader reader;return reader;}
 }

@@ -3,7 +3,11 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include "mk5_win_compat.hpp"
+#endif
 #include "mk5_gamepad.hpp"
 #include "mk5_hid.hpp"
 #include "mk5_window.hpp"

@@ -3,7 +3,11 @@
 #include "mk5_stage_bicubic.hpp"
 #include <stdexcept>
 #define WIN32_LEAN_AND_MEAN
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include "mk5_win_compat.hpp"
+#endif
 namespace {
 uint32_t expand_rgb(uint16_t color){
     auto expand=[](unsigned v){return (v<<3)|(v>>2);};

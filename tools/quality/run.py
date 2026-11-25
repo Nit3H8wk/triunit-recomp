@@ -24,8 +24,12 @@ backend_arguments=runpy.run_path(ROOT/'tools/launcher_backend_build.py')['argume
 STAGE = ROOT / "build/native/quality"
 CURRENT = "tools/mk1/product"
 PRODUCT = ROOT / "build/native/manual-temporary-8-20261025/product"
-DEFAULT_CC = Path("C:/msys64/mingw64/bin/g++.exe")
-ASAN_CC = Path("C:/msys64/clang64/bin/clang++.exe")
+if sys.platform.startswith("linux"):
+    DEFAULT_CC = Path("/usr/bin/g++")
+    ASAN_CC = Path("/usr/bin/clang++")
+else:
+    DEFAULT_CC = Path("C:/msys64/mingw64/bin/g++.exe")
+    ASAN_CC = Path("C:/msys64/clang64/bin/clang++.exe")
 OUTPUT_LIMIT = 128 * 1024
 WARNINGS_AS_ERRORS = True  # tools/setup/setup.py turns it off: -Werror is dropped from every command
 

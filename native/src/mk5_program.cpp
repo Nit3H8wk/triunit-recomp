@@ -1,7 +1,11 @@
 #include "mk5_machine.hpp"
 #define WIN32_LEAN_AND_MEAN
+#ifdef _WIN32
 #include <windows.h>
 #include <bcrypt.h>
+#else
+#include "mk5_win_compat.hpp"
+#endif
 #include <algorithm>
 #include <fstream>
 #include <iterator>
@@ -9,6 +13,7 @@
 #include <stdexcept>
 
 namespace {
+#ifdef _WIN32
 struct Algorithm {
     BCRYPT_ALG_HANDLE value=nullptr;
     ~Algorithm(){if(value)BCryptCloseAlgorithmProvider(value,0);}
@@ -40,6 +45,10 @@ std::string digest(const std::vector<uint8_t>& bytes,LPCWSTR algorithm){
     for(auto byte:output){text.push_back(hex[byte>>4]);text.push_back(hex[byte&15]);}
     return text;
 }
+#else
+// Phase 1 stubs: real SHA-256/SHA-1 arrive with the portable crypto backend.
+std::string digest(const std::vector<uint8_t>&,const char*){throw std::runtime_error("MK 5.0: hashing not available on Linux (Phase 1)");}
+#endif
 std::vector<uint8_t> read(const std::filesystem::path& path){
     std::ifstream input(path,std::ios::binary);
     if(!input)throw std::runtime_error("MK 5.0: program ROM cannot be opened");
@@ -49,7 +58,11 @@ std::vector<uint8_t> read(const std::filesystem::path& path){
 }
 }
 
+#ifdef _WIN32
 std::string Sha256(const std::vector<uint8_t>& bytes){return digest(bytes,BCRYPT_SHA256_ALGORITHM);}
+#else
+std::string Sha256(const std::vector<uint8_t>& bytes){return digest(bytes,"SHA256");}
+#endif
 
 VerifiedMk5Program LoadMk5Program(const std::filesystem::path& root){
     namespace fs=std::filesystem;
@@ -63,7 +76,11 @@ VerifiedMk5Program LoadMk5Program(const std::filesystem::path& root){
     for(const auto& path:candidates){
         auto bytes=read(path);
         if(bytes.size()!=524288)continue;
+#ifdef _WIN32
         auto sha1=digest(bytes,BCRYPT_SHA1_ALGORITHM);
+#else
+        auto sha1=digest(bytes,"SHA1");
+#endif
         if(even.empty() && sha1=="796ec84d37c8d20ca36d6439c14dee626fb8481e"){
             even=std::move(bytes);program.even_source=path;
         }else if(odd.empty() && sha1=="f66655eeab67c8cf5e496ae42dbae54d6400586f"){
@@ -100,6 +117,7 @@ std::vector<uint16_t> LoadMk5CmosSnapshot(const std::filesystem::path& path){
 void SaveMk5CmosSnapshot(const std::filesystem::path& path,const std::vector<uint16_t>& words){
     if(words.size()!=8192)throw std::runtime_error("CMOS output requires exactly 8192 words");
     const auto bytes=Mk5CmosBytes(words);
+#ifdef _WIN32
     // CREATE_NEW atomically refuses existing files, including original ROMs.
     HANDLE file=CreateFileW(path.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
     if(file==INVALID_HANDLE_VALUE)throw std::runtime_error("Cannot create CMOS snapshot: existing file or invalid output path");
@@ -108,4 +126,11 @@ void SaveMk5CmosSnapshot(const std::filesystem::path& path,const std::vector<uin
     if(!ok || written!=bytes.size()){
         DeleteFileW(path.c_str());throw std::runtime_error("Cannot write complete CMOS snapshot");
     }
+#else
+    // Portable equivalent: refuse existing files, then write atomically.
+    if(std::filesystem::exists(path))throw std::runtime_error("Cannot create CMOS snapshot: existing file or invalid output path");
+    std::ofstream out(path,std::ios::binary);
+    if(!out.write(reinterpret_cast<const char*>(bytes.data()),static_cast<std::streamsize>(bytes.size())))
+        throw std::runtime_error("Cannot write complete CMOS snapshot");
+#endif
 }

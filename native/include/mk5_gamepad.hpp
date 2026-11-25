@@ -2,8 +2,21 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#ifdef _WIN32
 #include <windows.h>
 #include <xinput.h>
+#else
+// Minimal Linux stand-ins so the public API below compiles unchanged.
+using DWORD=unsigned;using ULONGLONG=unsigned long long;using HMODULE=void*;
+using WINAPI=int;using LPCWSTR=const wchar_t*;using WORD=unsigned short;using BYTE=unsigned char;
+#define ERROR_SUCCESS 0
+struct XINPUT_GAMEPAD{WORD wButtons;short sThumbLX,sThumbLY,sThumbRX,sThumbRY;BYTE bLeftTrigger,bRightTrigger;};
+struct XINPUT_STATE{DWORD dwPacketNumber;XINPUT_GAMEPAD Gamepad;};
+#define XINPUT_GAMEPAD_DPAD_UP 0x0001
+#define XINPUT_GAMEPAD_DPAD_DOWN 0x0002
+#define XINPUT_GAMEPAD_DPAD_LEFT 0x0004
+#define XINPUT_GAMEPAD_DPAD_RIGHT 0x0008
+#endif
 #include <array>
 #include <cstdint>
 #include "mk5_machine.hpp"
@@ -34,6 +47,7 @@ inline BootDiInputs map(const XINPUT_GAMEPAD& pad,unsigned player,BootDiInputs b
  base.in01=mk5controls::shared(player?0:held,player?held:0,base.in01,true);
  return base;
 }
+#ifdef _WIN32
 // Dynamically resolve the OS driver: no vendor install and no dependency on a
 // single XInput DLL version. Disconnected slots are retried without blocking UI.
 class Devices {
@@ -51,4 +65,19 @@ public:
  const XINPUT_GAMEPAD* player(unsigned p)const{const int slot=ports.slots[p];return slot>=0&&connected[unsigned(slot)]?&states[unsigned(slot)].Gamepad:nullptr;}
  unsigned count()const{unsigned n=0;for(bool c:connected)n+=c;return n;}
 };
+#else
+// Headless Linux stub: no controllers are ever connected. Phase 2 replaces this
+// with an SDL3 game-controller poll.
+class Devices {
+ Ports ports;
+public:
+ std::array<XINPUT_STATE,4> states{};std::array<bool,4> connected{};
+ Devices()=default;
+ ~Devices()=default;
+ Devices(const Devices&)=delete;Devices& operator=(const Devices&)=delete;
+ void poll(){ports.update(connected);}
+ const XINPUT_GAMEPAD* player(unsigned p)const{const int slot=ports.slots[p];return slot>=0&&connected[unsigned(slot)]?&states[unsigned(slot)].Gamepad:nullptr;}
+ unsigned count()const{return 0;}
+};
+#endif
 }
