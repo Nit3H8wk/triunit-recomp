@@ -31,8 +31,13 @@ g++ -std=c++17 -O2 -Wall -Wextra -Wno-error -Wno-unused-parameter -Wno-missing-f
   -o "$OUT/bin/mk5-native-audio"
 
 echo "=== Building MK2 (mk2-native) ==="
+# The generated includes live in generated/mk2/<program_sha256>/ (built from the user's ROMs by
+# tools/setup/mk2.py). NEVER use -Igenerated here: the tracked stub .inc files there would shadow
+# the real ones. mk2_first_fight_main.inc is a driver: its page units (.cpp) are separate
+# translation units and must be compiled into the binary too (tools/setup/paths.generated_sources).
+MK2_INC=$(python3 -c "import sys;sys.path.insert(0,'.');from tools.setup import mk2;print(mk2.inc_dir())")
 g++ -std=c++17 -O1 -Wall -Wextra -Wno-error -Wno-unused-parameter -Wno-missing-field-initializers -pthread \
-  -Inative/include -Igenerated \
+  -Inative/include -Inative/mk2 "-I$MK2_INC" \
   native/mk2/mk2_task_batch.cpp \
   native/mk2/mk2_program.cpp \
   native/mk2/mk2_dcs.cpp \
@@ -45,6 +50,12 @@ g++ -std=c++17 -O1 -Wall -Wextra -Wno-error -Wno-unused-parameter -Wno-missing-f
   native/src/mk5_window_linux.cpp \
   native/src/mk5_audio_output.cpp \
   native/src/linux_main_wrapper.cpp \
+  $(python3 -c "
+import sys,json;sys.path.insert(0,'.')
+from tools.setup.paths import output
+d=output('mk2')
+print(' '.join(str(d/n) for n in sorted(json.loads((d/'includes.json').read_text('utf8'))['files']) if n.endswith('.cpp')))
+") \
   -lSDL3 -lvulkan \
   -o "$OUT/bin/mk2-native"
 

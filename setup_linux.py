@@ -134,6 +134,131 @@ def get_rom_directory(argv):
     return None
 
 
+def prepare_roms(rom_dir, rom_status):
+    """Extract and rename ROM files from MAME zips to what each binary expects.
+    
+    MK1 needs: <roms>/mk1/mks-u3.rom, mks-u12.rom, mks-u13.rom (256KB each)
+    MK2 needs: <roms>/su2.l1 through su7.l1 (512KB each) + u2.l1
+    MK3 needs: MAME-named files directly (l1_mortal_kombat_3_u*.u*)
+    
+    Returns dict of game -> prepared directory path.
+    """
+    import zipfile
+    prep_dir = rom_dir / '.triunit-prep'
+    result = {}
+
+    # --- MK1: extract ALL files from mk.zip (binary scans for 512KB program ROMs by SHA1) ---
+    mk1_dir = prep_dir / 'mk1'
+    mk1_dir.mkdir(parents=True, exist_ok=True)
+    mk1_zip = rom_dir / 'mk.zip'
+    if not mk1_zip.exists():
+        mk1_zip = rom_dir / 'mk1' / 'mk.zip'
+    if mk1_zip.exists():
+        try:
+            with zipfile.ZipFile(mk1_zip) as z:
+                for name in z.namelist():
+                    if not name.startswith('TORRENTZIPPED'):
+                        (mk1_dir / name).write_bytes(z.read(name))
+            # Also create the expected short names for audio ROMs
+            audio_map = {
+                'sl1_mortal_kombat_u3_sound_rom.u3': 'mks-u3.rom',
+                'sl1_mortal_kombat_u12_sound_rom.u12': 'mks-u12.rom',
+                'sl1_mortal_kombat_u13_sound_rom.u13': 'mks-u13.rom',
+            }
+            with zipfile.ZipFile(mk1_zip) as z:
+                for src, dst in audio_map.items():
+                    if src in z.namelist() and not (mk1_dir / dst).exists():
+                        (mk1_dir / dst).write_bytes(z.read(src))
+            log(f"  MK1: extracted {len(list(mk1_dir.iterdir()))} files from mk.zip")
+            # Binary reads <roms>/mk1/mks-u*.rom and recursively scans <roms> for
+            # 512 KiB program lanes — so the --roms root must be the PARENT of mk1/.
+            result['mk1'] = prep_dir
+        except Exception as e:
+            log(f"  MK1 extract error: {e}")
+
+    # --- MK2: extract program + graphics ROMs from mk2.zip ---
+    mk2_dir = prep_dir / 'mk2'
+    mk2_dir.mkdir(parents=True, exist_ok=True)
+    mk2_zip = rom_dir / 'mk2.zip'
+    if not mk2_zip.exists():
+        mk2_zip = rom_dir / 'mk2' / 'mk2.zip'
+    if mk2_zip.exists():
+        # MK2 L3.1 expects specific short names:
+        # Program: uj12.l31, ug12.l31 (512KB)
+        # Graphics: ug14-vid, uj14-vid, etc. (1MB each)
+        # DCS data: su2.l1 through su7.l1 (512KB each)
+        mk2_mapping = {
+            'l3.1_mortal_kombat_ii_game_rom_ug12.ug12': 'ug12.l31',
+            'l3.1_mortal_kombat_ii_game_rom_uj12.uj12': 'uj12.l31',
+            'l1_mortal_kombat_ii_game_rom_ug14.ug14': 'ug14-vid',
+            'l1_mortal_kombat_ii_game_rom_uj14.uj14': 'uj14-vid',
+            'l1_mortal_kombat_ii_game_rom_ug16.ug16': 'ug16-vid',
+            'l1_mortal_kombat_ii_game_rom_uj16.uj16': 'uj16-vid',
+            'l1_mortal_kombat_ii_game_rom_ug17.ug17': 'ug17-vid',
+            'l1_mortal_kombat_ii_game_rom_uj17.uj17': 'uj17-vid',
+            'l1_mortal_kombat_ii_game_rom_ug19.ug19': 'ug19-vid',
+            'l1_mortal_kombat_ii_game_rom_uj19.uj19': 'uj19-vid',
+            'l1_mortal_kombat_ii_game_rom_ug20.ug20': 'ug20-vid',
+            'l1_mortal_kombat_ii_game_rom_uj20.uj20': 'uj20-vid',
+            'l1_mortal_kombat_ii_game_rom_ug22.ug22': 'ug22-vid',
+            'l1_mortal_kombat_ii_game_rom_uj22.uj22': 'uj22-vid',
+        }
+        # DCS data ROMs (su2-su7)
+        for n in range(2, 8):
+            mk2_mapping[f'l1_mortal_kombat_ii_sound_rom_u{n}.u{n}'] = f'su{n}.l1'
+        
+        try:
+            with zipfile.ZipFile(mk2_zip) as z:
+                names = set(z.namelist())
+                for src, dst in mk2_mapping.items():
+                    if src in names:
+                        (mk2_dir / dst).write_bytes(z.read(src))
+                log(f"  MK2: extracted {len(list(mk2_dir.iterdir()))} files from mk2.zip")
+            result['mk2'] = mk2_dir
+        except Exception as e:
+            log(f"  MK2 extract error: {e}")
+
+    # --- MK3: extract all files (already MAME-named) ---
+    mk3_dir = prep_dir / 'mk3'
+    mk3_dir.mkdir(parents=True, exist_ok=True)
+    mk3_zip = rom_dir / 'mk3.zip'
+    if not mk3_zip.exists():
+        mk3_zip = rom_dir / 'mk3' / 'mk3.zip'
+    if not mk3_zip.exists():
+        # Try mk3r10, mk3r21, umk3 as fallbacks
+        for alt in ['mk3r10.zip', 'mk3r21.zip', 'umk3.zip']:
+            if (rom_dir / alt).exists():
+                mk3_zip = rom_dir / alt
+                break
+    if mk3_zip.exists():
+        try:
+            with zipfile.ZipFile(mk3_zip) as z:
+                for name in z.namelist():
+                    if not name.startswith('TORRENTZIPPED'):
+                        data = z.read(name)
+                        (mk3_dir / name).write_bytes(data)
+            log(f"  MK3: extracted {mk3_zip.name} -> mk3/ ({len(list(mk3_dir.iterdir()))} files)")
+            result['mk3'] = mk3_dir
+            # gfx.txt uses CWD-relative paths (roms/mk3/<file>). Regenerate it with
+            # absolute paths into the prepared dir so the launcher's CWD doesn't matter.
+            gfx_src = BASE / 'gfx.txt'
+            if gfx_src.exists():
+                lines = []
+                for line in gfx_src.read_text().splitlines():
+                    parts = line.split()
+                    if len(parts) == 3 and parts[2].startswith('roms/mk3/'):
+                        abs_path = mk3_dir / parts[2][len('roms/mk3/'):]
+                        lines.append(f"{parts[0]} {parts[1]} {abs_path}")
+                    elif line.strip():
+                        lines.append(line)
+                (prep_dir / 'gfx-abs.txt').write_text('\n'.join(lines) + '\n')
+                log("  MK3: generated gfx-abs.txt (absolute paths)")
+        except Exception as e:
+            log(f"  MK3 extract error: {e}")
+
+    return result
+
+
 def verify_roms(rom_dir):
     """Check which ROMs are present (top-level or in game subfolders)."""
     print(f"\n  Checking ROMs in {rom_dir}:")
@@ -172,18 +297,46 @@ def run_game(game, rom_dir):
         return False
 
     # Each game has different argument formats:
-    # MK1: mk5-native-audio --roms /path/to/roms
+    # MK1: mk5-native-audio --roms <root> + visual-stage boot-flow args
+    #      (cabinet snapshot: all inputs released, DSW 0xFEFF, product IRQ/raster epoch)
     # MK2: mk2-native /path/to/roms --window
     # MK3: mk3 /path/to/roms factory-seed.bin gfx.txt --window
     if game == 'mk1':
-        args = [str(exe), '--roms', str(rom_dir)]
+        args = [str(exe), '--roms', str(rom_dir),
+                '--stage', 'visual',
+                '--irq-pending', '0x400',
+                '--raster-next-line', '1',
+                '--raster-quanta', '6325',
+                '--body-sound-status-byte', '128',
+                '--dsw-word', '65279',
+                '--boot-dsw-word', '65279',
+                '--task-dsw-word', '65279',
+                '--body-dsw-word', '65279',
+                '--main-dsw-word', '65279',
+                '--irq-in01', '0xffffffff',
+                '--irq-in2-dsw', '4278190079',
+                '--body-irq-in01', '0xffffffff',
+                '--body-irq-in2-dsw', '4278190079',
+                '--active-irq-in01', '0xffffffff',
+                '--active-irq-in2-dsw', '4278190079']
     elif game == 'mk2':
         args = [str(exe), str(rom_dir), '--window']
     else:  # mk3
-        args = [str(exe), str(rom_dir), 'factory-seed.bin', 'gfx.txt', '--window']
+        # mk3 /path/to/roms /abs/factory-seed.bin /abs/gfx.txt --window
+        # Absolute paths only: the binary opens these relative to its CWD, and
+        # Recomplauncher's environment must not be able to break that.
+        gfx_list = rom_dir.parent / 'gfx-abs.txt' if (rom_dir.parent / 'gfx-abs.txt').exists() else BASE / 'gfx.txt'
+        seed = BASE / 'factory-seed.bin'
+        args = [str(exe), str(rom_dir), str(seed), str(gfx_list), '--window']
 
     log(f"Launching {game}: {' '.join(args)}")
     print(f"\n  → Launching {info['label']}...")
+
+    # Pre-flight: data files the game opens by path must exist before launch.
+    if game == 'mk3':
+        for f in (args[2], args[3]):
+            if not Path(f).exists():
+                log(f"  WARNING: missing expected MK3 file: {f}")
 
     try:
         result = subprocess.run(args, cwd=BASE, capture_output=True, text=True)
@@ -326,13 +479,21 @@ def main():
         print("\n  No supported ROMs found. Exiting.")
         return 1
 
+    # Prepare ROM files (extract from zips, rename to what binaries expect)
+    print("\n  Preparing ROM files...")
+    prep = prepare_roms(rom_dir, rom_status)
+    for g, d in prep.items():
+        print(f"  ✓ {g.upper()} ROMs ready")
+
     # tkinter menu when no TTY (Recomplauncher), CLI menu in terminal
     if sys.stdin.isatty():
         game_menu_cli(rom_dir, rom_status)
     else:
         selected, resolved_rom_dir = game_menu_tkinter(rom_dir, rom_status)
         if selected:
-            run_game(selected, resolved_rom_dir or rom_dir)
+            # Use prepared ROM directory if available
+            game_rom_dir = prep.get(selected, resolved_rom_dir or rom_dir)
+            run_game(selected, game_rom_dir)
 
     return 0
 
