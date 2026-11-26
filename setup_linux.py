@@ -165,23 +165,58 @@ def run_game(game, rom_dir):
     info = GAME_INFO[game]
     exe = BASE / info['exe']
     if not exe.exists():
-        print(f"  ✗ {info['exe']} not found — {game.upper()} not yet ported to Linux.")
+        msg = f"{info['exe']} not found — {game.upper()} not yet ported to Linux."
+        print(f"  ✗ {msg}")
+        log(msg)
+        show_error(msg)
         return False
 
     # Each game has different argument formats:
-    # MK1: mk5-native-audio --roms /path/to/roms --window
+    # MK1: mk5-native-audio --roms /path/to/roms
     # MK2: mk2-native /path/to/roms --window
     # MK3: mk3 /path/to/roms factory-seed.bin gfx.txt --window
     if game == 'mk1':
-        args = [str(exe), '--roms', str(rom_dir), '--window']
+        args = [str(exe), '--roms', str(rom_dir)]
     elif game == 'mk2':
         args = [str(exe), str(rom_dir), '--window']
     else:  # mk3
         args = [str(exe), str(rom_dir), 'factory-seed.bin', 'gfx.txt', '--window']
 
+    log(f"Launching {game}: {' '.join(args)}")
     print(f"\n  → Launching {info['label']}...")
-    result = subprocess.run(args, cwd=BASE)
-    return result.returncode == 0
+
+    try:
+        result = subprocess.run(args, cwd=BASE, capture_output=True, text=True)
+        log(f"  exit={result.returncode}")
+        if result.stdout:
+            log(f"  stdout: {result.stdout[:500]}")
+        if result.stderr:
+            log(f"  stderr: {result.stderr[:500]}")
+
+        if result.returncode != 0:
+            err = (result.stderr or result.stdout or '').strip() or f'exit code {result.returncode}'
+            show_error(f"{info['label']} failed:\n\n{err}\n\nROM dir: {rom_dir}")
+            return False
+    except Exception as e:
+        log(f"  exception: {e}")
+        show_error(f"Failed to launch {info['label']}:\n{e}")
+        return False
+
+    return True
+
+
+def show_error(msg):
+    """Show an error dialog (tkinter) — visible even in Recomplauncher."""
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes('-topmost', True)
+        messagebox.showerror("TriUnit Recomp", msg)
+        root.destroy()
+    except Exception:
+        pass  # Last resort: just print (might be invisible)
 
 
 def game_menu_tkinter(rom_dir, rom_status):
@@ -259,8 +294,20 @@ def game_menu_cli(rom_dir, rom_status):
         run_game(game, rom_dir)
 
 
+def log(msg):
+    """Write to a visible log file (stdout is invisible in Recomplauncher)."""
+    try:
+        log_file = BASE / 'launcher.log'
+        with open(log_file, 'a') as f:
+            from datetime import datetime
+            f.write(f"[{datetime.now().isoformat()}] {msg}\n")
+    except OSError:
+        pass
+
+
 def main():
     print("=== TriUnit Recomp Linux Launcher ===\n")
+    log(f"argv={sys.argv}")
     show_rom_requirements()
 
     rom_dir = get_rom_directory(sys.argv)
@@ -270,7 +317,10 @@ def main():
         return 1
 
     print(f"\n  ROM directory: {rom_dir}")
+    log(f"rom_dir={rom_dir}")
     rom_status = verify_roms(rom_dir)
+    for g, (ok, d) in rom_status.items():
+        log(f"  {g}: ready={ok} dir={d}")
 
     if not any(v[0] for v in rom_status.values()):
         print("\n  No supported ROMs found. Exiting.")

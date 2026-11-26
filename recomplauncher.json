@@ -6,9 +6,8 @@
   "inputs": [
     {
       "id": "roms",
-      "label": "Folder containing your Mortal Kombat ROM files (mk.zip, mk2.zip, mk3.zip). MAME-style ZIPs.",
-      "formats": [{ "type": "folder" }],
-      "check": { "file": "mk.zip" }
+      "label": "Folder containing your Mortal Kombat ROM files (mk.zip, mk2.zip, mk3.zip). MAME-style ZIPs. Can also use subfolders: mk1/, mk2/, mk3/.",
+      "formats": [{ "type": "folder" }]
     }
   ],
   "start": {
